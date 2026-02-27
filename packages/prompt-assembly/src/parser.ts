@@ -9,373 +9,21 @@
  * with after an import, rather than displaying raw file content.
  */
 
-import type { PromptSegment, InjectionPolicy, SegmentPriority } from "./types";
+import type {
+  PromptSegment,
+  InjectionPolicy,
+  SerializedSegment,
+  SerializedPolicy,
+} from "./types";
 import { estimateTokens } from "./token-estimator";
 import { PromptAssembler } from "./assembler";
-
-// ---------------------------------------------------------------------------
-// SerializedSegment — JSON-safe representation for storage/transport
-// ---------------------------------------------------------------------------
-
-export type SerializedPolicy =
-  | { type: "always" }
-  | { type: "every_n"; n: number }
-  | { type: "on_topic"; keywords: string[] }
-  | { type: "on_state_field"; field: string };
-
-export interface SerializedSegment {
-  id: string;
-  label: string;
-  content: string;
-  policy: SerializedPolicy;
-  priority: SegmentPriority;
-  order: number;
-  tokenEstimate: number;
-  category: string;
-}
-
-// ---------------------------------------------------------------------------
-// Heading → segment mapping
-// ---------------------------------------------------------------------------
-
-interface HeadingMapping {
-  /** Regex pattern to match against the heading text (case-insensitive) */
-  pattern: RegExp;
-  id: string;
-  label: string;
-  policy: SerializedPolicy;
-  priority: SegmentPriority;
-  order: number;
-  category: string;
-  /** If true, the heading line itself is included in the content */
-  includeHeading: boolean;
-}
-
-/**
- * Ordered list of heading patterns. The parser walks through the markdown
- * and assigns each section to the first matching pattern.
- *
- * Patterns are matched against the heading text (without the `#` prefix).
- */
-const HEADING_MAPPINGS: readonly HeadingMapping[] = [
-  {
-    pattern: /^system\s+prompt/i,
-    id: "core_rules",
-    label: "Core Narration Rules",
-    policy: { type: "always" },
-    priority: "critical",
-    order: 0,
-    category: "rules",
-    includeHeading: false,
-  },
-  {
-    pattern: /^output\s+format/i,
-    id: "output_format",
-    label: "Output Format",
-    policy: { type: "always" },
-    priority: "critical",
-    order: 10,
-    category: "rules",
-    includeHeading: true,
-  },
-  {
-    pattern: /^setting\s+(and\s+)?scope/i,
-    id: "setting_premise",
-    label: "Setting & Premise",
-    policy: { type: "always" },
-    priority: "critical",
-    order: 20,
-    category: "world",
-    includeHeading: true,
-  },
-  {
-    pattern: /^character\s+you\s+embody/i,
-    id: "character_identity",
-    label: "Character Identity",
-    policy: { type: "always" },
-    priority: "critical",
-    order: 30,
-    category: "character",
-    includeHeading: true,
-  },
-  {
-    pattern: /^background\s+and\s+relationship/i,
-    id: "backstory",
-    label: "Background & Relationship to Player",
-    policy: {
-      type: "on_topic",
-      keywords: [
-        "remember",
-        "school",
-        "middle school",
-        "high school",
-        "back then",
-        "used to",
-        "old days",
-        "history",
-        "childhood",
-        "bullied",
-        "ugly duckling",
-        "reconnect",
-      ],
-    },
-    priority: "normal",
-    order: 60,
-    category: "world",
-    includeHeading: true,
-  },
-  {
-    pattern: /^interaction\s+guidelines/i,
-    id: "interaction_guide",
-    label: "Interaction Guidelines",
-    policy: { type: "every_n", n: 3 },
-    priority: "normal",
-    order: 65,
-    category: "character",
-    includeHeading: true,
-  },
-];
-
-/**
- * Sub-section patterns matched within the character identity block.
- * These are matched against bullet-point prefixes or sub-headings within
- * a larger section (typically under "### Character you embody").
- */
-interface SubSectionMapping {
-  /** Regex matched against the line that starts the sub-section */
-  startPattern: RegExp;
-  /** Regex that, if matched, means we've left this sub-section */
-  endPatterns: RegExp[];
-  id: string;
-  label: string;
-  policy: SerializedPolicy;
-  priority: SegmentPriority;
-  order: number;
-  category: string;
-}
-
-const SUB_SECTION_MAPPINGS: readonly SubSectionMapping[] = [
-  {
-    startPattern: /^-\s*speech\s+patterns?\s+(and\s+)?voice/i,
-    endPatterns: [
-      /^-\s*vocabulary/i,
-      /^-\s*signature/i,
-      /^-\s*mannerisms/i,
-      /^-\s*interaction/i,
-      /^-\s*technique/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "speech_patterns",
-    label: "Speech Patterns & Voice",
-    policy: { type: "every_n", n: 2 },
-    priority: "high",
-    order: 40,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*vocabulary\s*&?\s*word\s+choice/i,
-    endPatterns: [
-      /^-\s*mannerisms/i,
-      /^-\s*interaction/i,
-      /^-\s*technique/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "vocabulary_humor_a",
-    label: "Vocabulary & Word Choice",
-    policy: { type: "every_n", n: 2 },
-    priority: "high",
-    order: 45,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*signature\s+moves/i,
-    endPatterns: [
-      /^-\s*mannerisms/i,
-      /^-\s*interaction/i,
-      /^-\s*technique/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "vocabulary_humor_b",
-    label: "Signature Moves",
-    policy: { type: "every_n", n: 2 },
-    priority: "high",
-    order: 46,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*interaction\s+style/i,
-    endPatterns: [
-      /^-\s*mannerisms/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "vocabulary_humor_c",
-    label: "Interaction Style & Technique",
-    policy: { type: "every_n", n: 2 },
-    priority: "high",
-    order: 47,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*technique/i,
-    endPatterns: [
-      /^-\s*mannerisms/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "vocabulary_humor_d",
-    label: "Technique",
-    policy: { type: "every_n", n: 2 },
-    priority: "high",
-    order: 48,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*look\s*\/?\s*presence/i,
-    endPatterns: [
-      /^-\s*speech/i,
-      /^-\s*vocabulary/i,
-      /^-\s*signature/i,
-      /^-\s*mannerisms/i,
-      /^-\s*interaction/i,
-      /^-\s*technique/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "appearance_visual",
-    label: "Appearance & Visual Presence",
-    policy: {
-      type: "on_topic",
-      keywords: [
-        "look",
-        "appearance",
-        "pretty",
-        "beautiful",
-        "cute",
-        "face",
-        "eyes",
-        "hair",
-        "body",
-        "tall",
-        "short",
-        "petite",
-        "what she looks like",
-      ],
-    },
-    priority: "normal",
-    order: 55,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*mannerisms/i,
-    endPatterns: [
-      /^-\s*interaction\s+style/i,
-      /^-\s*technique/i,
-      /^-\s*voice\s+description/i,
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "mannerisms",
-    label: "Mannerisms & Physical Beats",
-    policy: { type: "every_n", n: 3 },
-    priority: "normal",
-    order: 50,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*voice\s+description/i,
-    endPatterns: [
-      /^-\s*outfit/i,
-      /^-\s*hairstyle/i,
-      /^-\s*initial\s+relationship/i,
-      /^###/,
-    ],
-    id: "voice_sound",
-    label: "Voice Description (Sound)",
-    policy: {
-      type: "on_topic",
-      keywords: [
-        "voice",
-        "sing",
-        "song",
-        "sound",
-        "whisper",
-        "tone",
-        "music",
-        "hear",
-      ],
-    },
-    priority: "normal",
-    order: 57,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*outfit/i,
-    endPatterns: [/^-\s*hairstyle/i, /^-\s*initial\s+relationship/i, /^###/],
-    id: "outfit_hairstyle_a",
-    label: "Outfit",
-    policy: {
-      type: "on_topic",
-      keywords: [
-        "outfit",
-        "wear",
-        "clothes",
-        "dress",
-        "shirt",
-        "jacket",
-        "blazer",
-        "shoes",
-        "heels",
-      ],
-    },
-    priority: "normal",
-    order: 58,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*hairstyle/i,
-    endPatterns: [/^-\s*initial\s+relationship/i, /^###/],
-    id: "outfit_hairstyle_b",
-    label: "Hairstyle",
-    policy: { type: "on_topic", keywords: ["hairstyle", "styled", "hair"] },
-    priority: "normal",
-    order: 59,
-    category: "character",
-  },
-  {
-    startPattern: /^-\s*initial\s+relationship\s+status/i,
-    endPatterns: [/^###/],
-    id: "relationship_status",
-    label: "Initial Relationship Status",
-    policy: { type: "on_state_field", field: "relationships" },
-    priority: "normal",
-    order: 70,
-    category: "world",
-  },
-];
+import {
+  HEADING_MAPPINGS,
+  SUB_SECTION_MAPPINGS,
+  MERGE_GROUPS,
+  type HeadingMapping,
+  type SubSectionMapping,
+} from "./parser-mappings";
 
 // ---------------------------------------------------------------------------
 // Parser implementation
@@ -505,75 +153,22 @@ function parseCharacterSubSections(content: string): {
   return { matched, preamble: preambleLines.join("\n").trim() };
 }
 
-/** Merge adjacent vocabulary/humor sub-segments back into one segment. */
-function mergeVocabularyHumor(
+/** Apply a single merge group: combine matching sub-segments into one. */
+function applyMergeGroup(
   segments: SerializedSegment[],
+  sourceIds: readonly string[],
+  merged: Omit<SerializedSegment, "content" | "tokenEstimate">,
 ): SerializedSegment[] {
-  const vocabIds = [
-    "vocabulary_humor_a",
-    "vocabulary_humor_b",
-    "vocabulary_humor_c",
-    "vocabulary_humor_d",
-  ];
-  const vocabSegments = segments.filter((s) => vocabIds.includes(s.id));
-  const rest = segments.filter((s) => !vocabIds.includes(s.id));
+  const sources = segments.filter((s) => sourceIds.includes(s.id));
+  if (sources.length === 0) return segments;
 
-  if (vocabSegments.length === 0) return segments;
-
-  const merged: SerializedSegment = {
-    id: "vocabulary_humor",
-    label: "Vocabulary & Humor",
-    content: vocabSegments.map((s) => s.content).join("\n"),
-    policy: { type: "every_n", n: 2 },
-    priority: "high",
-    order: 45,
-    tokenEstimate: vocabSegments.reduce((sum, s) => sum + s.tokenEstimate, 0),
-    category: "character",
-  };
-
-  rest.push(merged);
-  rest.sort((a, b) => a.order - b.order);
-  return rest;
-}
-
-/** Merge adjacent outfit/hairstyle sub-segments back into one segment. */
-function mergeOutfitHairstyle(
-  segments: SerializedSegment[],
-): SerializedSegment[] {
-  const ids = ["outfit_hairstyle_a", "outfit_hairstyle_b"];
-  const matched = segments.filter((s) => ids.includes(s.id));
-  const rest = segments.filter((s) => !ids.includes(s.id));
-
-  if (matched.length === 0) return segments;
-
-  const merged: SerializedSegment = {
-    id: "outfit_hairstyle",
-    label: "Outfit & Hairstyle",
-    content: matched.map((s) => s.content).join("\n"),
-    policy: {
-      type: "on_topic",
-      keywords: [
-        "outfit",
-        "wear",
-        "clothes",
-        "dress",
-        "shirt",
-        "jacket",
-        "blazer",
-        "shoes",
-        "heels",
-        "hairstyle",
-        "styled",
-        "hair",
-      ],
-    },
-    priority: "normal",
-    order: 56,
-    tokenEstimate: matched.reduce((sum, s) => sum + s.tokenEstimate, 0),
-    category: "character",
-  };
-
-  rest.push(merged);
+  const rest = segments.filter((s) => !sourceIds.includes(s.id));
+  const content = sources.map((s) => s.content).join("\n");
+  rest.push({
+    ...merged,
+    content,
+    tokenEstimate: sources.reduce((sum, s) => sum + s.tokenEstimate, 0),
+  });
   rest.sort((a, b) => a.order - b.order);
   return rest;
 }
@@ -648,13 +243,17 @@ function processKnownSection(
 export function parseSystemPromptToSegments(
   markdown: string,
 ): SerializedSegment[] {
-  const sections = splitByHeadings(markdown);
+  const allSections = splitByHeadings(markdown);
   const segments: SerializedSegment[] = [];
   let unknownCounter = 0;
 
   // The first section (before any heading) is typically the core rules
-  if (sections.length > 0 && sections[0]!.heading === "") {
-    const first = sections[0]!;
+  const hasLeadingContent =
+    allSections.length > 0 && allSections[0]!.heading === "";
+  const sections = hasLeadingContent ? allSections.slice(1) : allSections;
+
+  if (hasLeadingContent) {
+    const first = allSections[0]!;
     if (first.content.trim()) {
       segments.push({
         id: "core_rules",
@@ -667,7 +266,6 @@ export function parseSystemPromptToSegments(
         category: "rules",
       });
     }
-    sections.shift();
   }
 
   for (const section of sections) {
@@ -695,8 +293,10 @@ export function parseSystemPromptToSegments(
     }
   }
 
-  let result = mergeVocabularyHumor(segments);
-  result = mergeOutfitHairstyle(result);
+  let result = segments;
+  for (const group of MERGE_GROUPS) {
+    result = applyMergeGroup(result, group.sourceIds, group.merged);
+  }
   return result.sort((a, b) => a.order - b.order);
 }
 
@@ -704,8 +304,10 @@ export function parseSystemPromptToSegments(
  * Convert a SerializedSegment array back into a flat markdown string.
  * Useful for displaying the "assembled" view or for backward compatibility.
  */
-export function segmentsToMarkdown(segments: SerializedSegment[]): string {
-  return segments
+export function segmentsToMarkdown(
+  segments: readonly SerializedSegment[],
+): string {
+  return [...segments]
     .sort((a, b) => a.order - b.order)
     .map((s) => s.content)
     .join("\n\n");

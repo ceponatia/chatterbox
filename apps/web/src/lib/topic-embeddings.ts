@@ -9,6 +9,8 @@
  * Uses a lightweight embedding model via OpenRouter.
  */
 
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { embed, embedMany } from "ai";
 import { env, getBaseUrl } from "./env";
 
 const openrouter = createOpenRouter({

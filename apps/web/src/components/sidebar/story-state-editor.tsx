@@ -158,12 +158,15 @@ function StructuredEditorBody({
   state: StructuredStoryState;
   onUpdate: (state: StructuredStoryState) => void;
 }) {
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const patch = useCallback(
     <K extends keyof StructuredStoryState>(
       key: K,
       value: StructuredStoryState[K],
-    ) => onUpdate({ ...state, [key]: value }),
-    [state, onUpdate],
+    ) => onUpdate({ ...stateRef.current, [key]: value }),
+    [onUpdate],
   );
 
   const { entities } = state;
@@ -184,7 +187,6 @@ function StructuredEditorBody({
         entries={state.appearance}
         entities={entities}
         onUpdate={(v) => patch("appearance", v)}
-        onEntitiesUpdate={(v) => patch("entities", v)}
       />
       <SceneSection
         scene={state.scene}

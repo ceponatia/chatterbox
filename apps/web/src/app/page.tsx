@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import type { StateHistoryEntry } from "@/lib/state-history";
 import { useStateHistoryEntries } from "@/lib/hooks/use-state-history";
 import {
@@ -118,7 +118,7 @@ export default function Home() {
         for (const id of ids) n[id] = 0;
         return n;
       }),
-    [conv],
+    [conv.setLastIncludedAt],
   );
   const pipeline = useStatePipeline({
     messages,
@@ -209,12 +209,18 @@ function MobileSidebarOverlay({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden">
+    <div
+      role="dialog"
+      aria-modal={true}
+      aria-label="Configuration"
+      className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden"
+    >
       <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4 safe-top">
         <Button
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0"
+          aria-label="Back to chat"
           onClick={onClose}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -242,14 +248,17 @@ const SYNC_DOT_TITLES: Record<SyncStatus, string> = {
 
 function SyncDot({ status, pulse }: { status: SyncStatus; pulse?: boolean }) {
   return (
-    <span
-      className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${SYNC_DOT_COLORS[status]} ${pulse ? "animate-pulse" : ""}`}
-      title={SYNC_DOT_TITLES[status]}
-    />
+    <>
+      <span
+        className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${SYNC_DOT_COLORS[status]} ${pulse ? "animate-pulse" : ""}`}
+        aria-hidden="true"
+      />
+      <span className="sr-only">{SYNC_DOT_TITLES[status]}</span>
+    </>
   );
 }
 
-function SidebarContent({
+const SidebarContent = memo(function SidebarContent({
   activeTab,
   setActiveTab,
   conv,
@@ -331,7 +340,7 @@ function SidebarContent({
       </p>
     </>
   );
-}
+});
 
 function ConversationDrawer({
   conv,

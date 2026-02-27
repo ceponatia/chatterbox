@@ -31,11 +31,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const rows = await prisma.stateHistoryEntry.findMany({
-    where: { conversationId: id },
-    orderBy: { timestamp: "asc" },
-  });
-  return NextResponse.json(rows.map(toStateHistoryEntry));
+  try {
+    const rows = await prisma.stateHistoryEntry.findMany({
+      where: { conversationId: id },
+      orderBy: { timestamp: "asc" },
+    });
+    return NextResponse.json(rows.map(toStateHistoryEntry));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(
@@ -43,22 +48,27 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const body = (await request.json()) as StateHistoryEntry;
-  const row = await prisma.stateHistoryEntry.create({
-    data: {
-      id: body.id,
-      conversationId: id,
-      timestamp: new Date(body.timestamp),
-      turnStart: body.turnRange[0],
-      turnEnd: body.turnRange[1],
-      previousState: body.previousState,
-      newState: body.newState,
-      extractedFacts: body.extractedFacts as unknown as Prisma.InputJsonValue,
-      validation: body.validation as unknown as Prisma.InputJsonValue,
-      disposition: body.disposition,
-    },
-  });
-  return NextResponse.json(toStateHistoryEntry(row));
+  try {
+    const body = (await request.json()) as StateHistoryEntry;
+    const row = await prisma.stateHistoryEntry.create({
+      data: {
+        id: body.id,
+        conversationId: id,
+        timestamp: new Date(body.timestamp),
+        turnStart: body.turnRange[0],
+        turnEnd: body.turnRange[1],
+        previousState: body.previousState,
+        newState: body.newState,
+        extractedFacts: body.extractedFacts as unknown as Prisma.InputJsonValue,
+        validation: body.validation as unknown as Prisma.InputJsonValue,
+        disposition: body.disposition,
+      },
+    });
+    return NextResponse.json(toStateHistoryEntry(row));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function DELETE(
@@ -66,6 +76,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  await prisma.stateHistoryEntry.deleteMany({ where: { conversationId: id } });
-  return NextResponse.json({ ok: true });
+  try {
+    await prisma.stateHistoryEntry.deleteMany({
+      where: { conversationId: id },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

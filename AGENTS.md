@@ -1,99 +1,134 @@
 # AGENTS.md — Repository Rules (`chatterbox`)
 
-## Project purpose (end goal)
+## Project overview
 
-Chatterbox is a roleplay chat application focused on long-running continuity and reliable model behavior (GLM 5 via OpenRouter), with an architecture that supports iterative upgrades to prompt assembly, state management, and memory systems without destabilizing the app.
+Chatterbox is a roleplay chat application focused on long-running continuity and reliable LLM behavior (GLM 5 via OpenRouter). The architecture supports iterative upgrades to prompt assembly, state management, and memory systems without destabilizing the app.
 
-## Why this structure exists
+Single-page "use client" SPA with API routes for backend. Dark-mode only. Targets desktop and iPhone Safari.
 
-This repo is intentionally organized as a strict monorepo so new systems can be built independently and integrated safely through contracts.
+## Quick start
 
-Goals:
+```bash
+pnpm install                # install all dependencies
+pnpm infra:up               # start Postgres (Docker Compose)
+pnpm dev                    # Next.js dev with Turbopack (binds 0.0.0.0)
+```
 
-- prevent architecture drift and hidden coupling
-- enforce clear boundaries at compile/lint/package levels
-- allow iterative replacement of prompt/state internals with minimal risk
+Requires `apps/web/.env` with at minimum `OPENROUTER_API_KEY`. See `apps/web/src/lib/env.ts` for typed env vars and defaults.
+
+## Build & validate
+
+| Command | Scope | Purpose |
+|---------|-------|---------|
+| `pnpm dev` | apps/web | Dev server (Turbopack) |
+| `pnpm build` | apps/web | Production build |
+| `pnpm typecheck` | all packages | `tsc --noEmit` recursively |
+| `pnpm lint` | all packages | ESLint recursively |
+| `pnpm infra:up` / `infra:down` | infra | Postgres via Docker Compose |
+
+**No test framework exists.** Validation relies on `pnpm typecheck` + `pnpm lint` + `pnpm dev` starts successfully.
+
+Per-package: `pnpm --filter @chatterbox/sockets typecheck`, etc.
 
 ## Workspace structure
 
 ```text
 chatterbox/
-├── apps/
-│   └── web/                 # Next.js app runtime
+├── apps/web/                # Next.js 16 app (React 19, App Router)
 ├── packages/
-│   └── sockets/             # boundary contracts + defaults
-├── dev-docs/                # planning and implementation docs
-├── prompts/                 # shared prompt assets
+│   ├── sockets/             # boundary contract types + defaults (leaf)
+│   └── prompt-assembly/     # segmented prompt engine
+├── infra/                   # schema.prisma, migrations, docker-compose.yml
+├── dev-docs/                # planning docs (gitignored, local-only)
+├── prompts/                 # character prompt assets (gitignored, local-only)
+├── scripts/                 # ad-hoc utility scripts
 ├── tsconfig.base.json       # strict shared TS settings
 ├── tsconfig.json            # project references hub
 ├── eslint.config.mjs        # root boundary rules
 └── pnpm-workspace.yaml      # workspace package map
 ```
 
+### Key things that are gitignored
+
+- `prompts/` — character-specific system prompts and story states (local-only)
+- `dev-docs/` — planning and implementation documents (local-only)
+- `.env*` — environment files
+
+## Dependency graph
+
+```
+apps/web → @chatterbox/prompt-assembly → @chatterbox/sockets
+apps/web → @chatterbox/sockets
+```
+
+`@chatterbox/sockets` is a strict leaf — it cannot import from any other package.
+
 ## Non-negotiable boundaries
 
-### 1) Package boundaries (pnpm workspace)
+### Package boundaries
 
-- Every cross-package dependency must be declared explicitly.
-- No implicit imports across package folders.
+- Every cross-package dependency must be declared in `package.json`.
+- Import from package root only (`@chatterbox/sockets`), never `src/*` internals.
+- ESLint `eslint-plugin-boundaries` enforces the dependency graph. Boundary violations are architecture regressions.
 
-### 2) TypeScript project references
+### TypeScript
 
-- Packages/apps are separate TS projects.
-- Types flow through referenced projects, not arbitrary file imports.
+- Packages are separate TS projects connected via project references.
+- `noUncheckedIndexedAccess: true` — all bracket-access returns `T | undefined`.
+- **Packages have no build step.** Both shared packages expose `./src/index.ts` directly. The consuming app's bundler (Turbopack) compiles them. No `dist/` folder, no `.js` entry points.
 
-### 3) Exports boundaries
+### ESLint limits (warn-level)
 
-- Packages expose public API via `exports`.
-- Consumers import from package root only, never `src/*` internals.
+- Cyclomatic complexity: max 10
+- Function length: max 100 lines (skip blank/comments)
+- Aligned with Codacy/Lizard threshold in `.codacy/tools-configs/lizard.yaml`.
 
-### 4) ESLint boundaries
+## Database (Prisma)
 
-- Root ESLint enforces allowed dependency graph.
-- Boundary violations are treated as architecture regressions.
+- Schema lives at `infra/schema.prisma` (not the default location).
+- `prisma.config.ts` at workspace root maps this; run all `prisma` CLI commands from root.
+- Uses the Postgres driver adapter (`@prisma/adapter-pg`), not Prisma's built-in connection.
+- Docker Compose: Postgres 16, default creds `chatterbox/chatterbox`, port 5432.
+- `globalThis` caching pattern prevents PrismaClient re-instantiation in dev hot-reload.
 
-## Import rules
+## Conventions
 
-Do:
+### Code style
 
-- import package contracts from package root (`@chatterbox/sockets`)
-- convert app-specific types at boundary adapters
+- UI components: shadcn/ui (New York style), Radix primitives, Tailwind CSS 4, `cn()` utility from `src/lib/utils.ts`.
+- Icons: `lucide-react`.
+- Hooks live in `src/lib/hooks/`. Each gets its own file with `use-` prefix.
 
-Do not:
+### Module-level mutable state in page.tsx
 
-- deep import another package internals
-- bypass workspace dependency declarations
-- leak framework/SDK-specific types into shared contract packages
+`liveConfig` in `page.tsx` is a module-scope mutable object read by the chat transport at request time. This is **intentional** — do not refactor it into React state or add it to any dependency array.
 
-## AGENTS.md governance (required)
+### Dead code kept for reference
 
-- Every package under `packages/*` and app under `apps/*` must include a package-scoped `AGENTS.md`.
-- If a package/app is changed, its local `AGENTS.md` must be updated in the same PR.
-- Package-level `AGENTS.md` updates must:
-  - remove stale/redundant guidance,
-  - capture any new or changed contracts, boundaries, commands, or integration notes,
-  - stay consistent with root architecture rules in this file.
+`use-summarization.ts`, `fact-processing.ts`, `section-merge.ts`, and `/api/summarize` are legacy dead code kept intentionally. Do not delete them.
+
+### Dev-docs naming
+
+`{type}{number}-{slug}.md` — types: `PL` (plan), `IM` (implementation). Completed docs move to `completed/` with `(COMP)` or `(DEP)` prefix. Docs use YAML frontmatter with Status and Last Updated.
+
+## AGENTS.md governance
+
+- Every `packages/*` and `apps/*` must have its own `AGENTS.md`.
+- When a package/app changes, its local `AGENTS.md` must be updated in the same changeset.
+- Updates must remove stale guidance and capture new contracts, boundaries, or integration notes.
 
 ## Change policy for new systems
 
-When introducing new architecture (prompt assembly, state pipeline, memory systems):
+1. Define a package-level contract in `@chatterbox/sockets` first.
+2. Add a default implementation that preserves current behavior.
+3. Integrate via explicit adapter in `apps/web`.
+4. Register the new package in ESLint boundary rules (`eslint.config.mjs`).
 
-1. define a package-level contract first
-2. add a default implementation that preserves behavior
-3. integrate via explicit adapter in `apps/web`
-4. enforce allowed import graph in ESLint boundaries
+## Definition of done
 
-## Runtime/config expectations
-
-- App runtime env lives at `apps/web/.env`.
-- Root scripts orchestrate workspace commands (`pnpm dev`, `pnpm lint`, `pnpm typecheck`).
-- Local Codacy CLI config lives under `.codacy/`; Lizard thresholds are configured in `.codacy/tools-configs/lizard.yaml` (function NLOC medium threshold aligned to `100`).
-
-## Definition of done for structural changes
-
-A structural PR is not complete unless all pass:
+All must pass before merging structural changes:
 
 - `pnpm typecheck`
 - `pnpm lint`
 - `pnpm dev` starts successfully
-- no boundary/deep-import violations introduced
+- No boundary or deep-import violations introduced

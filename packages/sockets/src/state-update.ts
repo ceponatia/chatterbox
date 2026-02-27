@@ -1,71 +1,58 @@
 /**
- * State Update Socket
+ * State Pipeline Socket
  *
- * Defines the interface for updating story state from conversation history.
- * The default implementation is a pass-through that returns the current state
- * unchanged (the app's existing summarization hook handles updates via its
- * own `/api/summarize` endpoint until a real pipeline is wired in).
+ * Defines the interface for the single-pass hybrid state pipeline.
+ * One LLM call reads recent windowed conversation + current state and
+ * outputs an updated story state document plus a structured change log.
+ *
+ * The default implementation is a pass-through that returns the current
+ * state unchanged. The real pipeline lives in apps/web under
+ * /api/state-update and applies validation, auto-accept scoring, and
+ * cascade resets after each LLM call.
  */
 
-import type { StateUpdateRequest, StateUpdateResult, ValidationReport } from "./types";
+import type {
+  StatePipelineRequest,
+  StatePipelineResult,
+  StatePipelineDisposition,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Socket interface
 // ---------------------------------------------------------------------------
 
-export interface StateUpdateSocket {
+export interface StatePipelineSocket {
   /**
-   * Generate an updated story state from conversation history.
+   * Run the state pipeline: update story state from windowed conversation.
    *
-   * @param request  Messages, current state, and system prompt
-   * @returns        New state + validation report + disposition
+   * @param request  Windowed messages, current state, and turn tracking
+   * @returns        Updated state, change log, validation, disposition, and cascade resets
    */
-  update(request: StateUpdateRequest): Promise<StateUpdateResult>;
+  run(request: StatePipelineRequest): Promise<StatePipelineResult>;
 }
 
 // ---------------------------------------------------------------------------
-// State validation socket (separate — runs after any state update source)
+// Default implementation
 // ---------------------------------------------------------------------------
 
-export interface StateValidationSocket {
-  /**
-   * Validate a candidate story state against the current state.
-   *
-   * @param candidate  The proposed new story state
-   * @param current    The current story state
-   * @returns          Validation report
-   */
-  validate(candidate: string, current: string): ValidationReport;
-}
-
-// ---------------------------------------------------------------------------
-// Default implementations
-// ---------------------------------------------------------------------------
-
-const PASS_REPORT: ValidationReport = {
+const PASS_VALIDATION = {
   schemaValid: true,
-  allSectionsPresent: true,
-  hardFactsPreserved: true,
+  allHardFactsPreserved: true,
+  noUnknownFacts: true,
   outputComplete: true,
   diffPercentage: 0,
-  errors: [],
-};
+} as const;
 
-/** Default: returns current state unchanged. The existing summarization hook
- *  continues to handle state updates until a real pipeline is wired in. */
-export const defaultStateUpdate: StateUpdateSocket = {
-  async update(request) {
+/** Default: returns current state unchanged. */
+export const defaultStatePipeline: StatePipelineSocket = {
+  async run(request) {
     return {
       newState: request.currentStoryState,
-      validation: PASS_REPORT,
-      disposition: "auto_accepted",
+      changes: [],
+      validation: PASS_VALIDATION,
+      disposition: "auto_accepted" as StatePipelineDisposition,
+      cascadeResets: [],
+      turnNumber: request.turnNumber,
     };
-  },
-};
-
-/** Default: all state passes validation. */
-export const defaultStateValidation: StateValidationSocket = {
-  validate(_candidate, _current) {
-    return PASS_REPORT;
   },
 };

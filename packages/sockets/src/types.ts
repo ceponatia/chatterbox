@@ -46,28 +46,40 @@ export interface AssemblyContext {
 }
 
 // ---------------------------------------------------------------------------
-// State update types
+// State pipeline types
 // ---------------------------------------------------------------------------
 
-export interface StateUpdateRequest {
-  readonly messages: readonly SocketMessage[];
-  readonly currentStoryState: string;
-  readonly systemPrompt: string;
+export interface StatePipelineChange {
+  readonly type: string;
+  readonly detail: string;
+  readonly sourceTurn: number;
+  readonly confidence: number;
 }
 
-export interface ValidationReport {
+export interface StatePipelineValidation {
   readonly schemaValid: boolean;
-  readonly allSectionsPresent: boolean;
-  readonly hardFactsPreserved: boolean;
+  readonly allHardFactsPreserved: boolean;
+  readonly noUnknownFacts: boolean;
   readonly outputComplete: boolean;
   readonly diffPercentage: number;
-  readonly errors: readonly string[];
 }
 
-export interface StateUpdateResult {
+export type StatePipelineDisposition = "auto_accepted" | "flagged" | "retried";
+
+export interface StatePipelineRequest {
+  readonly messages: readonly SocketMessage[];
+  readonly currentStoryState: string;
+  readonly turnNumber: number;
+  readonly lastPipelineTurn: number;
+}
+
+export interface StatePipelineResult {
   readonly newState: string;
-  readonly validation: ValidationReport;
-  readonly disposition: "auto_accepted" | "flagged" | "rejected";
+  readonly changes: readonly StatePipelineChange[];
+  readonly validation: StatePipelineValidation;
+  readonly disposition: StatePipelineDisposition;
+  readonly cascadeResets: readonly string[];
+  readonly turnNumber: number;
 }
 
 // ---------------------------------------------------------------------------

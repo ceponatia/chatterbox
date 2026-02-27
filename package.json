@@ -12,6 +12,7 @@
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@prisma/client": "^7.4.0",
     "eslint": "^9",
     "eslint-plugin-boundaries": "^5",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useId, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -35,11 +35,15 @@ function SectionShell({
   children: React.ReactNode;
   defaultExpanded?: boolean;
 }) {
+  const uid = useId();
+  const sectionId = `section-${uid}`;
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
     <div className="rounded-md border bg-card">
       <button
         type="button"
+        aria-expanded={expanded}
+        aria-controls={sectionId}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50"
         onClick={() => setExpanded(!expanded)}
       >
@@ -56,7 +60,9 @@ function SectionShell({
         )}
       </button>
       {expanded && (
-        <div className="border-t px-3 py-2 flex flex-col gap-2">{children}</div>
+        <div id={sectionId} className="border-t px-3 py-2 flex flex-col gap-2">
+          {children}
+        </div>
       )}
     </div>
   );
@@ -86,7 +92,7 @@ function EntityCard({
           <button
             type="button"
             onClick={onRemove}
-            className="text-muted-foreground hover:text-destructive"
+            className="relative text-muted-foreground hover:text-destructive before:absolute before:-inset-2 before:content-['']"
             title="Remove"
           >
             <Trash2 className="h-3 w-3" />
@@ -171,11 +177,13 @@ function EntitySelect({
   entityId,
   entities,
   onChange,
+  onCreateNew,
   placeholder,
 }: {
   entityId: string;
   entities: Entity[];
   onChange: (entityId: string) => void;
+  onCreateNew?: (name: string) => void;
   placeholder: string;
 }) {
   const name = resolveEntityName(entities, entityId);
@@ -195,9 +203,7 @@ function EntitySelect({
         const typed = e.target.value.trim();
         if (!typed) return;
         const match = findEntityByName(entities, typed);
-        if (!match) {
-          onChange(`__new__${typed}`);
-        }
+        if (!match && onCreateNew) onCreateNew(typed);
       }}
       placeholder={placeholder}
       className="h-7 text-[11px] flex-1"
@@ -217,25 +223,10 @@ export function RelationshipsSection({
   onUpdate: (rels: Relationship[]) => void;
   onEntitiesUpdate: (entities: Entity[]) => void;
 }) {
-  const resolveOrCreate = (idOrMarker: string): string => {
-    if (!idOrMarker.startsWith("__new__")) return idOrMarker;
-    const name = idOrMarker.slice(7);
-    const updated = [...entities];
-    const entity = findOrCreateEntity(updated, name);
-    onEntitiesUpdate(updated);
-    return entity.id;
-  };
-
-  const update = (i: number, patch: Partial<Relationship>) => {
-    const resolved: Partial<Relationship> = { ...patch };
-    if (patch.fromEntityId)
-      resolved.fromEntityId = resolveOrCreate(patch.fromEntityId);
-    if (patch.toEntityId)
-      resolved.toEntityId = resolveOrCreate(patch.toEntityId);
+  const update = (i: number, patch: Partial<Relationship>) =>
     onUpdate(
-      relationships.map((r, idx) => (idx === i ? { ...r, ...resolved } : r)),
+      relationships.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
     );
-  };
 
   const add = () =>
     onUpdate([
@@ -255,9 +246,13 @@ export function RelationshipsSection({
       {relationships.map((r, i) => {
         const fromName = resolveEntityName(entities, r.fromEntityId);
         const toName = resolveEntityName(entities, r.toEntityId);
+        const stableKey =
+          r.fromEntityId && r.toEntityId
+            ? `${r.fromEntityId}-${r.toEntityId}`
+            : String(i);
         return (
           <EntityCard
-            key={i}
+            key={stableKey}
             label={`${fromName || "?"} → ${toName || "?"}`}
             onRemove={() => remove(i)}
           >
@@ -266,6 +261,12 @@ export function RelationshipsSection({
                 entityId={r.fromEntityId}
                 entities={entities}
                 onChange={(id) => update(i, { fromEntityId: id })}
+                onCreateNew={(name) => {
+                  const updated = [...entities];
+                  const entity = findOrCreateEntity(updated, name);
+                  onEntitiesUpdate(updated);
+                  update(i, { fromEntityId: entity.id });
+                }}
                 placeholder="From"
               />
               <span className="self-center text-[11px] text-muted-foreground">
@@ -275,6 +276,12 @@ export function RelationshipsSection({
                 entityId={r.toEntityId}
                 entities={entities}
                 onChange={(id) => update(i, { toEntityId: id })}
+                onCreateNew={(name) => {
+                  const updated = [...entities];
+                  const entity = findOrCreateEntity(updated, name);
+                  onEntitiesUpdate(updated);
+                  update(i, { toEntityId: entity.id });
+                }}
                 placeholder="To"
               />
             </div>
@@ -288,7 +295,10 @@ export function RelationshipsSection({
             {r.details.length > 0 && (
               <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
                 {r.details.map((d, di) => (
-                  <div key={di} className="flex gap-1 items-start">
+                  <div
+                    key={d.slice(0, 20) + di}
+                    className="flex gap-1 items-start"
+                  >
                     <span className="text-[10px] text-muted-foreground mt-1">
                       •
                     </span>
@@ -323,12 +333,20 @@ export function RelationshipsSection({
 
 /** Split description into comma-separated tag values. Always tag-style. */
 function splitTags(text: string): string[] {
-  return text.split(",").map((s) => s.trim()).filter(Boolean);
+  return text
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /** Group appearance entries by entityId, preserving original indices. */
-function groupByEntity(entries: AppearanceEntry[]): Map<string, { entry: AppearanceEntry; origIdx: number }[]> {
-  const groups = new Map<string, { entry: AppearanceEntry; origIdx: number }[]>();
+function groupByEntity(
+  entries: AppearanceEntry[],
+): Map<string, { entry: AppearanceEntry; origIdx: number }[]> {
+  const groups = new Map<
+    string,
+    { entry: AppearanceEntry; origIdx: number }[]
+  >();
   entries.forEach((entry, origIdx) => {
     const group = groups.get(entry.entityId) ?? [];
     group.push({ entry, origIdx });
@@ -341,27 +359,13 @@ export function CharactersSection({
   entries,
   entities,
   onUpdate,
-  onEntitiesUpdate,
 }: {
   entries: AppearanceEntry[];
   entities: Entity[];
   onUpdate: (entries: AppearanceEntry[]) => void;
-  onEntitiesUpdate: (entities: Entity[]) => void;
 }) {
-  const resolveOrCreate = (idOrMarker: string): string => {
-    if (!idOrMarker.startsWith("__new__")) return idOrMarker;
-    const name = idOrMarker.slice(7);
-    const updated = [...entities];
-    const entity = findOrCreateEntity(updated, name);
-    onEntitiesUpdate(updated);
-    return entity.id;
-  };
-
-  const update = (i: number, patch: Partial<AppearanceEntry>) => {
-    const resolved: Partial<AppearanceEntry> = { ...patch };
-    if (patch.entityId) resolved.entityId = resolveOrCreate(patch.entityId);
-    onUpdate(entries.map((e, idx) => (idx === i ? { ...e, ...resolved } : e)));
-  };
+  const update = (i: number, patch: Partial<AppearanceEntry>) =>
+    onUpdate(entries.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
 
   const addForEntity = (entityId: string) =>
     onUpdate([...entries, { entityId, attribute: "", description: "" }]);
@@ -372,7 +376,7 @@ export function CharactersSection({
     ]);
   const remove = (i: number) => onUpdate(entries.filter((_, idx) => idx !== i));
 
-  const grouped = groupByEntity(entries);
+  const grouped = useMemo(() => groupByEntity(entries), [entries]);
 
   return (
     <SectionShell title="Characters" badge={`${entries.length}`}>
@@ -382,7 +386,9 @@ export function CharactersSection({
           <div key={entityId} className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 px-1">
               <User className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[11px] font-medium">{charName || "(unknown)"}</span>
+              <span className="text-[11px] font-medium">
+                {charName || "(unknown)"}
+              </span>
               <Badge variant="outline" className="text-[9px] px-1 py-0">
                 {items.length}
               </Badge>
@@ -395,15 +401,21 @@ export function CharactersSection({
                 <Plus className="h-2.5 w-2.5" />
               </Button>
             </div>
-            <div className="text-[10px] font-medium text-muted-foreground px-1 pt-0.5">Appearance</div>
+            <div className="text-[10px] font-medium text-muted-foreground px-1 pt-0.5">
+              Appearance
+            </div>
             <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
               {items.map(({ entry: e, origIdx }) => (
                 <AppearanceAttributeRow
-                  key={origIdx}
+                  key={e.attribute + origIdx}
                   attribute={e.attribute}
                   description={e.description}
-                  onAttributeChange={(val) => update(origIdx, { attribute: val })}
-                  onDescriptionChange={(val) => update(origIdx, { description: val })}
+                  onAttributeChange={(val) =>
+                    update(origIdx, { attribute: val })
+                  }
+                  onDescriptionChange={(val) =>
+                    update(origIdx, { description: val })
+                  }
                   onRemove={() => remove(origIdx)}
                 />
               ))}
@@ -424,7 +436,11 @@ export function CharactersSection({
 }
 
 /** Split description into individual values, update one, and rejoin. */
-function updateTagAtIndex(description: string, idx: number, val: string): string {
+function updateTagAtIndex(
+  description: string,
+  idx: number,
+  val: string,
+): string {
   const parts = description.split(",").map((s) => s.trim());
   parts[idx] = val.trim();
   return parts.filter(Boolean).join(", ");
@@ -454,6 +470,8 @@ function AppearanceAttributeRow({
   onDescriptionChange: (val: string) => void;
   onRemove: () => void;
 }) {
+  const uid = useId();
+  const contentId = `attr-${uid}`;
   const [expanded, setExpanded] = useState(true);
   const tagValues = splitTags(description);
 
@@ -462,7 +480,9 @@ function AppearanceAttributeRow({
       <div className="flex items-center gap-1.5 px-2 py-1">
         <button
           type="button"
-          className="text-muted-foreground shrink-0"
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          className="relative text-muted-foreground shrink-0 before:absolute before:-inset-2 before:content-['']"
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? (
@@ -483,14 +503,14 @@ function AppearanceAttributeRow({
         <button
           type="button"
           onClick={onRemove}
-          className="text-muted-foreground hover:text-destructive shrink-0"
+          className="relative text-muted-foreground hover:text-destructive shrink-0 before:absolute before:-inset-2 before:content-['']"
           title="Remove attribute"
         >
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
       {expanded && (
-        <div className="border-t px-2 py-1.5">
+        <div id={contentId} className="border-t px-2 py-1.5">
           <div className="flex flex-col gap-0.5">
             {tagValues.map((tag, ti) => (
               <div key={ti} className="flex items-center gap-1">
@@ -498,7 +518,9 @@ function AppearanceAttributeRow({
                 <Input
                   value={tag}
                   onChange={(e) =>
-                    onDescriptionChange(updateTagAtIndex(description, ti, e.target.value))
+                    onDescriptionChange(
+                      updateTagAtIndex(description, ti, e.target.value),
+                    )
                   }
                   className="h-5 text-[10px] flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                 />
@@ -507,7 +529,7 @@ function AppearanceAttributeRow({
                   onClick={() =>
                     onDescriptionChange(removeTagAtIndex(description, ti))
                   }
-                  className="text-muted-foreground hover:text-destructive shrink-0"
+                  className="relative text-muted-foreground hover:text-destructive shrink-0 before:absolute before:-inset-2 before:content-['']"
                   title="Remove value"
                 >
                   <Trash2 className="h-2.5 w-2.5" />
@@ -599,20 +621,8 @@ export function DemeanorSection({
   onUpdate: (entries: DemeanorEntry[]) => void;
   onEntitiesUpdate: (entities: Entity[]) => void;
 }) {
-  const resolveOrCreate = (idOrMarker: string): string => {
-    if (!idOrMarker.startsWith("__new__")) return idOrMarker;
-    const name = idOrMarker.slice(7);
-    const updated = [...entities];
-    const entity = findOrCreateEntity(updated, name);
-    onEntitiesUpdate(updated);
-    return entity.id;
-  };
-
-  const update = (i: number, patch: Partial<DemeanorEntry>) => {
-    const resolved: Partial<DemeanorEntry> = { ...patch };
-    if (patch.entityId) resolved.entityId = resolveOrCreate(patch.entityId);
-    onUpdate(entries.map((e, idx) => (idx === i ? { ...e, ...resolved } : e)));
-  };
+  const update = (i: number, patch: Partial<DemeanorEntry>) =>
+    onUpdate(entries.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
 
   const add = () =>
     onUpdate([
@@ -625,7 +635,7 @@ export function DemeanorSection({
     <SectionShell title="Current Demeanor" badge={`${entries.length}`}>
       {entries.map((e, i) => (
         <EntityCard
-          key={i}
+          key={e.entityId || String(i)}
           label={resolveEntityName(entities, e.entityId) || "General"}
           onRemove={() => remove(i)}
         >
@@ -633,6 +643,12 @@ export function DemeanorSection({
             entityId={e.entityId}
             entities={entities}
             onChange={(id) => update(i, { entityId: id })}
+            onCreateNew={(name) => {
+              const updated = [...entities];
+              const entity = findOrCreateEntity(updated, name);
+              onEntitiesUpdate(updated);
+              update(i, { entityId: entity.id });
+            }}
             placeholder="Character"
           />
           <div className="flex gap-1.5">
@@ -690,7 +706,7 @@ export function BulletListSection({
   return (
     <SectionShell title={title} badge={`${items.length}`}>
       {items.map((item, i) => (
-        <div key={i} className="flex gap-1.5 items-start">
+        <div key={item.slice(0, 20) + i} className="flex gap-1.5 items-start">
           <Textarea
             value={item}
             onChange={(e) => update(i, e.target.value)}
@@ -774,7 +790,10 @@ export function TimestampedBulletListSection({
   return (
     <SectionShell title={title} badge={`${items.length}`}>
       {sorted.map(({ item, origIdx }) => (
-        <div key={origIdx} className="flex flex-col gap-0.5">
+        <div
+          key={item.createdAt ?? item.text.slice(0, 20)}
+          className="flex flex-col gap-0.5"
+        >
           <div className="flex gap-1.5 items-start">
             <Textarea
               value={item.text}

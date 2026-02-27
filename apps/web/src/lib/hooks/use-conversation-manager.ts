@@ -59,20 +59,7 @@ export function useConversationManager({
       activeConvPersistedRef.current = persisted;
       setActiveConvId(conv.id);
       setMessages(conv.messages);
-      const f = fieldsRef.current;
-      f.resetInputTouchFlags();
-      f.setSystemPrompt(conv.systemPrompt);
-      f.setStoryState(conv.storyState);
-      f.setPreviousStoryState(conv.previousStoryState);
-      f.setStoryStateLastUpdated(conv.storyStateLastUpdated);
-      f.setSettings(conv.settings);
-      f.setSystemPromptBaseline(conv.systemPromptBaseline);
-      f.setStoryStateBaseline(conv.storyStateBaseline);
-      f.setLastIncludedAt(conv.lastIncludedAt ?? {});
-      f.setCustomSegments(conv.customSegments ?? null);
-      f.setStructuredState(conv.structuredState ?? null);
-      f.setLastSummarizedTurn(conv.lastSummarizedTurn ?? 0);
-      f.setLastPipelineTurn(conv.lastPipelineTurn ?? 0);
+      hydrateFields(fieldsRef.current, conv);
       syncRef.current({
         systemPrompt: conv.systemPrompt,
         storyState: conv.storyState,
@@ -112,65 +99,14 @@ export function useConversationManager({
     onConfigSync,
   ]);
 
-  // Wrap import handlers to immediately sync liveConfig (not just via deferred useEffect)
-  const handleSystemPromptImport = useCallback((content: string) => {
-    fieldsRef.current.handleSystemPromptImport(content);
-    const f = fieldsRef.current;
-    // Sync the parsed/assembled markdown, not the raw import
-    syncRef.current({
-      systemPrompt: f.systemPrompt,
-      storyState: f.storyState,
-      settings: f.settings,
-      customSegments: f.customSegments,
-    });
-  }, []);
-
-  const handleStoryStateImport = useCallback((content: string) => {
-    fieldsRef.current.handleStoryStateImport(content);
-    const f = fieldsRef.current;
-    syncRef.current({
-      systemPrompt: f.systemPrompt,
-      storyState: content,
-      settings: f.settings,
-    });
-  }, []);
-
-  const handleSelectConversation = useCallback(
-    (id: string) => {
-      if (id === activeConvId) {
-        setConvDrawerOpen(false);
-        return;
-      }
-      void (async () => {
-        const conv = await loadConversation(id);
-        if (!conv) return;
-        onConversationSwitch?.();
-        hydrateConversation(conv, true);
-        setConvDrawerOpen(false);
-      })();
-    },
-    [activeConvId, hydrateConversation, onConversationSwitch],
-  );
-
-  const handleNewConversation = useCallback(() => {
-    onConversationSwitch?.();
-    const conv = createConversationDraft();
-    hydrateConversation(conv, false);
-    setConvDrawerOpen(false);
-  }, [hydrateConversation, onConversationSwitch]);
-
-  const handleDeleteConversation = useCallback(
-    (id: string) => {
-      void (async () => {
-        await deleteConversation(id);
-        const remaining = await listConversations();
-        setConversations(remaining);
-        if (id !== activeConvId) return;
-        const fallback = createConversationDraft();
-        hydrateConversation(fallback, false);
-      })();
-    },
-    [activeConvId, hydrateConversation],
+  const actions = useConversationActions(
+    activeConvId,
+    hydrateConversation,
+    fieldsRef,
+    syncRef,
+    setConvDrawerOpen,
+    setConversations,
+    onConversationSwitch,
   );
 
   return {
@@ -180,17 +116,32 @@ export function useConversationManager({
     setConvDrawerOpen,
     ...fields,
     ...syncStatus,
-    handleSystemPromptImport,
-    handleStoryStateImport,
-    handleSelectConversation,
-    handleNewConversation,
-    handleDeleteConversation,
+    ...actions,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Side-effect hooks extracted to keep useConversationManager under 100 lines
 // ---------------------------------------------------------------------------
+
+function hydrateFields(
+  f: ReturnType<typeof useFieldSetters>,
+  conv: Conversation,
+) {
+  f.resetInputTouchFlags();
+  f.setSystemPrompt(conv.systemPrompt);
+  f.setStoryState(conv.storyState);
+  f.setPreviousStoryState(conv.previousStoryState);
+  f.setStoryStateLastUpdated(conv.storyStateLastUpdated);
+  f.setSettings(conv.settings);
+  f.setSystemPromptBaseline(conv.systemPromptBaseline);
+  f.setStoryStateBaseline(conv.storyStateBaseline);
+  f.setLastIncludedAt(conv.lastIncludedAt ?? {});
+  f.setCustomSegments(conv.customSegments ?? null);
+  f.setStructuredState(conv.structuredState ?? null);
+  f.setLastSummarizedTurn(conv.lastSummarizedTurn ?? 0);
+  f.setLastPipelineTurn(conv.lastPipelineTurn ?? 0);
+}
 
 function useHydrateOnMount(
   hydrateConversation: (conv: Conversation, persisted: boolean) => void,
@@ -213,6 +164,76 @@ function useHydrateOnMount(
       active = false;
     };
   }, [hydrateConversation, setConversations]);
+}
+
+function clearSaveTimeout(
+  ref: React.RefObject<ReturnType<typeof setTimeout> | null>,
+) {
+  if (ref.current != null) clearTimeout(ref.current);
+}
+
+/** Returns true if the save cycle should be skipped (conversation just switched). */
+function handleConvSwitch(
+  prevConvIdRef: React.RefObject<string | null>,
+  activeConvId: string,
+  storyState: string,
+  systemPrompt: string,
+  prevStoryRef: React.RefObject<string>,
+  prevPromptRef: React.RefObject<string>,
+  saveTimeoutRef: React.RefObject<ReturnType<typeof setTimeout> | null>,
+): boolean {
+  if (prevConvIdRef.current === activeConvId) return false;
+  prevConvIdRef.current = activeConvId;
+  prevStoryRef.current = storyState;
+  prevPromptRef.current = systemPrompt;
+  clearSaveTimeout(saveTimeoutRef);
+  return true;
+}
+
+/** Returns true if an unpersisted draft has no user-facing changes worth saving. */
+function shouldSkipSave(
+  isPersisted: boolean,
+  storyStateTouched: boolean,
+  systemPromptTouched: boolean,
+  messages: UIMessage[],
+): boolean {
+  if (isPersisted) return false;
+  return (
+    !storyStateTouched &&
+    !systemPromptTouched &&
+    !messages.some((m) => m.role === "user")
+  );
+}
+
+/** Mark story-state / system-prompt as pending if changed, update tracking refs. */
+function markDirtyFields(
+  storyState: string,
+  prevStoryRef: React.RefObject<string>,
+  onStoryPending: () => void,
+  systemPrompt: string,
+  prevPromptRef: React.RefObject<string>,
+  onPromptPending: () => void,
+) {
+  if (storyState !== prevStoryRef.current) onStoryPending();
+  if (systemPrompt !== prevPromptRef.current) onPromptPending();
+  prevStoryRef.current = storyState;
+  prevPromptRef.current = systemPrompt;
+}
+
+async function persistSnapshot(
+  activeConvRef: React.RefObject<Conversation | null>,
+  activeConvPersistedRef: React.RefObject<boolean>,
+  snapshot: Partial<Conversation>,
+  setConversations: (c: ConversationMeta[]) => void,
+  onSaved: () => void,
+) {
+  const conv = activeConvRef.current;
+  if (!conv) return;
+  Object.assign(conv, snapshot);
+  await saveConversation(conv);
+  activeConvPersistedRef.current = true;
+  setConversations(await listConversations());
+  onSaved();
 }
 
 function useAutoSave(
@@ -244,72 +265,69 @@ function useAutoSave(
     systemPromptTouched,
   } = fields;
 
-  // Track previous values to detect which field actually changed
   const prevStoryRef = useRef(storyState);
   const prevPromptRef = useRef(systemPrompt);
-
-  // Track conversation switches — skip save when ID just changed because
-  // React state still holds stale values from the previous conversation.
-  // The new conversation was already persisted by createConversation().
   const prevConvIdRef = useRef(activeConvId);
 
   useEffect(() => {
     if (!activeConvRef.current || !activeConvId) return;
-
-    // Conversation just switched — skip this save cycle.
-    // React state setters are batched, so field values are still stale.
-    if (prevConvIdRef.current !== activeConvId) {
-      prevConvIdRef.current = activeConvId;
-      prevStoryRef.current = storyState;
-      prevPromptRef.current = systemPrompt;
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    if (
+      handleConvSwitch(
+        prevConvIdRef,
+        activeConvId,
+        storyState,
+        systemPrompt,
+        prevStoryRef,
+        prevPromptRef,
+        saveTimeoutRef,
+      )
+    )
       return;
-    }
-
-    const hasUserMessage = messages.some((m) => m.role === "user");
-    const shouldPersistDraft =
-      storyStateTouched || systemPromptTouched || hasUserMessage;
-
-    if (!activeConvPersistedRef.current && !shouldPersistDraft) {
+    if (
+      shouldSkipSave(
+        activeConvPersistedRef.current,
+        storyStateTouched,
+        systemPromptTouched,
+        messages,
+      )
+    )
       return;
-    }
-
-    // Mark the specific field(s) that changed as pending
-    if (storyState !== prevStoryRef.current) onStoryPending();
-    if (systemPrompt !== prevPromptRef.current) onPromptPending();
-    prevStoryRef.current = storyState;
-    prevPromptRef.current = systemPrompt;
+    markDirtyFields(
+      storyState,
+      prevStoryRef,
+      onStoryPending,
+      systemPrompt,
+      prevPromptRef,
+      onPromptPending,
+    );
 
     const saveDelayMs = activeConvPersistedRef.current ? 500 : 0;
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      void (async () => {
-        const conv = activeConvRef.current;
-        if (!conv) return;
-        Object.assign(conv, {
-          messages,
-          systemPrompt,
-          storyState,
-          previousStoryState,
-          storyStateLastUpdated,
-          settings,
-          systemPromptBaseline,
-          storyStateBaseline,
-          lastIncludedAt,
-          customSegments,
-          structuredState,
-          lastSummarizedTurn,
-          lastPipelineTurn,
-        });
-        await saveConversation(conv);
-        activeConvPersistedRef.current = true;
-        setConversations(await listConversations());
-        onSaved();
-      })();
-    }, saveDelayMs);
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    clearSaveTimeout(saveTimeoutRef);
+    const snapshot = {
+      messages,
+      systemPrompt,
+      storyState,
+      previousStoryState,
+      storyStateLastUpdated,
+      settings,
+      systemPromptBaseline,
+      storyStateBaseline,
+      lastIncludedAt,
+      customSegments,
+      structuredState,
+      lastSummarizedTurn,
+      lastPipelineTurn,
     };
+    saveTimeoutRef.current = setTimeout(() => {
+      void persistSnapshot(
+        activeConvRef,
+        activeConvPersistedRef,
+        snapshot,
+        setConversations,
+        onSaved,
+      );
+    }, saveDelayMs);
+    return () => clearSaveTimeout(saveTimeoutRef);
   }, [
     messages,
     systemPrompt,
@@ -352,8 +370,108 @@ function useAutoTitle(
     const title = text.text.slice(0, 60) + (text.text.length > 60 ? "…" : "");
     conv.title = title;
     void (async () => {
-      await saveConversation(conv);
-      setConversations(await listConversations());
+      try {
+        await saveConversation(conv);
+        setConversations(await listConversations());
+      } catch (err) {
+        console.error("Failed to auto-title conversation:", err);
+      }
     })();
   }, [messages, activeConvRef, setConversations]);
+}
+
+function useConversationActions(
+  activeConvId: string | null,
+  hydrateConversation: (conv: Conversation, persisted: boolean) => void,
+  fieldsRef: React.RefObject<ReturnType<typeof useFieldSetters>>,
+  syncRef: React.RefObject<Params["onConfigSync"]>,
+  setConvDrawerOpen: (open: boolean) => void,
+  setConversations: (c: ConversationMeta[]) => void,
+  onConversationSwitch?: () => void,
+) {
+  const handleSystemPromptImport = useCallback(
+    (content: string) => {
+      fieldsRef.current.handleSystemPromptImport(content);
+      const f = fieldsRef.current;
+      syncRef.current({
+        systemPrompt: f.systemPrompt,
+        storyState: f.storyState,
+        settings: f.settings,
+        customSegments: f.customSegments,
+      });
+    },
+    [fieldsRef, syncRef],
+  );
+
+  const handleStoryStateImport = useCallback(
+    (content: string) => {
+      fieldsRef.current.handleStoryStateImport(content);
+      const f = fieldsRef.current;
+      syncRef.current({
+        systemPrompt: f.systemPrompt,
+        storyState: content,
+        settings: f.settings,
+      });
+    },
+    [fieldsRef, syncRef],
+  );
+
+  const handleSelectConversation = useCallback(
+    (id: string) => {
+      if (id === activeConvId) {
+        setConvDrawerOpen(false);
+        return;
+      }
+      void (async () => {
+        try {
+          const conv = await loadConversation(id);
+          if (!conv) return;
+          onConversationSwitch?.();
+          hydrateConversation(conv, true);
+          setConvDrawerOpen(false);
+        } catch (err) {
+          console.error("Failed to load conversation:", err);
+        }
+      })();
+    },
+    [
+      activeConvId,
+      hydrateConversation,
+      onConversationSwitch,
+      setConvDrawerOpen,
+    ],
+  );
+
+  const handleNewConversation = useCallback(() => {
+    onConversationSwitch?.();
+    const conv = createConversationDraft();
+    hydrateConversation(conv, false);
+    setConvDrawerOpen(false);
+  }, [hydrateConversation, onConversationSwitch, setConvDrawerOpen]);
+
+  const handleDeleteConversation = useCallback(
+    (id: string) => {
+      void (async () => {
+        try {
+          await deleteConversation(id);
+          const remaining = await listConversations();
+          setConversations(remaining);
+          if (id !== activeConvId) return;
+          const fallback = createConversationDraft();
+          hydrateConversation(fallback, false);
+        } catch (err) {
+          console.error("Failed to delete conversation:", err);
+        }
+      })();
+    },
+    [activeConvId, hydrateConversation, setConversations],
+  );
+
+  return {
+    handleSystemPromptImport,
+    handleStoryStateImport,
+    handleSelectConversation,
+    handleNewConversation,
+    handleDeleteConversation,
+  };
 }

@@ -19,13 +19,37 @@ export type InjectionPolicy =
   | { readonly type: "every_n"; readonly n: number }
   | { readonly type: "on_topic"; readonly keywords: readonly string[] }
   | { readonly type: "on_state_field"; readonly field: string }
-  | { readonly type: "custom"; readonly evaluate: (ctx: AssemblyContext) => boolean };
+  | {
+      readonly type: "custom";
+      readonly evaluate: (ctx: AssemblyContext) => boolean;
+    };
 
 // ---------------------------------------------------------------------------
 // Segment priority levels
 // ---------------------------------------------------------------------------
 
 export type SegmentPriority = "critical" | "high" | "normal" | "low";
+
+// ---------------------------------------------------------------------------
+// Serialized (JSON-safe) representations for storage/transport
+// ---------------------------------------------------------------------------
+
+export type SerializedPolicy =
+  | { type: "always" }
+  | { type: "every_n"; n: number }
+  | { type: "on_topic"; keywords: string[] }
+  | { type: "on_state_field"; field: string };
+
+export interface SerializedSegment {
+  id: string;
+  label: string;
+  content: string;
+  policy: SerializedPolicy;
+  priority: SegmentPriority;
+  order: number;
+  tokenEstimate: number;
+  category: string;
+}
 
 // ---------------------------------------------------------------------------
 // Prompt segment definition

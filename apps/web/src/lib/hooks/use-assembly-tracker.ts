@@ -2,8 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import type { UIMessage } from "ai";
-import { createDefaultAssembler, createAssemblerFromSerialized } from "@chatterbox/prompt-assembly";
-import type { AssemblyContext, SerializedSegment } from "@chatterbox/prompt-assembly";
+import {
+  createDefaultAssembler,
+  createAssemblerFromSerialized,
+} from "@chatterbox/prompt-assembly";
+import type {
+  AssemblyContext,
+  SerializedSegment,
+} from "@chatterbox/prompt-assembly";
+import { parseStateFields } from "@/lib/state-utils";
 
 const defaultAssembler = createDefaultAssembler();
 
@@ -26,45 +33,36 @@ export function useAssemblyTracker({
   customSegments?: SerializedSegment[] | null;
 }) {
   const prevTurnRef = useRef(0);
+  const lastIncludedAtRef = useRef(lastIncludedAt);
+  lastIncludedAtRef.current = lastIncludedAt;
 
   useEffect(() => {
-    const turnNumber = messages.filter(m => m.role === "user").length;
+    const turnNumber = messages.filter((m) => m.role === "user").length;
     if (turnNumber <= prevTurnRef.current || turnNumber === 0) return;
     prevTurnRef.current = turnNumber;
 
-    const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-    const userText = lastUserMsg?.parts?.find(p => p.type === "text");
-    const currentUserMessage = userText && userText.type === "text" ? userText.text : "";
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const userText = lastUserMsg?.parts?.find((p) => p.type === "text");
+    const currentUserMessage =
+      userText && userText.type === "text" ? userText.text : "";
 
     const ctx: AssemblyContext = {
       turnNumber,
-      lastIncludedAt,
+      lastIncludedAt: lastIncludedAtRef.current,
       currentUserMessage,
       stateFields: parseStateFields(storyState),
       tokenBudget: 2500,
     };
 
-    const assembler = customSegments ? createAssemblerFromSerialized(customSegments) : defaultAssembler;
+    const assembler = customSegments
+      ? createAssemblerFromSerialized(customSegments)
+      : defaultAssembler;
     const result = assembler.assemble(ctx);
 
-    const updated = { ...lastIncludedAt };
+    const updated = { ...lastIncludedAtRef.current };
     for (const id of result.included) {
       updated[id] = turnNumber;
     }
     setLastIncludedAt(updated);
-  }, [messages, storyState, lastIncludedAt, setLastIncludedAt, customSegments]);
-}
-
-/** Parse story state markdown into field map for on_state_field policies. */
-function parseStateFields(storyState: string): Record<string, string> {
-  const fields: Record<string, string> = {};
-  const sections = storyState.split(/^## /m).filter(Boolean);
-  for (const section of sections) {
-    const newlineIdx = section.indexOf("\n");
-    if (newlineIdx === -1) continue;
-    const key = section.slice(0, newlineIdx).trim().toLowerCase().replace(/\s+/g, "_");
-    const value = section.slice(newlineIdx + 1).trim();
-    if (key && value) fields[key] = value;
-  }
-  return fields;
+  }, [messages, storyState, setLastIncludedAt, customSegments]);
 }

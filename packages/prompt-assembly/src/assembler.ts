@@ -6,7 +6,7 @@
  */
 
 import type { AssemblyContext, AssemblyResult } from "@chatterbox/sockets";
-import type { PromptSegment, InjectionPolicy } from "./types";
+import type { PromptSegment, InjectionPolicy, SegmentPriority } from "./types";
 import { estimateTokens } from "./token-estimator";
 import { matchesTopicKeywords } from "./topic-detector";
 
@@ -14,7 +14,7 @@ import { matchesTopicKeywords } from "./topic-detector";
 // Priority ordering (lower = more important)
 // ---------------------------------------------------------------------------
 
-const PRIORITY_RANK: Record<string, number> = {
+const PRIORITY_RANK: Record<SegmentPriority, number> = {
   critical: 0,
   high: 1,
   normal: 2,
@@ -29,7 +29,9 @@ const SEMANTIC_THRESHOLD = 0.5;
 
 /** Check on_topic via keyword match, then semantic fallback. */
 function evaluateOnTopic(
-  keywords: readonly string[], segmentId: string, ctx: AssemblyContext,
+  keywords: readonly string[],
+  segmentId: string,
+  ctx: AssemblyContext,
 ): boolean {
   if (matchesTopicKeywords(ctx.currentUserMessage, keywords)) return true;
   const score = ctx.topicScores?.[segmentId];
@@ -69,8 +71,8 @@ function evaluatePolicy(
 // ---------------------------------------------------------------------------
 
 function compareSegments(a: PromptSegment, b: PromptSegment): number {
-  const pa = PRIORITY_RANK[a.priority] ?? 99;
-  const pb = PRIORITY_RANK[b.priority] ?? 99;
+  const pa = PRIORITY_RANK[a.priority];
+  const pb = PRIORITY_RANK[b.priority];
   if (pa !== pb) return pa - pb;
   return a.order - b.order;
 }

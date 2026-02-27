@@ -9,9 +9,11 @@
 export type {
   SocketMessage,
   AssemblyContext,
-  StateUpdateRequest,
-  StateUpdateResult,
-  ValidationReport,
+  StatePipelineRequest,
+  StatePipelineValidation,
+  StatePipelineChange,
+  StatePipelineDisposition,
+  StatePipelineResult,
   PostResponseContext,
 } from "./types";
 
@@ -20,12 +22,15 @@ export type { PromptAssemblySocket, AssemblyResult } from "./prompt-assembly";
 export { defaultPromptAssembly } from "./prompt-assembly";
 
 // Message Processing
-export type { MessageProcessingSocket, MessageProcessingResult } from "./message-processing";
+export type {
+  MessageProcessingSocket,
+  MessageProcessingResult,
+} from "./message-processing";
 export { defaultMessageProcessing } from "./message-processing";
 
-// State Update
-export type { StateUpdateSocket, StateValidationSocket } from "./state-update";
-export { defaultStateUpdate, defaultStateValidation } from "./state-update";
+// State Pipeline
+export type { StatePipelineSocket } from "./state-update";
+export { defaultStatePipeline } from "./state-update";
 
 // Post-Response Hook
 export type { PostResponseSocket } from "./post-response";

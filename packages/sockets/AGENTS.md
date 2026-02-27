@@ -16,7 +16,7 @@ This package exists to keep prompt/state systems modular and safely swappable wi
 
 Allowed:
 
-- socket interfaces (e.g. `PromptAssemblySocket`, `StateUpdateSocket`)
+- socket interfaces (e.g. `PromptAssemblySocket`, `StatePipelineSocket`)
 - boundary DTOs/types (`SocketMessage`, `AssemblyContext`, etc.)
 - default implementations that are simple and deterministic
 - small pure helpers used only by those defaults
@@ -36,7 +36,9 @@ Only import from the package root:
 import {
   defaultPromptAssembly,
   defaultMessageProcessing,
+  defaultStatePipeline,
   type PromptAssemblySocket,
+  type StatePipelineSocket,
 } from "@chatterbox/sockets";
 ```
 

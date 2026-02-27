@@ -7,7 +7,7 @@
 It provides:
 
 - a `PromptAssembler` class that evaluates segment injection policies, enforces token budgets, and produces assembled system prompts
-- type definitions for prompt segments, injection policies, and assembly results
+- type definitions for prompt segments, injection policies, serialized transport types, and assembly results
 - a library of default segments extracted from the original monolithic system prompt
 - a **markdown parser** (`src/parser.ts`) that converts monolithic system prompt files into `SerializedSegment[]` for the UI and transport
 - serialization/deserialization between `PromptSegment` (runtime) and `SerializedSegment` (JSON-safe for localStorage/API)
@@ -70,6 +70,19 @@ import { PromptAssembler } from "@chatterbox/prompt-assembly/src/assembler";
 
 This package depends on `@chatterbox/sockets` for the `AssemblyContext`, `AssemblyResult`, and `PromptAssemblySocket` types. It has no other runtime dependencies.
 
+## Module layout
+
+| File | Responsibility |
+|------|---------------|
+| `types.ts` | All shared types: `PromptSegment`, `InjectionPolicy`, `SegmentPriority`, `SerializedSegment`, `SerializedPolicy`. Re-exports `AssemblyContext`/`AssemblyResult` from sockets. |
+| `assembler.ts` | `PromptAssembler` class — policy evaluation, sorting, token budget enforcement, omitted-context notes. |
+| `parser.ts` | Markdown parser (`parseSystemPromptToSegments`, `segmentsToMarkdown`), serialization/deserialization (`deserializeSegment`, `createAssemblerFromSerialized`). |
+| `parser-mappings.ts` | Static mapping data: `HEADING_MAPPINGS`, `SUB_SECTION_MAPPINGS`, `MERGE_GROUPS`. Defines how markdown headings map to segment IDs, policies, and metadata. |
+| `token-estimator.ts` | `estimateTokens()` — character-based heuristic (~4 chars/token). |
+| `topic-detector.ts` | `matchesTopicKeywords()` — word-boundary keyword matching with basic suffix stripping. |
+| `socket-adapter.ts` | `segmentedPromptAssembly` — adapts the assembler to the `PromptAssemblySocket` interface. |
+| `segments/` | Individual default segment definitions + `DEFAULT_SEGMENTS` array + `createDefaultAssembler()` factory. |
+
 ## Key concepts
 
 ### Segments
@@ -120,19 +133,19 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 `parseSystemPromptToSegments(markdown)` converts a monolithic system prompt markdown file into `SerializedSegment[]` by:
 
 1. Splitting by headings (`###`)
-2. Matching heading text to known segment IDs via regex patterns (e.g. `Output format` → `output_format`)
+2. Matching heading text to known segment IDs via regex patterns (e.g. `Output format` → `output_format`) defined in `parser-mappings.ts`
 3. Sub-parsing the character identity block into individual sub-sections (speech patterns, appearance, mannerisms, etc.) via bullet-prefix patterns
-4. Merging related sub-segments back into combined segments (vocabulary/humor, outfit/hairstyle)
+4. Applying merge groups to combine related sub-segments (vocabulary/humor, outfit/hairstyle) — merge definitions live in `MERGE_GROUPS` in `parser-mappings.ts`
 5. Assigning default policies, priorities, and categories based on the heading mapping
 6. Capturing unknown sections as generic `custom_N` segments with `always` policy
 
-`segmentsToMarkdown(segments)` converts segments back to flat markdown.
+`segmentsToMarkdown(segments)` converts segments back to flat markdown (non-mutating — copies before sorting).
 
 `createAssemblerFromSerialized(segments)` creates a `PromptAssembler` from `SerializedSegment[]` by deserializing policies and registering all segments.
 
-### SerializedSegment
+### SerializedSegment / SerializedPolicy
 
-A JSON-safe representation of `PromptSegment` for localStorage persistence and API transport. The `SerializedPolicy` type excludes the `custom` policy variant (which contains a function) since functions aren't serializable.
+JSON-safe representations of `PromptSegment` / `InjectionPolicy` for localStorage persistence and API transport. Both types live in `types.ts`. `SerializedPolicy` excludes the `custom` policy variant (which contains a function) since functions aren't serializable.
 
 ### Adding a new segment
 
@@ -140,9 +153,13 @@ A JSON-safe representation of `PromptSegment` for localStorage persistence and A
 2. Export it from `src/segments/index.ts`
 3. Add it to the `DEFAULT_SEGMENTS` array
 4. Re-export from `src/index.ts` if needed
-5. Add a heading pattern to `HEADING_MAPPINGS` or `SUB_SECTION_MAPPINGS` in `src/parser.ts` so imported files are parsed correctly
+5. Add a heading pattern to `HEADING_MAPPINGS` or `SUB_SECTION_MAPPINGS` in `src/parser-mappings.ts` so imported files are parsed correctly
 
 No other files need to change. The assembler picks it up automatically.
+
+### Adding a new merge group
+
+If a set of parsed sub-segments should be combined into one segment, add an entry to `MERGE_GROUPS` in `src/parser-mappings.ts` specifying `sourceIds` and the `merged` segment metadata. The parser applies all merge groups automatically.
 
 ## Validation checklist
 

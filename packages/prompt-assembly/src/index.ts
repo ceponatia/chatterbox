@@ -6,7 +6,15 @@
  */
 
 // Core types
-export type { PromptSegment, InjectionPolicy, SegmentPriority, AssemblyContext, AssemblyResult } from "./types";
+export type {
+  PromptSegment,
+  InjectionPolicy,
+  SegmentPriority,
+  AssemblyContext,
+  AssemblyResult,
+  SerializedSegment,
+  SerializedPolicy,
+} from "./types";
 
 // Assembler
 export { PromptAssembler } from "./assembler";
@@ -34,8 +42,12 @@ export {
 } from "./segments";
 
 // Parser — converts monolithic markdown into segments
-export type { SerializedSegment, SerializedPolicy } from "./parser";
-export { parseSystemPromptToSegments, segmentsToMarkdown, deserializeSegment, createAssemblerFromSerialized } from "./parser";
+export {
+  parseSystemPromptToSegments,
+  segmentsToMarkdown,
+  deserializeSegment,
+  createAssemblerFromSerialized,
+} from "./parser";
 
 // Socket-compatible implementation
 export { segmentedPromptAssembly } from "./socket-adapter";

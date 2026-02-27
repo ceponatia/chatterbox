@@ -426,9 +426,7 @@ function classifyCharacterLine(
   const kv = trimmed.match(/^-\s+\*\*(.+?)\*\*\s*:\s*(.*)$/);
   if (kv) return { kind: "kv", attribute: kv[1]!.trim(), value: kv[2]!.trim() };
 
-  const flat = trimmed.match(
-    /^-\s+\*\*(.+?)\s*[—\-–]\s*(.+?)\*\*\s*:\s*(.*)$/,
-  );
+  const flat = trimmed.match(/^-\s+\*\*(.+?)\s*[—\-–]\s*(.+?)\*\*\s*:\s*(.*)$/);
   if (flat)
     return {
       kind: "flat",
@@ -485,7 +483,11 @@ function processCharacterLine(
       break;
     case "flat":
       flushCharEntry(s);
-      s.entries.push({ character: cl.character, attribute: cl.attribute, description: cl.value });
+      s.entries.push({
+        character: cl.character,
+        attribute: cl.attribute,
+        description: cl.value,
+      });
       break;
     case "text":
       if (s.current && rawLine.trim()) s.current.descParts.push(rawLine.trim());
@@ -693,6 +695,17 @@ function buildEntityRegistry(raw: RawSections): Entity[] {
   return entities;
 }
 
+/**
+ * Safely resolve an entity name to its ID, creating the entity if it doesn't
+ * exist rather than crashing with a non-null assertion.
+ */
+function resolveEntityId(entities: Entity[], name: string): string {
+  return (
+    findEntityByName(entities, name)?.id ??
+    findOrCreateEntity(entities, name).id
+  );
+}
+
 function resolveRawToState(
   raw: RawSections,
   entities: Entity[],
@@ -701,26 +714,26 @@ function resolveRawToState(
   return {
     entities,
     relationships: raw.relationships.map((r) => ({
-      fromEntityId: findEntityByName(entities, r.from)!.id,
-      toEntityId: findEntityByName(entities, r.to)!.id,
+      fromEntityId: resolveEntityId(entities, r.from),
+      toEntityId: resolveEntityId(entities, r.to),
       description: r.description,
       details: r.details,
     })),
     appearance: raw.appearance.map((a) => ({
-      entityId: findEntityByName(entities, a.character)!.id,
+      entityId: resolveEntityId(entities, a.character),
       attribute: a.attribute,
       description: a.description,
     })),
     scene: {
       location: raw.scene.location,
-      presentEntityIds: raw.scene.presentNames.map(
-        (n) => findEntityByName(entities, n)!.id,
+      presentEntityIds: raw.scene.presentNames.map((n) =>
+        resolveEntityId(entities, n),
       ),
       atmosphere: raw.scene.atmosphere,
     },
     demeanor: raw.demeanor.map((d) => ({
       entityId: d.character
-        ? findEntityByName(entities, d.character)!.id
+        ? resolveEntityId(entities, d.character)
         : (entities[0]?.id ?? ""),
       mood: d.mood,
       energy: d.energy,

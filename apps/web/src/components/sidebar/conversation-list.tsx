@@ -40,20 +40,23 @@ function ConversationItem({
   onDelete: () => void;
 }) {
   return (
-    <div
-      className={cn(
-        "group relative flex items-start gap-2 overflow-hidden rounded-md px-2.5 py-2 text-sm cursor-pointer transition-colors",
-        isActive ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-      )}
-      onClick={onSelect}
-    >
-      <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <div className="flex w-0 min-w-0 flex-1 flex-col pr-5">
-        <span className="truncate text-xs font-medium">{conv.title}</span>
-        <span className="text-[10px] text-muted-foreground">
-          {formatDate(conv.updatedAt)}
-        </span>
-      </div>
+    <div className="group relative">
+      <button
+        type="button"
+        className={cn(
+          "flex w-full items-start gap-2 overflow-hidden rounded-md px-2.5 py-2 text-sm transition-colors",
+          isActive ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+        )}
+        onClick={onSelect}
+      >
+        <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <div className="flex w-0 min-w-0 flex-1 flex-col pr-5">
+          <span className="truncate text-xs font-medium">{conv.title}</span>
+          <span className="text-[10px] text-muted-foreground">
+            {formatDate(conv.updatedAt)}
+          </span>
+        </div>
+      </button>
       <ConfirmDeleteButton
         onConfirm={onDelete}
         className="absolute right-1 top-1 h-5 transition-opacity"
@@ -75,7 +78,13 @@ export function ConversationList({
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-3 py-3">
         <span className="text-sm font-semibold">Conversations</span>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onNew} title="New chat">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={onNew}
+          title="New chat"
+        >
           <Plus className="h-4 w-4" />
         </Button>
       </div>

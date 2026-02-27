@@ -1,4 +1,5 @@
 import { defineConfig, globalIgnores } from "eslint/config";
+import js from "@eslint/js";
 import boundaries from "eslint-plugin-boundaries";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +17,18 @@ const eslintConfig = defineConfig([
     "**/dist/**",
     "**/next-env.d.ts",
   ]),
+
+  // ----- ESLint recommended rules (replaces Codacy's eslint config) -----
+  js.configs.recommended,
+
+  // Disable rules that overlap with TypeScript checking
+  {
+    rules: {
+      "no-undef": "off", // TS handles this; causes false positives with global types
+      "no-redeclare": "off", // Handled by @typescript-eslint/no-redeclare
+      "no-dupe-class-members": "off", // Handled by @typescript-eslint/no-dupe-class-members
+    },
+  },
 
   // ----- Boundary enforcement (all packages) -----
   {
@@ -67,7 +80,8 @@ const eslintConfig = defineConfig([
           patterns: [
             {
               group: ["../**/src/*"],
-              message: "Do not reach into another package's src/. Import from the package root.",
+              message:
+                "Do not reach into another package's src/. Import from the package root.",
             },
           ],
         },
