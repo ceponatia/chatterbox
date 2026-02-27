@@ -6,13 +6,13 @@ import { UIMessage } from "ai";
 interface TurnCounterProps {
   messages: UIMessage[];
   autoSummarizeInterval: number;
+  lastSummarizedTurn: number;
 }
 
-export function TurnCounter({ messages, autoSummarizeInterval }: TurnCounterProps) {
-  const turns = Math.floor(
-    messages.filter((m) => m.role === "user").length
-  );
-  const turnsUntilSummarize = autoSummarizeInterval - (turns % autoSummarizeInterval);
+export function TurnCounter({ messages, autoSummarizeInterval, lastSummarizedTurn }: TurnCounterProps) {
+  const turns = messages.filter((m) => m.role === "user").length;
+  const sinceLast = turns - lastSummarizedTurn;
+  const turnsUntilSummarize = autoSummarizeInterval - (sinceLast % autoSummarizeInterval);
   const nearSummarize = turnsUntilSummarize <= 3 && turns > 0;
 
   return (

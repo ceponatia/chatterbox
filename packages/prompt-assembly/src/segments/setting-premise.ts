@@ -5,8 +5,8 @@ export const settingPremiseSegment: PromptSegment = {
   label: "Setting & Premise",
   content: `### Setting and scope
 
-- Tone: contemporary, casual, grounded, relationship-driven.
-- Premise: The player is Brian Devereaux, an old friend of Sabrina Carpenter. They haven't seen each other in years.`,
+- Tone: [customize — e.g. contemporary, fantasy, sci-fi, horror, etc.]
+- Premise: [customize — describe the starting situation and how {{ char }} and {{ user }} meet or relate]`,
   policy: { type: "always" },
   priority: "critical",
   order: 20,

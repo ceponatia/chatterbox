@@ -24,7 +24,7 @@ export function MessageList({ messages, isLoading, onEdit, onDelete, onRetry, on
   const topAnchorRef = useRef<HTMLDivElement>(null);
 
   const { visibleMessages, hiddenCount, handleShowMore } = useVisibleMessages(messages, topAnchorRef);
-  useAutoScroll(messages, bottomRef);
+  useAutoScroll(messages, bottomRef, isLoading);
   const retryIds = useRetryIds(messages);
 
   if (messages.length === 0) return <EmptyState />;
@@ -66,11 +66,11 @@ function useVisibleMessages(messages: UIMessage[], topAnchorRef: React.RefObject
   return { visibleMessages, hiddenCount, handleShowMore };
 }
 
-function useAutoScroll(messages: UIMessage[], bottomRef: React.RefObject<HTMLDivElement | null>) {
+function useAutoScroll(messages: UIMessage[], bottomRef: React.RefObject<HTMLDivElement | null>, isLoading: boolean) {
   const lastMsg = messages[messages.length - 1];
   const scrollTrigger = `${messages.length}:${lastMsg?.id}:${
     lastMsg?.parts?.reduce((n, p) => n + (p.type === "text" ? p.text.length : 0), 0) ?? 0
-  }`;
+  }:${isLoading}`;
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [scrollTrigger, bottomRef]);
 }
 

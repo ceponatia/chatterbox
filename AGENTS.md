@@ -87,6 +87,7 @@ When introducing new architecture (prompt assembly, state pipeline, memory syste
 
 - App runtime env lives at `apps/web/.env`.
 - Root scripts orchestrate workspace commands (`pnpm dev`, `pnpm lint`, `pnpm typecheck`).
+- Local Codacy CLI config lives under `.codacy/`; Lizard thresholds are configured in `.codacy/tools-configs/lizard.yaml` (function NLOC medium threshold aligned to `100`).
 
 ## Definition of done for structural changes
 

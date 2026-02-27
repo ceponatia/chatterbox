@@ -3,6 +3,8 @@
  * Stored in localStorage alongside conversation data.
  */
 
+import { safeStorage } from "./storage";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -41,16 +43,17 @@ const historyKey = (convId: string) => `chatterbox-state-history-${convId}`;
 
 export function loadStateHistory(convId: string): StateHistoryEntry[] {
   if (typeof window === "undefined") return [];
+  const raw = safeStorage.getItem(historyKey(convId));
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(historyKey(convId));
-    return raw ? (JSON.parse(raw) as StateHistoryEntry[]) : [];
+    return JSON.parse(raw) as StateHistoryEntry[];
   } catch {
     return [];
   }
 }
 
 export function saveStateHistory(convId: string, history: StateHistoryEntry[]) {
-  localStorage.setItem(historyKey(convId), JSON.stringify(history));
+  safeStorage.setItem(historyKey(convId), JSON.stringify(history));
 }
 
 export function appendStateHistoryEntry(convId: string, entry: StateHistoryEntry) {
@@ -62,5 +65,5 @@ export function appendStateHistoryEntry(convId: string, entry: StateHistoryEntry
 }
 
 export function deleteStateHistory(convId: string) {
-  localStorage.removeItem(historyKey(convId));
+  safeStorage.removeItem(historyKey(convId));
 }

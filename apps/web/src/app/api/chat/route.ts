@@ -1,8 +1,8 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText, UIMessage, convertToModelMessages } from "ai";
 import { logRequest, startTimer, logStreamStart, logStreamEnd, logReasoning } from "@/lib/api-logger";
-import { createDefaultAssembler } from "@chatterbox/prompt-assembly";
-import type { AssemblyContext, AssemblyResult } from "@chatterbox/prompt-assembly";
+import { createDefaultAssembler, createAssemblerFromSerialized } from "@chatterbox/prompt-assembly";
+import type { AssemblyContext, AssemblyResult, SerializedSegment } from "@chatterbox/prompt-assembly";
 import { computeTopicScores } from "@/lib/topic-embeddings";
 
 interface ChatSettings {
@@ -14,7 +14,19 @@ interface ChatSettings {
   tokenBudget?: number;
 }
 
-const assembler = createDefaultAssembler();
+function buildSystemPrompt(assemblyPrompt: string, storyState: string): string {
+  const stateSection = storyState ? `\n\n## Current Story State\n${storyState}` : "";
+  return `${assemblyPrompt}${stateSection}\n\n${NPC_ONLY_GUARDRAIL}`;
+}
+
+const defaultAssembler = createDefaultAssembler();
+
+const NPC_ONLY_GUARDRAIL = [
+  "## Response Boundary (Critical)",
+  "- NEVER write dialogue, actions, thoughts, or decisions on behalf of the user/player.",
+  "- Only write for NPCs and the environment.",
+  "- Leave all user/player speech and choices for the user to provide.",
+].join("\n");
 
 const MAX_MESSAGES = 40;
 
@@ -102,18 +114,18 @@ function streamCallbacks(elapsed: () => number) {
 }
 
 export async function POST(req: Request) {
-  const { messages, systemPrompt: _rawSystemPrompt, storyState, settings, lastIncludedAt } = (await req.json()) as {
+  const { messages, systemPrompt: _rawSystemPrompt, storyState, settings, lastIncludedAt, customSegments } = (await req.json()) as {
     messages: UIMessage[]; systemPrompt: string; storyState: string; settings: ChatSettings;
     lastIncludedAt?: Record<string, number>;
+    customSegments?: SerializedSegment[] | null;
   };
 
   const windowed = windowMessages(messages);
   const elapsed = startTimer();
   const ctx = await buildAssemblyContext(messages, storyState, settings, lastIncludedAt);
+  const assembler = customSegments ? createAssemblerFromSerialized(customSegments) : defaultAssembler;
   const assembly = assembler.assemble(ctx);
-  const system = storyState
-    ? `${assembly.systemPrompt}\n\n## Current Story State\n${storyState}`
-    : assembly.systemPrompt;
+  const system = buildSystemPrompt(assembly.systemPrompt, storyState);
 
   logAssembly(assembly, ctx);
   logRequest("/api/chat", { messages: windowed, storyState, settings });

@@ -2,10 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import type { UIMessage } from "ai";
-import { createDefaultAssembler } from "@chatterbox/prompt-assembly";
-import type { AssemblyContext } from "@chatterbox/prompt-assembly";
+import { createDefaultAssembler, createAssemblerFromSerialized } from "@chatterbox/prompt-assembly";
+import type { AssemblyContext, SerializedSegment } from "@chatterbox/prompt-assembly";
 
-const assembler = createDefaultAssembler();
+const defaultAssembler = createDefaultAssembler();
 
 /**
  * Runs the assembler client-side after each user message to update the
@@ -17,11 +17,13 @@ export function useAssemblyTracker({
   storyState,
   lastIncludedAt,
   setLastIncludedAt,
+  customSegments,
 }: {
   messages: UIMessage[];
   storyState: string;
   lastIncludedAt: Record<string, number>;
   setLastIncludedAt: (v: Record<string, number>) => void;
+  customSegments?: SerializedSegment[] | null;
 }) {
   const prevTurnRef = useRef(0);
 
@@ -42,6 +44,7 @@ export function useAssemblyTracker({
       tokenBudget: 2500,
     };
 
+    const assembler = customSegments ? createAssemblerFromSerialized(customSegments) : defaultAssembler;
     const result = assembler.assemble(ctx);
 
     const updated = { ...lastIncludedAt };
@@ -49,7 +52,7 @@ export function useAssemblyTracker({
       updated[id] = turnNumber;
     }
     setLastIncludedAt(updated);
-  }, [messages, storyState, lastIncludedAt, setLastIncludedAt]);
+  }, [messages, storyState, lastIncludedAt, setLastIncludedAt, customSegments]);
 }
 
 /** Parse story state markdown into field map for on_state_field policies. */

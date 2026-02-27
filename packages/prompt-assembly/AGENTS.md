@@ -9,6 +9,8 @@ It provides:
 - a `PromptAssembler` class that evaluates segment injection policies, enforces token budgets, and produces assembled system prompts
 - type definitions for prompt segments, injection policies, and assembly results
 - a library of default segments extracted from the original monolithic system prompt
+- a **markdown parser** (`src/parser.ts`) that converts monolithic system prompt files into `SerializedSegment[]` for the UI and transport
+- serialization/deserialization between `PromptSegment` (runtime) and `SerializedSegment` (JSON-safe for localStorage/API)
 - a `PromptAssemblySocket`-compatible adapter for integration through `@chatterbox/sockets`
 
 This package replaces the monolithic `buildSystem()` concatenation with a component-based system where each piece of context is a self-contained segment with metadata describing when and how it should be injected.
@@ -21,6 +23,8 @@ Allowed:
 - the `PromptAssembler` class and its assembly algorithm
 - injection policy evaluation logic
 - token estimation and topic detection helpers
+- markdown parsing and segment extraction logic
+- serialization/deserialization of segments for transport/storage
 - the socket adapter bridging to `PromptAssemblySocket`
 
 Not allowed:
@@ -38,9 +42,14 @@ Only import from the package root:
 import {
   PromptAssembler,
   createDefaultAssembler,
+  createAssemblerFromSerialized,
+  parseSystemPromptToSegments,
+  segmentsToMarkdown,
   segmentedPromptAssembly,
   type PromptSegment,
   type InjectionPolicy,
+  type SerializedSegment,
+  type SerializedPolicy,
 } from "@chatterbox/prompt-assembly";
 ```
 
@@ -88,6 +97,10 @@ Two-tier detection for `on_topic` segments:
 1. **Keyword matching** (`src/topic-detector.ts`): word-boundary-aware matching with basic suffix stripping. Tokenizes the user message, stems each word, matches against keyword stems (handles plurals, verb forms). Multi-word phrases use substring matching.
 2. **Semantic fallback** (`evaluateOnTopic` in `src/assembler.ts`): if keyword matching misses, checks `AssemblyContext.topicScores[segmentId]` — a pre-computed cosine similarity score (0.0–1.0) between the user message and the segment's topic description. Threshold: 0.5. Scores are computed server-side (in `apps/web`) via embedding model and passed through the context. The assembler itself makes no API calls.
 
+### Default segment content
+
+All default segments in `src/segments/` are **story-agnostic** — they use `{{ char }}`/`{{ user }}` placeholders and `[customize]` markers. They serve as a template when no custom segments are provided. No character-specific, plot-specific, or user-specific content should exist in these files.
+
 ### Segment policy assignments
 
 | Segment | Policy | Priority |
@@ -102,12 +115,32 @@ Two-tier detection for `on_topic` segments:
 | `backstory` | `on_topic` (remember, school, ...) | normal |
 | `relationship_status` | `on_state_field("relationships")` | normal |
 
+### Markdown parser (`src/parser.ts`)
+
+`parseSystemPromptToSegments(markdown)` converts a monolithic system prompt markdown file into `SerializedSegment[]` by:
+
+1. Splitting by headings (`###`)
+2. Matching heading text to known segment IDs via regex patterns (e.g. `Output format` → `output_format`)
+3. Sub-parsing the character identity block into individual sub-sections (speech patterns, appearance, mannerisms, etc.) via bullet-prefix patterns
+4. Merging related sub-segments back into combined segments (vocabulary/humor, outfit/hairstyle)
+5. Assigning default policies, priorities, and categories based on the heading mapping
+6. Capturing unknown sections as generic `custom_N` segments with `always` policy
+
+`segmentsToMarkdown(segments)` converts segments back to flat markdown.
+
+`createAssemblerFromSerialized(segments)` creates a `PromptAssembler` from `SerializedSegment[]` by deserializing policies and registering all segments.
+
+### SerializedSegment
+
+A JSON-safe representation of `PromptSegment` for localStorage persistence and API transport. The `SerializedPolicy` type excludes the `custom` policy variant (which contains a function) since functions aren't serializable.
+
 ### Adding a new segment
 
 1. Create a segment file in `src/segments/`
 2. Export it from `src/segments/index.ts`
 3. Add it to the `DEFAULT_SEGMENTS` array
 4. Re-export from `src/index.ts` if needed
+5. Add a heading pattern to `HEADING_MAPPINGS` or `SUB_SECTION_MAPPINGS` in `src/parser.ts` so imported files are parsed correctly
 
 No other files need to change. The assembler picks it up automatically.
 

@@ -5,9 +5,9 @@ export const characterIdentitySegment: PromptSegment = {
   label: "Character Identity",
   content: `### Character you embody
 
-- Name: Sabrina Carpenter
-- Age: 25
-- Occupation: singer, songwriter, actress, pop performer`,
+- Name: {{ char }}
+- Age: [customize]
+- Occupation: [customize]`,
   policy: { type: "always" },
   priority: "critical",
   order: 30,

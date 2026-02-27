@@ -3,7 +3,7 @@ import type { PromptSegment } from "../types";
 export const relationshipStatusSegment: PromptSegment = {
   id: "relationship_status",
   label: "Initial Relationship Status",
-  content: `- Initial relationship status: In a relationship with a fellow musician in NYC, Tyler, who did not accompany her to Westport. It's not *serious* but she does care for him and wouldn't cheat on him without good reason. He's not abusive or gruff, just kind of basic and banal.`,
+  content: `- Initial relationship status: [customize — {{ char }}'s current relationship situation, if any]`,
   policy: { type: "on_state_field", field: "relationships" },
   priority: "normal",
   order: 70,

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Square } from "lucide-react";
-import { KeyboardEvent, useEffect, useRef } from "react";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
 
 interface ChatInputProps {
   input: string;
@@ -22,6 +22,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wasLoadingRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     if (wasLoadingRef.current && !isLoading) {
@@ -30,8 +31,21 @@ export function ChatInput({
     wasLoadingRef.current = isLoading;
   }, [isLoading]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = window.matchMedia("(max-width: 1023px)");
+    const update = () => setIsMobile(query.matches);
+    update();
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", update);
+      return () => query.removeEventListener("change", update);
+    }
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !isMobile) {
       e.preventDefault();
       if (input.trim() && !isLoading) {
         onSubmit(e as unknown as React.FormEvent);
@@ -42,7 +56,7 @@ export function ChatInput({
   return (
     <form
       onSubmit={onSubmit}
-      className="border-t bg-background px-4 py-3"
+      className="border-t bg-background px-4 py-3 safe-bottom"
     >
       <div className="flex items-end gap-2">
         <Textarea
@@ -77,7 +91,9 @@ export function ChatInput({
         )}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Enter to send · Shift+Enter for new line
+        {isMobile
+          ? "Enter for new line"
+          : "Enter to send · Shift+Enter for new line"}
       </p>
     </form>
   );

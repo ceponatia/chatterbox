@@ -33,5 +33,9 @@ export {
   relationshipStatusSegment,
 } from "./segments";
 
+// Parser — converts monolithic markdown into segments
+export type { SerializedSegment, SerializedPolicy } from "./parser";
+export { parseSystemPromptToSegments, segmentsToMarkdown, deserializeSegment, createAssemblerFromSerialized } from "./parser";
+
 // Socket-compatible implementation
 export { segmentedPromptAssembly } from "./socket-adapter";

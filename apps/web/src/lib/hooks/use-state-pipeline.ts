@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { UIMessage } from "ai";
-import { appendStateHistoryEntry, type ExtractedFact, type ValidationReport } from "@/lib/state-history";
+import {
+  appendStateHistoryEntry,
+  type ExtractedFact,
+  type ValidationReport,
+} from "@/lib/state-history";
+import { generateId } from "@/lib/storage";
 
 interface StateUpdateResponse {
   newState: string;
@@ -24,6 +29,8 @@ interface Params {
   autoSummarizeInterval: number;
   /** Callback to reset lastIncludedAt entries for cascade triggers */
   onCascadeResets?: (segmentIds: string[]) => void;
+  lastPipelineTurn: number;
+  setLastPipelineTurn: (turn: number) => void;
 }
 
 /** Returns true if the result was applied. */
@@ -38,14 +45,15 @@ function applyPipelineResult(
 ): boolean {
   if (data.newState === currentState || !data.newState.trim()) return false;
 
-  const disposition = data.disposition === "retried" ? "flagged" as const : data.disposition;
+  const disposition =
+    data.disposition === "retried" ? ("flagged" as const) : data.disposition;
 
   if (disposition === "auto_accepted" || disposition === "flagged") {
     onStateUpdate(data.newState);
   }
 
   appendStateHistoryEntry(conversationId, {
-    id: crypto.randomUUID(),
+    id: generateId(),
     timestamp: new Date().toISOString(),
     turnRange: [lastTurn + 1, turnNumber],
     previousState: currentState,
@@ -62,7 +70,7 @@ function applyPipelineResult(
 
   console.log(
     `🔄 state-pipeline: ${disposition}, ${data.extractedFacts.length} facts, ` +
-    `diff ${data.validation.diffPercentage}%`
+      `diff ${data.validation.diffPercentage}%`,
   );
   return true;
 }
@@ -82,8 +90,11 @@ export function useStatePipeline({
   onStateUpdate,
   autoSummarizeInterval,
   onCascadeResets,
+  lastPipelineTurn,
+  setLastPipelineTurn,
 }: Params) {
-  const lastPipelineTurnRef = useRef(0);
+  const lastPipelineTurnRef = useRef(lastPipelineTurn);
+  lastPipelineTurnRef.current = lastPipelineTurn;
   const inflightRef = useRef(false);
   const storyStateRef = useRef(storyState);
   storyStateRef.current = storyState;
@@ -91,49 +102,60 @@ export function useStatePipeline({
   const [recentlyUpdated, setRecentlyUpdated] = useState(false);
   const recentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const runPipeline = useCallback(async (turnNumber: number) => {
-    if (inflightRef.current || !conversationId) return;
-    inflightRef.current = true;
+  const runPipeline = useCallback(
+    async (turnNumber: number) => {
+      if (inflightRef.current || !conversationId) return;
+      inflightRef.current = true;
 
-    try {
-      const res = await fetch("/api/state-update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages,
-          currentStoryState: storyStateRef.current,
+      try {
+        const res = await fetch("/api/state-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages,
+            currentStoryState: storyStateRef.current,
+            turnNumber,
+          }),
+        });
+
+        if (!res.ok) {
+          console.warn(`⚠ state-pipeline: ${res.status} ${res.statusText}`);
+          return;
+        }
+
+        const data = (await res.json()) as StateUpdateResponse;
+        if (data.error) {
+          console.warn(`⚠ state-pipeline: ${data.error}`);
+          return;
+        }
+
+        const applied = applyPipelineResult(
+          data,
+          storyStateRef.current,
+          conversationId,
+          lastPipelineTurnRef.current,
           turnNumber,
-        }),
-      });
-
-      if (!res.ok) {
-        console.warn(`⚠ state-pipeline: ${res.status} ${res.statusText}`);
-        return;
+          onStateUpdate,
+          onCascadeResets,
+        );
+        if (applied) {
+          setHistoryVersion((v) => v + 1);
+          setRecentlyUpdated(true);
+          if (recentTimerRef.current) clearTimeout(recentTimerRef.current);
+          recentTimerRef.current = setTimeout(
+            () => setRecentlyUpdated(false),
+            3000,
+          );
+        }
+        setLastPipelineTurn(turnNumber);
+      } catch (err) {
+        console.error("state-pipeline error:", err);
+      } finally {
+        inflightRef.current = false;
       }
-
-      const data = (await res.json()) as StateUpdateResponse;
-      if (data.error) {
-        console.warn(`⚠ state-pipeline: ${data.error}`);
-        return;
-      }
-
-      const applied = applyPipelineResult(
-        data, storyStateRef.current, conversationId,
-        lastPipelineTurnRef.current, turnNumber, onStateUpdate, onCascadeResets,
-      );
-      if (applied) {
-        setHistoryVersion(v => v + 1);
-        setRecentlyUpdated(true);
-        if (recentTimerRef.current) clearTimeout(recentTimerRef.current);
-        recentTimerRef.current = setTimeout(() => setRecentlyUpdated(false), 3000);
-      }
-      lastPipelineTurnRef.current = turnNumber;
-    } catch (err) {
-      console.error("state-pipeline error:", err);
-    } finally {
-      inflightRef.current = false;
-    }
-  }, [messages, conversationId, onStateUpdate, onCascadeResets]);
+    },
+    [messages, conversationId, onStateUpdate, onCascadeResets, setLastPipelineTurn],
+  );
 
   // Trigger after assistant response completes (isLoading transitions false)
   const wasLoadingRef = useRef(false);
@@ -145,7 +167,7 @@ export function useStatePipeline({
     // Only trigger when loading just finished
     if (!wasLoading || isLoading) return;
 
-    const turnNumber = messages.filter(m => m.role === "user").length;
+    const turnNumber = messages.filter((m) => m.role === "user").length;
     if (turnNumber <= 0) return;
 
     // Throttle: run every N turns (same interval as auto-summarize, or every 5 if 0)
@@ -160,7 +182,7 @@ export function useStatePipeline({
   return {
     /** Manually trigger the pipeline for the current turn */
     triggerPipeline: () => {
-      const turnNumber = messages.filter(m => m.role === "user").length;
+      const turnNumber = messages.filter((m) => m.role === "user").length;
       if (turnNumber > 0) void runPipeline(turnNumber);
     },
     /** Incremented each time a pipeline result is applied — use to re-read history */

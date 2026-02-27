@@ -6,12 +6,16 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "start": "pnpm --filter web start",
+    "infra:up": "node scripts/infra-toggle.mjs --enable && docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down && node scripts/infra-toggle.mjs --disable",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "@prisma/client": "^7.4.0",
     "eslint": "^9",
     "eslint-plugin-boundaries": "^5",
+    "prisma": "^7.0.0",
     "typescript": "^5"
   }
 }

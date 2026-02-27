@@ -1,0 +1,25 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Conversation {
+  id                  String   @id @default(uuid()) @db.Uuid
+  title               String
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @db.Timestamptz(6)
+  messages            Json     @default("[]")
+  systemPrompt        String
+  storyState          String
+  previousStoryState  String?
+  storyStateLastUpdated DateTime? @db.Timestamptz(6)
+  settings            Json
+  systemPromptBaseline String?
+  storyStateBaseline  String?
+  lastIncludedAt      Json     @default("{}")
+  customSegments      Json?
+  structuredState     Json?
+}

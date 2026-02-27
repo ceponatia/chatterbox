@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { UIMessage } from "ai";
 
 interface ReadonlyConfig {
@@ -14,19 +14,19 @@ interface Params {
   autoSummarizeInterval: number;
   liveConfig: ReadonlyConfig;
   onAccept: (newState: string) => void;
+  lastSummarizedTurn: number;
+  setLastSummarizedTurn: (turn: number) => void;
 }
 
-export function useSummarization({ messages, isLoading, autoSummarizeInterval, liveConfig, onAccept }: Params) {
+export function useSummarization({ messages, isLoading, autoSummarizeInterval, liveConfig, onAccept, lastSummarizedTurn, setLastSummarizedTurn }: Params) {
   const [hasPendingReview, setHasPendingReview] = useState(false);
   const [proposedStoryState, setProposedStoryState] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const lastSummarizedTurnRef = useRef(0);
 
   const reset = useCallback(() => {
     setHasPendingReview(false);
     setProposedStoryState("");
     setIsSummarizing(false);
-    lastSummarizedTurnRef.current = 0;
   }, []);
 
   const triggerSummarize = useCallback(async () => {
@@ -63,28 +63,28 @@ export function useSummarization({ messages, isLoading, autoSummarizeInterval, l
       if (!newState.trim() || newState.startsWith("Error:")) return;
       onAccept(newState);
       const turnCount = messages.filter((m) => m.role === "user").length;
-      lastSummarizedTurnRef.current = turnCount;
+      setLastSummarizedTurn(turnCount);
       setHasPendingReview(false);
       setProposedStoryState("");
     },
-    [messages, onAccept]
+    [messages, onAccept, setLastSummarizedTurn]
   );
 
   const handleRejectSummary = useCallback(() => {
     const turnCount = messages.filter((m) => m.role === "user").length;
-    lastSummarizedTurnRef.current = turnCount;
+    setLastSummarizedTurn(turnCount);
     setHasPendingReview(false);
     setProposedStoryState("");
-  }, [messages]);
+  }, [messages, setLastSummarizedTurn]);
 
   // Auto-trigger summarization
   useEffect(() => {
     if (isLoading || hasPendingReview) return;
     const turnCount = messages.filter((m) => m.role === "user").length;
-    if (autoSummarizeInterval > 0 && turnCount > 0 && turnCount >= lastSummarizedTurnRef.current + autoSummarizeInterval) {
+    if (autoSummarizeInterval > 0 && turnCount > 0 && turnCount >= lastSummarizedTurn + autoSummarizeInterval) {
       triggerSummarize();
     }
-  }, [messages, isLoading, hasPendingReview, autoSummarizeInterval, triggerSummarize]);
+  }, [messages, isLoading, hasPendingReview, autoSummarizeInterval, lastSummarizedTurn, triggerSummarize]);
 
   return {
     hasPendingReview,

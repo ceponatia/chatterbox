@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: chatterbox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chatterbox
+      POSTGRES_USER: chatterbox
+      POSTGRES_PASSWORD: chatterbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - chatterbox-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  chatterbox-postgres-data:

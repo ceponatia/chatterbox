@@ -6,6 +6,12 @@ Add tbd items here. When a decent number are ready, create a plan document for t
 
 ## Phase 2 Ideas
 
+1. May need to add a step to the summarizer which checks for redundant information and removes it as the story state file seems to only increase in size, not stay at a reasonable size or reduce.
+
+## Completed in Phase 2
+
+- Further parse the story state and system prompt areas in the UI and in the prompt assembly code to make them more readable and easier to work with, but also potentially more useful for inference. For example, in the `cast` section of the story state, we could have a separate sub-container for each NPC and the player which can be edited separately without accidentally affecting other actors. The same atomization can be thought about for other sections and the system prompt (which is currently not broken up the way story state is)
+
 ## Completed in Phase 1
 
 - A system to load quotes and conversation snippets for NPCs that the LLM uses for examples when writing dialogue. → see `plan-npc-systems.md` §1
