@@ -88,12 +88,13 @@ Review EVERY section of the current story state against what is happening in the
 - Update character descriptions to reflect development
 - Add new characters that have appeared
 - Update roles if they have changed
+- {{ user }} and {{ char }} are template placeholders, NOT literal character names. The player character is already listed in the Cast by their real name. Do NOT add {{ user }} or {{ char }} as separate entries.
 
 ### Relationships
 - Update dynamics that have shifted (strangers → friends, tension → trust, etc.)
 - Remove relationship descriptions superseded by newer ones
-- Add new relationships that have formed
-
+- Add new relationships that have formed- When describing relationship tone, use one of these values accurately: hostile (active animosity/threat), cold (emotionally distant/resentful/guarded), neutral (indifferent/formal/acquaintance-level), warm (positive/friendly/caring), close (trusted/bonded/loyal), intimate (deeply connected/romantic/sexual)
+- Map emotional descriptions to the correct tone -- "lacking emotional depth" or "not serious" is cold or neutral, not hostile
 ### Characters
 - This section uses nested headings: ### CharacterName > #### Appearance > - **key**: comma-separated values
 - Update entries that have changed (clothing, hair, injuries, etc.)
@@ -131,8 +132,7 @@ Review EVERY section of the current story state against what is happening in the
 - Character biographical facts (name, age, occupation) rarely change — only update if the story explicitly changes them
 - Relationship-status and situational facts MUST be updated or removed as the situation evolves
 - Each fact must end with (added: YYYY-MM-DD)
-- Aim for 10-20 hard facts maximum — prune aggressively
-- When REMOVING a superseded fact, you MUST include a "hard_fact_superseded" change entry with a specific rationale explaining what new information replaced it (e.g., "Brian revealed he owns a tech company, superseding the assumption about his wealth"). Generic rationales like "Superseded during state update" are not acceptable.
+- Aim for 10-20 hard facts maximum — prune aggressively- Categorize each fact by appending a tag in square brackets before the date: [biographical] (name, age, occupation), [spatial] (locations, geography), [relational] (feelings, dynamics, trust between people), [temporal] (dates, timelines, durations), [world] (setting rules, lore, physics), [event] (actions that occurred, promises made, incidents). Example: "Brian wanted to ask Sabrina to prom [relational] (added: 2026-02-26)"- When REMOVING a superseded fact, you MUST include a "hard_fact_superseded" change entry with a specific rationale explaining what new information replaced it (e.g., "Brian revealed he owns a tech company, superseding the assumption about his wealth"). Generic rationales like "Superseded during state update" are not acceptable.
 
 ## Rules
 - ALWAYS use full character names exactly as they appear in the Cast section (e.g., "Kaho Higashi" not "Kaho", "Nagato Jiro" not "Jiro"). This applies to ALL sections — Cast, Relationships, Characters, Demeanor, etc.

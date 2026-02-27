@@ -27,6 +27,14 @@ import type {
   SerializedSegment,
 } from "@chatterbox/prompt-assembly";
 import { computeTopicScores } from "@/lib/topic-embeddings";
+import {
+  embedMessagePairs,
+  retrieveSimilarPairs,
+} from "@/lib/message-embeddings";
+import {
+  extractFacts,
+  type ExtractedFact as DigestExtractedFact,
+} from "@/lib/fact-extractor";
 import { parseStateFields } from "@/lib/state-utils";
 import { openrouter } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
@@ -154,6 +162,14 @@ const VERBATIM_TIER_SIZE = 20;
 const SUMMARY_TIER_SIZE = 20;
 const SUMMARY_PAIR_LIMIT = 8;
 const DIGEST_SNIPPET_LIMIT = 6;
+const DIGEST_FACT_CACHE_LIMIT = 200;
+
+interface DigestFactCacheEntry {
+  digestKey: string;
+  facts: DigestExtractedFact[];
+}
+
+const digestFactCache = new Map<string, DigestFactCacheEntry>();
 
 const CHARACTER_DETAIL_SEGMENT_IDS = [
   "appearance_visual",
@@ -197,6 +213,72 @@ function compactText(text: string, maxChars = 240): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxChars) return normalized;
   return normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd() + "…";
+}
+
+type EmbeddedPair = {
+  turnIndex: number;
+  userText: string;
+  assistantText: string;
+};
+
+function extractNewPairsForEmbedding(
+  allMessages: UIMessage[],
+  windowed: UIMessage[],
+  verbatimCount: number,
+): EmbeddedPair[] {
+  if (allMessages.length === 0 || windowed.length === 0) return [];
+
+  const nonVerbatimCount = Math.max(0, windowed.length - verbatimCount);
+  if (nonVerbatimCount === 0) return [];
+
+  const windowStart = Math.max(0, allMessages.length - windowed.length);
+  const nonVerbatimStart = windowStart;
+  const nonVerbatimEnd = nonVerbatimStart + nonVerbatimCount;
+  const nonVerbatim = allMessages.slice(nonVerbatimStart, nonVerbatimEnd);
+  const pairs: EmbeddedPair[] = [];
+  let userTurnIndex =
+    allMessages
+      .slice(0, nonVerbatimStart)
+      .filter((message) => message.role === "user").length - 1;
+  let pendingUser: { turnIndex: number; userText: string } | null = null;
+
+  for (const message of nonVerbatim) {
+    if (message.role === "user") {
+      userTurnIndex += 1;
+      const userText = getMessageText(message).trim();
+      if (userText) {
+        pendingUser = { turnIndex: userTurnIndex, userText };
+      }
+      continue;
+    }
+
+    if (message.role !== "assistant" || !pendingUser) continue;
+
+    const assistantText = getMessageText(message).trim();
+    if (!assistantText) continue;
+
+    pairs.push({
+      turnIndex: pendingUser.turnIndex,
+      userText: pendingUser.userText,
+      assistantText,
+    });
+    pendingUser = null;
+  }
+
+  return pairs;
+}
+
+function formatRagContext(pairs: EmbeddedPair[]): string {
+  const lines = pairs.map(
+    (pair) =>
+      `Turn ${pair.turnIndex}: U: ${compactText(pair.userText, 120)} | A: ${compactText(pair.assistantText, 180)}`,
+  );
+
+  return [
+    "[Relevant Past Events]",
+    "These are earlier exchanges that may be relevant to the current conversation.",
+    ...lines,
+  ].join("\n");
 }
 
 function windowMessages(messages: UIMessage[]): UIMessage[] {
@@ -367,7 +449,7 @@ function summarizePairs(
     .map((entry) => entry.text);
 }
 
-function summarizeDigest(
+function summarizeDigestLegacy(
   digestTier: IndexedMessage[],
   scores: Map<number, number>,
 ): string {
@@ -383,6 +465,103 @@ function summarizeDigest(
   return top.join(" ");
 }
 
+function extractPairsFromTier(tier: IndexedMessage[]): EmbeddedPair[] {
+  const sorted = [...tier].sort((a, b) => a.index - b.index);
+  const pairs: EmbeddedPair[] = [];
+  let pendingUser: IndexedMessage | null = null;
+
+  for (const entry of sorted) {
+    if (entry.message.role === "user") {
+      pendingUser = entry;
+      continue;
+    }
+
+    if (entry.message.role === "assistant" && pendingUser) {
+      pairs.push({
+        turnIndex: pendingUser.index,
+        userText: pendingUser.text,
+        assistantText: entry.text,
+      });
+      pendingUser = null;
+    }
+  }
+
+  return pairs;
+}
+
+function formatExtractedFacts(facts: DigestExtractedFact[]): string {
+  return facts
+    .flatMap((fact) =>
+      fact.facts.map((line) => `- Turn ${fact.turnIndex}: ${line}`),
+    )
+    .join("\n");
+}
+
+function hashText(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function buildDigestCacheKey(pairs: EmbeddedPair[]): string {
+  return pairs
+    .map((pair) => {
+      return [
+        pair.turnIndex,
+        pair.userText.length,
+        hashText(pair.userText),
+        pair.assistantText.length,
+        hashText(pair.assistantText),
+      ].join(":");
+    })
+    .join("|");
+}
+
+function cacheDigestFacts(
+  conversationId: string,
+  digestKey: string,
+  facts: DigestExtractedFact[],
+) {
+  if (digestFactCache.size >= DIGEST_FACT_CACHE_LIMIT) {
+    const oldest = digestFactCache.keys().next().value;
+    if (oldest) digestFactCache.delete(oldest);
+  }
+  digestFactCache.set(conversationId, { digestKey, facts });
+}
+
+async function summarizeDigestWithFacts(
+  digestTier: IndexedMessage[],
+  scores: Map<number, number>,
+  conversationId?: string,
+): Promise<string> {
+  if (digestTier.length === 0) return "";
+
+  const pairs = extractPairsFromTier(digestTier);
+  if (pairs.length === 0) {
+    return summarizeDigestLegacy(digestTier, scores);
+  }
+
+  const digestKey = buildDigestCacheKey(pairs);
+  const cached = conversationId ? digestFactCache.get(conversationId) : null;
+  if (cached && cached.digestKey === digestKey) {
+    return formatExtractedFacts(cached.facts);
+  }
+
+  const facts = await extractFacts(pairs);
+  if (facts.length === 0) {
+    return summarizeDigestLegacy(digestTier, scores);
+  }
+
+  if (conversationId) {
+    cacheDigestFacts(conversationId, digestKey, facts);
+  }
+
+  return formatExtractedFacts(facts);
+}
+
 function buildHistorySummary(
   digestSummary: string,
   pairSummaries: string[],
@@ -395,7 +574,7 @@ function buildHistorySummary(
   ];
 
   if (digestSummary) {
-    lines.push(`Digest (oldest context): ${digestSummary}`);
+    lines.push(`Key facts from earlier conversation:\n${digestSummary}`);
   }
   if (pairSummaries.length > 0) {
     lines.push("Summary Tier (important mid-history turns):");
@@ -405,7 +584,10 @@ function buildHistorySummary(
   return lines.join("\n");
 }
 
-function buildCompressedHistory(windowed: UIMessage[]): {
+async function buildCompressedHistory(
+  windowed: UIMessage[],
+  conversationId?: string,
+): Promise<{
   verbatimMessages: UIMessage[];
   historySummary: string | null;
   stats: {
@@ -416,7 +598,7 @@ function buildCompressedHistory(windowed: UIMessage[]): {
     promotedToVerbatim: number;
     promotedToSummary: number;
   };
-} {
+}> {
   if (windowed.length <= VERBATIM_TIER_SIZE) {
     return {
       verbatimMessages: windowed,
@@ -480,7 +662,11 @@ function buildCompressedHistory(windowed: UIMessage[]): {
   );
 
   const pairSummaries = summarizePairs(summaryTier, scores);
-  const digestSummary = summarizeDigest(digestTier, scores);
+  const digestSummary = await summarizeDigestWithFacts(
+    digestTier,
+    scores,
+    conversationId,
+  );
   const historySummary = buildHistorySummary(digestSummary, pairSummaries);
 
   return {
@@ -918,9 +1104,118 @@ interface ToolTelemetryMeta {
     promotedToSummary: number;
     hasHistorySummary: boolean;
     historySummaryChars: number;
+    depthNoteChars: number;
     effectiveContextChars: number;
     compressionRatio: number;
   };
+}
+
+function latestIsoTimestamp(...values: Array<string | undefined>): string {
+  let latest = "";
+  for (const value of values) {
+    if (!value) continue;
+    if (value > latest) latest = value;
+  }
+  return latest;
+}
+
+function trimTrailingPunctuation(text: string): string {
+  return text.trim().replace(/[.?!,;:\s]+$/g, "");
+}
+
+function dedupeNames(names: readonly string[]): string[] {
+  return names.filter(
+    (name, index, all) => name.length > 0 && all.indexOf(name) === index,
+  );
+}
+
+function selectRecentThread(
+  threads: ReturnType<typeof parseMarkdownToStructured>["openThreads"],
+) {
+  return threads
+    .filter(
+      (thread) =>
+        (thread.status === "active" || thread.status === "evolved") &&
+        (thread.hook || thread.description),
+    )
+    .sort((a, b) => {
+      const aTs = latestIsoTimestamp(a.lastReferencedAt, a.createdAt);
+      const bTs = latestIsoTimestamp(b.lastReferencedAt, b.createdAt);
+      return bTs.localeCompare(aTs);
+    })[0];
+}
+
+function selectRecentFact(
+  facts: ReturnType<typeof parseMarkdownToStructured>["hardFacts"],
+) {
+  return facts
+    .filter((fact) => !fact.superseded && (fact.summary || fact.fact))
+    .sort((a, b) => {
+      const aTs = latestIsoTimestamp(
+        a.lastConfirmedAt,
+        a.establishedAt,
+        a.createdAt,
+      );
+      const bTs = latestIsoTimestamp(
+        b.lastConfirmedAt,
+        b.establishedAt,
+        b.createdAt,
+      );
+      return bTs.localeCompare(aTs);
+    })[0];
+}
+
+function buildEventLine(
+  thread: ReturnType<typeof selectRecentThread>,
+  fact: ReturnType<typeof selectRecentFact>,
+): string | null {
+  const eventText = thread?.hook ?? thread?.description;
+  if (eventText) {
+    return `Active thread: ${compactText(trimTrailingPunctuation(eventText), 90)}.`;
+  }
+
+  const factText = fact?.summary ?? fact?.fact;
+  if (factText) {
+    return `Recent fact: ${compactText(trimTrailingPunctuation(factText), 90)}.`;
+  }
+
+  return null;
+}
+
+function buildDepthNote(
+  storyState: string,
+  presentEntityIds: readonly string[],
+): string | null {
+  const structured = parseMarkdownToStructured(storyState);
+  const atmosphere = trimTrailingPunctuation(structured.scene.atmosphere || "");
+  const presentNames = dedupeNames(
+    presentEntityIds.map((id) =>
+      resolveEntityName(structured.entities, id).trim(),
+    ),
+  );
+
+  if (!atmosphere && presentNames.length === 0) {
+    return null;
+  }
+
+  const recentThread = selectRecentThread(structured.openThreads);
+  const recentFact = selectRecentFact(structured.hardFacts);
+
+  const sceneLine = atmosphere ? `Scene context: ${atmosphere}.` : null;
+  const presentLine =
+    presentNames.length > 0 ? `Present: ${presentNames.join(", ")}.` : null;
+  const eventLine = buildEventLine(recentThread, recentFact);
+
+  const note = [
+    sceneLine,
+    presentLine,
+    eventLine,
+    "Narration: one beat per turn. Ground in sensory detail. Reference appearance naturally.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return note ? `[${note}]` : null;
 }
 
 function estimateMessagesChars(messages: readonly UIMessage[]): number {
@@ -1035,6 +1330,7 @@ function streamCallbacks(elapsed: () => number, meta: ToolTelemetryMeta) {
 
 export async function POST(req: Request) {
   const {
+    conversationId,
     messages,
     systemPrompt: _rawSystemPrompt,
     storyState,
@@ -1043,6 +1339,7 @@ export async function POST(req: Request) {
     lastIncludedAt,
     customSegments,
   } = (await req.json()) as {
+    conversationId?: string | null;
     messages: UIMessage[];
     systemPrompt: string;
     storyState: string;
@@ -1084,7 +1381,12 @@ export async function POST(req: Request) {
   } else {
     logWarn("/api/chat: could not resolve primary user from Cast[2]");
   }
-  logRequest("/api/chat", { messages: windowed, storyState, settings });
+  logRequest("/api/chat", {
+    conversationId,
+    messages: windowed,
+    storyState,
+    settings,
+  });
 
   try {
     const modelId = settings.model ?? DEFAULT_MODEL_ID;
@@ -1093,22 +1395,88 @@ export async function POST(req: Request) {
       getModelEntry(DEFAULT_MODEL_ID)?.providers ??
       [];
 
-    const compressed = buildCompressedHistory(windowed);
+    const compressed = await buildCompressedHistory(
+      windowed,
+      conversationId ?? undefined,
+    );
     logCompression(compressed.stats);
+    if (compressed.stats.digest > 0) {
+      log(
+        `  \x1b[2m📝 fact extraction: ${compressed.stats.digest} digest messages processed\x1b[0m`,
+        "info",
+      );
+    }
+
+    const pairsToEmbed = extractNewPairsForEmbedding(
+      messages,
+      windowed,
+      compressed.stats.verbatim,
+    );
+    if (pairsToEmbed.length > 0 && conversationId) {
+      void embedMessagePairs(conversationId, pairsToEmbed);
+    }
+
+    let ragContext: string | null = null;
+    let ragCount = 0;
+    if (conversationId && windowed.length > VERBATIM_TIER_SIZE) {
+      const similar = await retrieveSimilarPairs(
+        conversationId,
+        ctx.currentUserMessage,
+        5,
+      );
+      ragCount = similar.length;
+      if (similar.length > 0) {
+        ragContext = formatRagContext(similar);
+      }
+    }
+
     const windowedChars = estimateMessagesChars(windowed);
     const verbatimChars = estimateMessagesChars(compressed.verbatimMessages);
     const historySummaryChars = compressed.historySummary?.length ?? 0;
-    const effectiveContextChars = verbatimChars + historySummaryChars;
+    const modelMessages = await convertToModelMessages(
+      compressed.verbatimMessages,
+      { ignoreIncompleteToolCalls: true },
+    );
+    const depthNote = buildDepthNote(storyState, presentEntityIds ?? []);
+    let depthNoteChars = 0;
+    if (depthNote && modelMessages.length >= 3) {
+      const insertAt = modelMessages.length - 2;
+      modelMessages.splice(insertAt, 0, {
+        role: "system",
+        content: depthNote,
+      });
+      depthNoteChars = depthNote.length;
+      log(
+        `  \x1b[2m📌 depth-2 note injected (${depthNote.length} chars)\x1b[0m`,
+        "info",
+      );
+    }
+    const historySummaryMessage = compressed.historySummary
+      ? [{ role: "system" as const, content: compressed.historySummary }]
+      : [];
+    const ragSummaryMessage =
+      ragContext && modelMessages.length < 5
+        ? [{ role: "system" as const, content: ragContext }]
+        : [];
+    if (ragContext && modelMessages.length >= 5) {
+      const insertAt = modelMessages.length - 4;
+      modelMessages.splice(insertAt, 0, {
+        role: "system",
+        content: ragContext,
+      });
+    }
+    if (ragContext) {
+      log(
+        `  \x1b[2m🔍 RAG: ${ragCount} relevant pairs injected (${ragContext.length} chars)\x1b[0m`,
+        "info",
+      );
+    }
+    const effectiveContextChars =
+      verbatimChars + historySummaryChars + depthNoteChars;
     const compressionRatio =
       windowedChars > 0
         ? Number((effectiveContextChars / windowedChars).toFixed(4))
         : 1;
-    const modelMessages = await convertToModelMessages(
-      compressed.verbatimMessages,
-    );
-    const historySummaryMessage = compressed.historySummary
-      ? [{ role: "system" as const, content: compressed.historySummary }]
-      : [];
     const mustUseStoryContext =
       /\b(relationship|relationships|thread|threads|hard fact|hard facts|recall|remember)\b/i.test(
         ctx.currentUserMessage,
@@ -1116,6 +1484,7 @@ export async function POST(req: Request) {
     const requestMessages = [
       ...systemMessages,
       ...historySummaryMessage,
+      ...ragSummaryMessage,
       ...modelMessages,
     ] as unknown as ModelMessage[];
     const result = streamText({
@@ -1158,6 +1527,7 @@ export async function POST(req: Request) {
           promotedToSummary: compressed.stats.promotedToSummary,
           hasHistorySummary: Boolean(compressed.historySummary),
           historySummaryChars,
+          depthNoteChars,
           effectiveContextChars,
           compressionRatio,
         },

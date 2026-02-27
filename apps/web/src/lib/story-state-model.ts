@@ -1121,10 +1121,28 @@ function parseRawSection(
 
 // --- Entity registry builder (extracted for complexity) ---
 
+/** Template placeholders that should never become standalone entities. */
+const TEMPLATE_PLACEHOLDER_RE = /^\{\{\s*(user|char)\s*\}\}$/i;
+
+function isTemplatePlaceholder(name: string): boolean {
+  return TEMPLATE_PLACEHOLDER_RE.test(name);
+}
+
+/** Create entity for a name unless it is a template placeholder. */
+function registerName(
+  entities: Entity[],
+  name: string,
+  isPlayer = false,
+): void {
+  if (!isTemplatePlaceholder(name))
+    findOrCreateEntity(entities, name, isPlayer);
+}
+
 function buildEntityRegistry(raw: RawSections): Entity[] {
   const entities: Entity[] = [];
 
   for (const c of raw.cast) {
+    if (isTemplatePlaceholder(c.name)) continue;
     findOrCreateEntity(entities, c.name, c.isPlayer);
     const entity = findEntityByName(entities, c.name)!;
     entity.description = c.description;
@@ -1132,17 +1150,17 @@ function buildEntityRegistry(raw: RawSections): Entity[] {
   }
 
   for (const r of raw.relationships) {
-    findOrCreateEntity(entities, r.from);
-    findOrCreateEntity(entities, r.to);
+    registerName(entities, r.from);
+    registerName(entities, r.to);
   }
   for (const a of raw.appearance) {
-    findOrCreateEntity(entities, a.character);
+    registerName(entities, a.character);
   }
   for (const d of raw.demeanor) {
-    if (d.character) findOrCreateEntity(entities, d.character);
+    if (d.character) registerName(entities, d.character);
   }
   for (const name of raw.scene.presentNames) {
-    findOrCreateEntity(entities, name);
+    registerName(entities, name);
   }
 
   return entities;

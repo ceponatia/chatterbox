@@ -31,6 +31,9 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `liveConfig` sends `customSegments`, `lastIncludedAt`, `presentEntityIds`, and settings to `/api/chat`.
 - `/api/chat` assembles the final prompt, appends hard player-control guardrails, and logs assembly behavior.
 - `/api/chat` uses a larger context window budget for compression (`MAX_MESSAGES=60`, `VERBATIM_TIER_SIZE=20`, `SUMMARY_TIER_SIZE=20`) to improve 10-15 turn recall.
+- `/api/chat` injects a compact depth-2 system note (when atmosphere/presence data exists) immediately before the last two model messages to reinforce scene grounding, present characters, and one-beat sensory pacing.
+- `/api/chat` also performs pgvector RAG retrieval: user+assistant turn pairs are embedded in the background and top similar older turns are injected as a depth-4 system note when available.
+- Digest-tier compression in `/api/chat` uses `src/lib/fact-extractor.ts` to extract structured facts from older turns, with legacy sentence summarization as fallback on extraction failure.
 - Default assembly settings in `src/lib/defaults.ts` use `tokenBudget=4500` and `maxTokens=1500`.
 - Prompt defaults enforce one conversational beat per turn and require sensory/body-language grounding in each response.
 
@@ -53,6 +56,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - Message action `Delete all after` truncates client messages and triggers `/api/state-rollback`.
 - Rollback returns corrected state plus cascade resets.
 - Truncation re-aligns `lastPipelineTurn` with remaining user turns.
+- Rollback also prunes `MessageEmbedding` rows for turns beyond the truncation boundary.
 
 ### UI behavior
 
@@ -65,6 +69,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/lib/model-registry.ts` defines allowed model IDs and provider ordering.
 - OpenRouter client config lives in `src/lib/openrouter.ts` (`extraBody.zdr = true`).
 - `/api/chat` uses `stepCountIs(3)` to preserve multi-character tool-call headroom.
+- Message-pair embedding/retrieval lives in `src/lib/message-embeddings.ts` and uses `openai/text-embedding-3-small`.
 
 ## Key files
 

@@ -43,3 +43,7 @@ model StateHistoryEntry {
 
   @@index([conversationId, timestamp])
 }
+
+// MessageEmbedding table is managed via raw SQL migration (pgvector).
+// Not modeled here because Prisma does not support the `vector` column type.
+// See migration 202602260001_message_embeddings for the schema.

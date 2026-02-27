@@ -20,6 +20,7 @@ interface Params {
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   onConfigSync: (config: {
+    conversationId?: string | null;
     systemPrompt: string;
     storyState: string;
     settings: Settings;
@@ -55,6 +56,7 @@ export function useConversationManager({
       setMessages(conv.messages);
       hydrateFields(fieldsRef.current, conv);
       syncRef.current({
+        conversationId: conv.id,
         systemPrompt: conv.systemPrompt,
         storyState: conv.storyState,
         settings: conv.settings,
@@ -78,7 +80,7 @@ export function useConversationManager({
     syncStatus.markSystemPromptPending,
   );
   useAutoTitle(activeConvRef, messages, setConversations);
-  useConfigSyncEffect(fields, onConfigSync);
+  useConfigSyncEffect(fields, activeConvId, onConfigSync);
 
   const actions = useConversationActions(
     activeConvId,
@@ -118,10 +120,12 @@ function useLatestConfigRefs(
 
 function useConfigSyncEffect(
   fields: ReturnType<typeof useFieldSetters>,
+  activeConvId: string | null,
   onConfigSync: Params["onConfigSync"],
 ) {
   useEffect(() => {
     onConfigSync({
+      conversationId: activeConvId,
       systemPrompt: fields.systemPrompt,
       storyState: fields.storyState,
       settings: fields.settings,
@@ -134,6 +138,7 @@ function useConfigSyncEffect(
     fields.settings,
     fields.customSegments,
     fields.structuredState,
+    activeConvId,
     onConfigSync,
   ]);
 }

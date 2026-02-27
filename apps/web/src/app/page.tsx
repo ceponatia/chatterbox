@@ -41,6 +41,7 @@ import { scanPresenceFromAssistantMessage } from "@/lib/presence-scanner";
 
 // Module-level config that the transport body function reads at request time.
 const liveConfig = {
+  conversationId: null as string | null,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   storyState: DEFAULT_STORY_STATE,
   settings: DEFAULT_SETTINGS as Settings,
@@ -60,6 +61,7 @@ function useLiveChatState() {
       new DefaultChatTransport({
         api: "/api/chat",
         body: () => ({
+          conversationId: liveConfig.conversationId,
           systemPrompt: liveConfig.systemPrompt,
           storyState: liveConfig.storyState,
           settings: liveConfig.settings,
@@ -76,6 +78,7 @@ function useLiveChatState() {
 
   const syncConfig = useCallback(
     (c: {
+      conversationId?: string | null;
       systemPrompt: string;
       storyState: string;
       settings: Settings;
@@ -83,6 +86,8 @@ function useLiveChatState() {
       customSegments?: SerializedSegment[] | null;
       presentEntityIds?: string[];
     }) => {
+      if (c.conversationId !== undefined)
+        liveConfig.conversationId = c.conversationId;
       liveConfig.systemPrompt = c.systemPrompt;
       liveConfig.storyState = c.storyState;
       liveConfig.settings = c.settings;

@@ -418,9 +418,20 @@ export function useAutoSave(
     const scheduled = runAutoSaveCycle(args);
     if (!scheduled) return;
     return () => clearSaveTimeout(saveTimeoutRef);
+    // `fields` is read in the effect body but intentionally excluded from deps
+    // to avoid re-firing on every render (new object identity each time).
+    // Individual field values that affect save decisions are listed instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     messages,
-    fields,
+    fields.systemPrompt,
+    fields.storyState,
+    fields.settings,
+    fields.customSegments,
+    fields.structuredState,
+    fields.lastIncludedAt,
+    fields.lastPipelineTurn,
+    fields.lastSummarizedTurn,
     activeConvId,
     activeConvRef,
     activeConvPersistedRef,

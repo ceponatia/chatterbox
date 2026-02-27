@@ -69,6 +69,7 @@ function shouldSkipRollback(
 async function requestRollback(
   context: TruncateContext,
   storyState: string,
+  conversationId: string,
   model: string,
 ): Promise<StateRollbackResponse | null> {
   const response = await fetch("/api/state-rollback", {
@@ -78,6 +79,7 @@ async function requestRollback(
       deletedMessages: context.removedMessages,
       remainingMessages: context.remainingMessages.slice(-20),
       currentStoryState: storyState,
+      conversationId,
       turnNumber: context.turnNumber,
       model,
     }),
@@ -115,14 +117,22 @@ export function useDeleteAfterRollback(params: Params) {
       if (!context) return;
 
       setLastPipelineTurn(context.turnNumber);
-      if (shouldSkipRollback(storyState, activeConvId)) return;
+      const conversationId = activeConvId;
+      if (!conversationId || shouldSkipRollback(storyState, conversationId)) {
+        return;
+      }
 
       try {
-        const data = await requestRollback(context, storyState, model);
-        if (!data || !activeConvId) return;
+        const data = await requestRollback(
+          context,
+          storyState,
+          conversationId,
+          model,
+        );
+        if (!data) return;
 
         updateStoryStateFromSummary(data.newState, data.turnNumber);
-        await appendStateHistoryEntry(activeConvId, {
+        await appendStateHistoryEntry(conversationId, {
           id: generateId(),
           timestamp: new Date().toISOString(),
           turnRange: [context.turnNumber, context.turnNumber],

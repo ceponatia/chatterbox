@@ -12,6 +12,7 @@ import { determineDisposition } from "@/lib/state-pipeline/auto-accept";
 import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
 import { validateState } from "@/lib/state-pipeline/validation";
 import type { ExtractedFact } from "@/lib/state-history";
+import { prisma } from "@/lib/prisma";
 
 interface RollbackResult {
   updatedState: string;
@@ -29,8 +30,23 @@ interface RollbackRequestBody {
   deletedMessages: UIMessage[];
   remainingMessages: UIMessage[];
   currentStoryState: string;
+  conversationId?: string;
   turnNumber: number;
   model?: string;
+}
+
+async function pruneEmbeddingsForRollback(
+  conversationId: string | undefined,
+  turnNumber: number,
+): Promise<void> {
+  if (!conversationId) return;
+
+  const lastRemainingTurnIndex = turnNumber - 1;
+  await prisma.$queryRawUnsafe(
+    `DELETE FROM "MessageEmbedding" WHERE "conversationId" = $1 AND "turnIndex" > $2`,
+    conversationId,
+    lastRemainingTurnIndex,
+  );
 }
 
 const PASS_VALIDATION = {
@@ -255,6 +271,12 @@ async function runRollbackPipeline(body: RollbackRequestBody) {
   );
   if (finalResult.disposition === "retried") return noOpRollbackResponse(body);
 
+  try {
+    await pruneEmbeddingsForRollback(body.conversationId, body.turnNumber);
+  } catch (error) {
+    logWarn("/api/state-rollback: failed to prune message embeddings", error);
+  }
+
   return Response.json({
     newState: finalResult.updatedState,
     extractedFacts: finalResult.changes,
@@ -273,6 +295,7 @@ export async function POST(req: Request) {
       deletedCount: body.deletedMessages.length,
       remainingCount: body.remainingMessages.length,
       turnNumber: body.turnNumber,
+      conversationId: body.conversationId,
       model: body.model,
     });
 

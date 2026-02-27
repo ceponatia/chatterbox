@@ -5,4 +5,9 @@ export default defineConfig({
   migrations: {
     path: "infra/migrations",
   },
+  datasource: {
+    url:
+      process.env.DATABASE_URL ||
+      "postgresql://chatterbox:chatterbox@localhost:5432/chatterbox",
+  },
 });
