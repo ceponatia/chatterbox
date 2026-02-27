@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { RotateCcw, Upload, ChevronDown, ChevronRight } from "lucide-react";
-import { DeferredTextarea } from "./deferred-inputs";
+import { DeferredInput, DeferredTextarea } from "./deferred-inputs";
+import type { Entity } from "@/lib/story-state-model";
 
 interface SystemPromptEditorProps {
   value: string;
@@ -19,7 +20,16 @@ interface SystemPromptEditorProps {
   onReset: () => void;
   baseline: string | null;
   segments: SerializedSegment[] | null;
-  onSegmentUpdate: (segmentId: string, newContent: string) => void;
+  onSegmentUpdate: (
+    segmentId: string,
+    patch: { content?: string; omittedSummary?: string },
+  ) => void;
+  entities: Entity[];
+  onCharacterFileImport: (
+    content: string,
+    entityId: string,
+    entityName: string,
+  ) => void;
   lastIncludedAt: Record<string, number>;
   turnNumber: number;
 }
@@ -34,6 +44,8 @@ function policyLabel(policy: SerializedPolicy): string {
       return `on topic`;
     case "on_state_field":
       return `on state: ${policy.field}`;
+    case "on_presence":
+      return "on presence";
   }
 }
 
@@ -49,6 +61,8 @@ function policyVariant(
       return "outline";
     case "on_state_field":
       return "outline";
+    case "on_presence":
+      return "outline";
   }
 }
 
@@ -57,11 +71,13 @@ function SegmentCard({
   onUpdate,
   lastIncluded,
   turnNumber,
+  entities,
 }: {
   segment: SerializedSegment;
-  onUpdate: (content: string) => void;
+  onUpdate: (patch: { content?: string; omittedSummary?: string }) => void;
   lastIncluded: number | undefined;
   turnNumber: number;
+  entities: Entity[];
 }) {
   const uid = useId();
   const contentId = `segment-${uid}`;
@@ -69,6 +85,11 @@ function SegmentCard({
   const turnsAgo =
     lastIncluded !== undefined ? turnNumber - lastIncluded : undefined;
   const isStale = turnsAgo !== undefined && turnsAgo > 5;
+  const linkedEntityId =
+    segment.policy.type === "on_presence" ? segment.policy.entityId : null;
+  const linkedEntity = linkedEntityId
+    ? entities.find((entity) => entity.id === linkedEntityId)
+    : null;
 
   return (
     <div className="rounded-md border bg-card">
@@ -123,12 +144,33 @@ function SegmentCard({
                 {segment.policy.keywords.length > 4 ? "…" : ""}
               </span>
             )}
+            {segment.policy.type === "on_presence" && (
+              <span
+                className="text-[10px] text-muted-foreground truncate max-w-40"
+                title={`Linked entity: ${linkedEntity?.name ?? linkedEntityId}`}
+              >
+                linked: {linkedEntity?.name ?? linkedEntityId}
+              </span>
+            )}
           </div>
           <DeferredTextarea
             value={segment.content}
-            onCommit={(content) => onUpdate(content)}
+            onCommit={(content) => onUpdate({ content })}
             className="min-h-24 font-mono text-[11px] leading-relaxed"
           />
+          <div className="mt-2 flex flex-col gap-1">
+            <Label className="text-[10px] text-muted-foreground">
+              Omitted Summary (shown when this segment is skipped)
+            </Label>
+            <DeferredInput
+              value={segment.omittedSummary ?? ""}
+              onCommit={(omittedSummary) =>
+                onUpdate({ omittedSummary: omittedSummary.trim() || undefined })
+              }
+              className="h-7 text-[11px]"
+              placeholder="Optional one-line summary"
+            />
+          </div>
         </div>
       )}
     </div>
@@ -143,10 +185,14 @@ export function SystemPromptEditor({
   baseline,
   segments,
   onSegmentUpdate,
+  entities,
+  onCharacterFileImport,
   lastIncludedAt,
   turnNumber,
 }: SystemPromptEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const characterFileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedEntityId, setSelectedEntityId] = useState("");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -155,6 +201,23 @@ export function SystemPromptEditor({
     reader.onload = () => {
       if (typeof reader.result === "string") {
         onImport(reader.result);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleCharacterFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    const entity = entities.find((item) => item.id === selectedEntityId);
+    if (!file || !entity) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onCharacterFileImport(reader.result, entity.id, entity.name);
       }
     };
     reader.readAsText(file);
@@ -183,6 +246,35 @@ export function SystemPromptEditor({
             className="hidden"
             onChange={handleFileChange}
           />
+          <input
+            ref={characterFileInputRef}
+            type="file"
+            accept=".md"
+            className="hidden"
+            onChange={handleCharacterFileChange}
+          />
+          <select
+            className="h-8 rounded border bg-background px-2 text-[11px]"
+            value={selectedEntityId}
+            onChange={(event) => setSelectedEntityId(event.target.value)}
+          >
+            <option value="">Link character file…</option>
+            {entities.map((entity) => (
+              <option key={entity.id} value={entity.id}>
+                {entity.name || entity.id}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => characterFileInputRef.current?.click()}
+            disabled={!selectedEntityId}
+            title="Import character behavior file and link to selected entity"
+          >
+            <Upload className="mr-1 h-3 w-3" />
+            Character
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -221,9 +313,10 @@ export function SystemPromptEditor({
             <SegmentCard
               key={seg.id}
               segment={seg}
-              onUpdate={(content) => onSegmentUpdate(seg.id, content)}
+              onUpdate={(patch) => onSegmentUpdate(seg.id, patch)}
               lastIncluded={lastIncludedAt[seg.id]}
               turnNumber={turnNumber}
+              entities={entities}
             />
           ))}
           <Separator className="my-1" />
@@ -231,8 +324,8 @@ export function SystemPromptEditor({
             Badges: <strong>always</strong> = every turn ·{" "}
             <strong>every N</strong> = periodic · <strong>on topic</strong> =
             keyword/semantic match · <strong>on state</strong> = when state
-            field exists. Green = recently included · Amber = stale (&gt;5
-            turns).
+            field exists · <strong>on presence</strong> = linked entity is in
+            scene. Green = recently included · Amber = stale (&gt;5 turns).
           </p>
         </div>
       ) : (

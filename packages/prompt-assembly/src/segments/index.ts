@@ -5,6 +5,7 @@
 
 import { PromptAssembler } from "../assembler";
 import { coreRulesSegment } from "./core-rules";
+import { narrationGuidelinesSegment } from "./narration-guidelines";
 import { outputFormatSegment } from "./output-format";
 import { settingPremiseSegment } from "./setting-premise";
 import { characterIdentitySegment } from "./character-identity";
@@ -22,6 +23,7 @@ import type { PromptSegment } from "../types";
 /** All default segments in registration order. */
 export const DEFAULT_SEGMENTS: readonly PromptSegment[] = [
   coreRulesSegment,
+  narrationGuidelinesSegment,
   outputFormatSegment,
   settingPremiseSegment,
   characterIdentitySegment,
@@ -47,6 +49,7 @@ export function createDefaultAssembler(): PromptAssembler {
 
 // Re-export individual segments for selective use
 export { coreRulesSegment } from "./core-rules";
+export { narrationGuidelinesSegment } from "./narration-guidelines";
 export { outputFormatSegment } from "./output-format";
 export { settingPremiseSegment } from "./setting-premise";
 export { characterIdentitySegment } from "./character-identity";

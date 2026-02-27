@@ -27,6 +27,7 @@ export { matchesTopicKeywords } from "./topic-detector";
 export { DEFAULT_SEGMENTS, createDefaultAssembler } from "./segments";
 export {
   coreRulesSegment,
+  narrationGuidelinesSegment,
   outputFormatSegment,
   settingPremiseSegment,
   characterIdentitySegment,

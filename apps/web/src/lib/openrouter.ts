@@ -8,6 +8,6 @@ export const openrouter = createOpenRouter({
     "X-Title": "Chatterbox",
   },
   extraBody: {
-    zdr: true,
+    zdr: false,
   },
 });

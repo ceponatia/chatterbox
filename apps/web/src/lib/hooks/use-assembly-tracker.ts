@@ -25,16 +25,16 @@ export function useAssemblyTracker({
   lastIncludedAt,
   setLastIncludedAt,
   customSegments,
+  presentEntityIds,
 }: {
   messages: UIMessage[];
   storyState: string;
   lastIncludedAt: Record<string, number>;
   setLastIncludedAt: (v: Record<string, number>) => void;
   customSegments?: SerializedSegment[] | null;
+  presentEntityIds?: readonly string[];
 }) {
   const prevTurnRef = useRef(0);
-  const lastIncludedAtRef = useRef(lastIncludedAt);
-  lastIncludedAtRef.current = lastIncludedAt;
 
   useEffect(() => {
     const turnNumber = messages.filter((m) => m.role === "user").length;
@@ -48,9 +48,10 @@ export function useAssemblyTracker({
 
     const ctx: AssemblyContext = {
       turnNumber,
-      lastIncludedAt: lastIncludedAtRef.current,
+      lastIncludedAt,
       currentUserMessage,
       stateFields: parseStateFields(storyState),
+      presentEntityIds,
       tokenBudget: 2500,
     };
 
@@ -59,10 +60,17 @@ export function useAssemblyTracker({
       : defaultAssembler;
     const result = assembler.assemble(ctx);
 
-    const updated = { ...lastIncludedAtRef.current };
+    const updated = { ...lastIncludedAt };
     for (const id of result.included) {
       updated[id] = turnNumber;
     }
     setLastIncludedAt(updated);
-  }, [messages, storyState, setLastIncludedAt, customSegments]);
+  }, [
+    messages,
+    storyState,
+    setLastIncludedAt,
+    customSegments,
+    lastIncludedAt,
+    presentEntityIds,
+  ]);
 }

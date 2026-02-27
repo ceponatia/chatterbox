@@ -61,6 +61,9 @@ function evaluatePolicy(
       return value !== undefined && value.trim().length > 0;
     }
 
+    case "on_presence":
+      return ctx.presentEntityIds?.includes(policy.entityId) ?? false;
+
     case "custom":
       return policy.evaluate(ctx);
   }
@@ -152,9 +155,12 @@ export class PromptAssembler {
       const seg = this.segments.get(o.id);
       if (!seg) continue;
       const cat = seg.category;
+      const label = seg.omittedSummary
+        ? `${seg.label} (${seg.omittedSummary})`
+        : seg.label;
       const list = skippedByCategory.get(cat);
-      if (list) list.push(seg.label);
-      else skippedByCategory.set(cat, [seg.label]);
+      if (list) list.push(label);
+      else skippedByCategory.set(cat, [label]);
     }
 
     if (skippedByCategory.size > 0) {

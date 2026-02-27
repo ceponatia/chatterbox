@@ -19,6 +19,7 @@ export type InjectionPolicy =
   | { readonly type: "every_n"; readonly n: number }
   | { readonly type: "on_topic"; readonly keywords: readonly string[] }
   | { readonly type: "on_state_field"; readonly field: string }
+  | { readonly type: "on_presence"; readonly entityId: string }
   | {
       readonly type: "custom";
       readonly evaluate: (ctx: AssemblyContext) => boolean;
@@ -38,7 +39,8 @@ export type SerializedPolicy =
   | { type: "always" }
   | { type: "every_n"; n: number }
   | { type: "on_topic"; keywords: string[] }
-  | { type: "on_state_field"; field: string };
+  | { type: "on_state_field"; field: string }
+  | { type: "on_presence"; entityId: string };
 
 export interface SerializedSegment {
   id: string;
@@ -49,6 +51,7 @@ export interface SerializedSegment {
   order: number;
   tokenEstimate: number;
   category: string;
+  omittedSummary?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,4 +85,7 @@ export interface PromptSegment {
    * e.g. "character", "rules", "world", "style"
    */
   readonly category: string;
+
+  /** Optional summary shown when this segment is omitted from current turn. */
+  readonly omittedSummary?: string;
 }

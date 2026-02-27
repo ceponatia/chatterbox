@@ -88,3 +88,8 @@ Before merging socket changes, verify:
 - `pnpm --filter @chatterbox/sockets typecheck`
 - `pnpm --filter @chatterbox/sockets lint`
 - app still compiles when consuming from `@chatterbox/sockets` root exports only
+
+## Current AssemblyContext contract notes
+
+- `AssemblyContext.presentEntityIds?: readonly string[]` carries scene presence IDs for presence-driven segment policies.
+- Keep this field optional at the boundary so consumers can omit it without breaking existing behavior.

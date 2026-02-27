@@ -6,15 +6,20 @@ import { UIMessage } from "ai";
 import { User, BookOpen, Pencil, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ConfirmDeleteButton } from "@/components/ui/confirm-delete-button";
+import {
+  ConfirmDeleteButton,
+  ConfirmTruncateButton,
+} from "@/components/ui/confirm-delete-button";
 import { ReasoningBlock } from "./reasoning-block";
 
 export interface MessageBubbleProps {
   message: UIMessage;
   canRetry: boolean;
+  isLastMessage: boolean;
   isLoading: boolean;
   onEdit: (id: string, newText: string) => void;
   onDelete: (id: string) => void;
+  onDeleteAfter: (id: string) => void;
   onRetry: (id: string) => void;
   onEditAndGenerate: (id: string, newText: string) => void;
 }
@@ -33,9 +38,11 @@ function getTextContent(message: UIMessage): string {
 export function MessageBubble({
   message,
   canRetry,
+  isLastMessage,
   isLoading,
   onEdit,
   onDelete,
+  onDeleteAfter,
   onRetry,
   onEditAndGenerate,
 }: MessageBubbleProps) {
@@ -70,6 +77,7 @@ export function MessageBubble({
           <ActionButtons
             isUser={isUser}
             canRetry={canRetry}
+            canTruncate={!isLastMessage}
             messageId={message.id}
             onEdit={() => {
               setEditText(text);
@@ -77,6 +85,7 @@ export function MessageBubble({
             }}
             onRetry={onRetry}
             onDelete={onDelete}
+            onDeleteAfter={onDeleteAfter}
           />
         )}
         {reasoningParts.length > 0 && (
@@ -136,6 +145,11 @@ export function MessageBubble({
                 Regenerate
               </Button>
             )}
+            {!isLastMessage && (
+              <ConfirmTruncateButton
+                onConfirm={() => onDeleteAfter(message.id)}
+              />
+            )}
             <ConfirmDeleteButton onConfirm={() => onDelete(message.id)} />
           </div>
         )}
@@ -144,21 +158,29 @@ export function MessageBubble({
   );
 }
 
-function ActionButtons({
-  isUser,
-  canRetry,
-  messageId,
-  onEdit,
-  onRetry,
-  onDelete,
-}: {
+interface ActionButtonsProps {
   isUser: boolean;
   canRetry: boolean;
+  canTruncate: boolean;
   messageId: string;
   onEdit: () => void;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
-}) {
+  onDeleteAfter: (id: string) => void;
+}
+
+function ActionButtons(props: ActionButtonsProps) {
+  const {
+    isUser,
+    canRetry,
+    canTruncate,
+    messageId,
+    onEdit,
+    onRetry,
+    onDelete,
+    onDeleteAfter,
+  } = props;
+
   return (
     <div
       className={cn(
@@ -185,6 +207,9 @@ function ActionButtons({
         >
           <RotateCcw className="h-3 w-3" />
         </Button>
+      )}
+      {canTruncate && (
+        <ConfirmTruncateButton onConfirm={() => onDeleteAfter(messageId)} />
       )}
       <ConfirmDeleteButton onConfirm={() => onDelete(messageId)} />
     </div>

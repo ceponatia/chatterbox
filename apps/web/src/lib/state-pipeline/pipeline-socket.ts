@@ -27,6 +27,11 @@ import {
 import { openrouter } from "@/lib/openrouter";
 import type { ExtractedFact } from "@/lib/state-history";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
+import {
+  parseMarkdownToStructured,
+  structuredToMarkdown,
+  reconcileLifecycleState,
+} from "@/lib/story-state-model";
 
 // ---------------------------------------------------------------------------
 // Message windowing
@@ -93,6 +98,9 @@ Review EVERY section of the current story state against what is happening in the
 ### Scene
 - Overwrite to reflect the CURRENT location, who is present, and atmosphere
 - This section should always match what is happening RIGHT NOW in the conversation
+- "Who is present" means physically present in the current scene only
+- If someone arrives, add them and emit character_enters
+- If someone leaves, remove them and emit character_leaves
 
 ### Current Demeanor
 - Re-evaluate each character's mood and energy based on recent events
@@ -102,6 +110,7 @@ Review EVERY section of the current story state against what is happening in the
 - REMOVE threads that have been resolved or are no longer relevant
 - UPDATE threads whose nature has evolved
 - ADD new unresolved plot hooks or tensions
+- For each thread, use a concise resolution hint internally (what outcome would resolve it)
 - Aim for 3-8 active threads maximum
 - Each thread must end with (added: YYYY-MM-DD) — preserve original dates for kept items, use today's date for new ones
 
@@ -129,7 +138,7 @@ Output ONLY valid JSON with this exact structure:
   "updatedState": "## Cast\\n...\\n\\n## Relationships\\n...\\n\\n## Characters\\n\\n### CharName\\n\\n#### Appearance\\n\\n- **key**: values\\n...\\n\\n## Scene\\n...\\n\\n## Current Demeanor\\n...\\n\\n## Open Threads\\n...\\n\\n## Hard Facts\\n...",
   "changes": [
     {
-      "type": "scene_change|relationship_shift|appearance_change|mood_change|new_thread|thread_resolved|hard_fact|hard_fact_superseded|cast_change",
+      "type": "scene_change|relationship_shift|appearance_change|mood_change|new_thread|thread_resolved|thread_evolved|hard_fact|hard_fact_superseded|cast_change|character_enters|character_leaves",
       "detail": "concise one-line description",
       "sourceTurn": 0,
       "confidence": 0.9
@@ -138,10 +147,95 @@ Output ONLY valid JSON with this exact structure:
 }
 
 - "updatedState" must be the COMPLETE story state as a markdown string with all 7 sections.
-- "changes" lists every modification you made, including removals. Use "hard_fact_superseded" for removed facts and "thread_resolved" for removed threads.
+- "changes" lists every modification you made, including removals. Use "hard_fact_superseded" for removed facts, "thread_resolved" for removed threads, and "thread_evolved" when one thread transforms into another.
 - If nothing needs to change, return the current state unchanged and an empty changes array.
 - sourceTurn is the approximate user-message count where the change originated.
 - confidence is 0.0-1.0 for how certain you are.`;
+
+const HARD_FACT_REVIEW_WINDOW = 12;
+const THREAD_STALE_DAYS = 30;
+
+function toDay(iso: string | undefined): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+function includesSnippet(haystack: string, detail: string): boolean {
+  const snippet = detail.trim().toLowerCase().slice(0, 28);
+  return snippet.length > 0 && haystack.includes(snippet);
+}
+
+function applyLifecycleStage(
+  previousState: string,
+  candidateState: string,
+  changes: ExtractedFact[],
+  windowedMessages: readonly SocketMessage[],
+): string {
+  const previous = parseMarkdownToStructured(previousState);
+  const parsed = parseMarkdownToStructured(candidateState);
+  const state = reconcileLifecycleState(previous, parsed);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const recentText = windowedMessages
+    .map((m) => m.content.toLowerCase())
+    .join("\n");
+  const recentFacts = changes.slice(-HARD_FACT_REVIEW_WINDOW);
+
+  state.hardFacts = state.hardFacts.map((fact) => {
+    const confirmed =
+      includesSnippet(recentText, fact.fact) ||
+      recentFacts.some((f) =>
+        includesSnippet(f.detail.toLowerCase(), fact.fact),
+      );
+    if (confirmed) {
+      return {
+        ...fact,
+        lastConfirmedAt: today,
+        superseded: false,
+      };
+    }
+    return fact;
+  });
+
+  state.openThreads = state.openThreads.map((thread) => {
+    const referenced = includesSnippet(recentText, thread.description);
+    const resolved = changes.some(
+      (c) =>
+        c.type === "thread_resolved" &&
+        includesSnippet(c.detail.toLowerCase(), thread.description),
+    );
+    const evolved = changes.find(
+      (c) =>
+        c.type === "thread_evolved" &&
+        includesSnippet(c.detail.toLowerCase(), thread.description),
+    );
+    const stale =
+      !referenced &&
+      !resolved &&
+      !evolved &&
+      Date.now() - toDay(thread.lastReferencedAt ?? thread.createdAt) >
+        THREAD_STALE_DAYS * 24 * 60 * 60 * 1000;
+
+    return {
+      ...thread,
+      lastReferencedAt: referenced ? today : thread.lastReferencedAt,
+      status: resolved
+        ? "resolved"
+        : evolved
+          ? "evolved"
+          : stale
+            ? "stale"
+            : thread.status,
+      evolvedInto:
+        evolved?.detail && evolved.detail.includes("->")
+          ? evolved.detail.split("->")[1]?.trim() || thread.evolvedInto
+          : thread.evolvedInto,
+    };
+  });
+
+  return structuredToMarkdown(state);
+}
 
 // ---------------------------------------------------------------------------
 // LLM call
@@ -161,6 +255,7 @@ async function runLLMUpdate(
   providerOrder: readonly string[],
   messages: readonly SocketMessage[],
   currentState: string,
+  retryFeedback?: string,
 ): Promise<LLMResult> {
   const elapsed = startTimer();
 
@@ -180,7 +275,12 @@ async function runLLMUpdate(
       ...coreMessages,
       {
         role: "user" as const,
-        content: [{ type: "text" as const, text: STATE_UPDATE_INSTRUCTION }],
+        content: [
+          {
+            type: "text" as const,
+            text: `${STATE_UPDATE_INSTRUCTION}${retryFeedback ?? ""}`,
+          },
+        ],
       },
     ],
     temperature: 0.15,
@@ -216,6 +316,33 @@ async function runLLMUpdate(
     }
     return { updatedState: "", changes: [] };
   }
+}
+
+function buildRetryFeedback(validation: {
+  schemaValid: boolean;
+  outputComplete: boolean;
+  noUnknownFacts: boolean;
+  diffPercentage: number;
+}): string {
+  const failures: string[] = [];
+  if (!validation.schemaValid) {
+    failures.push("Your previous output missed one or more required sections.");
+  }
+  if (!validation.outputComplete) {
+    failures.push("Your previous output appears truncated or incomplete.");
+  }
+  if (!validation.noUnknownFacts) {
+    failures.push(
+      "Your previous output added hard facts that were not grounded in extracted changes.",
+    );
+  }
+  if (validation.diffPercentage > 50) {
+    failures.push(
+      `Your previous output changed too much of the state (${validation.diffPercentage}%). Preserve more unchanged content.`,
+    );
+  }
+  if (failures.length === 0) return "";
+  return `\n\nRetry feedback:\n${failures.map((failure) => `- ${failure}`).join("\n")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +398,13 @@ export const statePipelineAdapter: StatePipelineSocket = {
       };
     }
 
+    updatedState = applyLifecycleStage(
+      request.currentStoryState,
+      updatedState,
+      changes,
+      windowed,
+    );
+
     let validation = validateState(
       updatedState,
       request.currentStoryState,
@@ -282,11 +416,13 @@ export const statePipelineAdapter: StatePipelineSocket = {
 
     if (disposition === "retried") {
       logWarn("/api/state-update: validation failed, retrying…");
+      const retryFeedback = buildRetryFeedback(validation);
       const retry = await runLLMUpdate(
         model,
         providerOrder,
         windowed,
         request.currentStoryState,
+        retryFeedback,
       );
       if (retry.updatedState) {
         updatedState = retry.updatedState;

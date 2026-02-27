@@ -69,7 +69,11 @@ const eslintConfig = defineConfig([
   // ----- Shared code quality rules (apply to all packages) -----
   {
     rules: {
-      complexity: ["warn", { max: 10 }],
+      complexity: ["warn", { max: 8 }],
+      "max-lines": [
+        "warn",
+        { max: 500, skipBlankLines: true, skipComments: true },
+      ],
       "max-lines-per-function": [
         "warn",
         { max: 100, skipBlankLines: true, skipComments: true },

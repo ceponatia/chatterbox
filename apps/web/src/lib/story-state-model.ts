@@ -18,6 +18,42 @@ export interface Entity {
   isPlayerCharacter: boolean;
 }
 
+export type AttributeCategory =
+  | "face"
+  | "hair"
+  | "build"
+  | "outfit"
+  | "voice"
+  | "scent"
+  | "movement"
+  | "presence";
+
+export type FactTag =
+  | "biographical"
+  | "spatial"
+  | "relational"
+  | "temporal"
+  | "world"
+  | "event";
+
+export type RelationshipTone =
+  | "hostile"
+  | "cold"
+  | "neutral"
+  | "warm"
+  | "close"
+  | "intimate";
+
+export type BehavioralCategory =
+  | "speech"
+  | "vocabulary"
+  | "humor"
+  | "directness"
+  | "emotion"
+  | "physicality"
+  | "interaction"
+  | "quirks";
+
 // --- Section types (reference entities by ID) ---
 
 export interface Relationship {
@@ -26,12 +62,14 @@ export interface Relationship {
   description: string;
   /** Multi-line detail bullets (optional) */
   details: string[];
+  tone?: RelationshipTone;
 }
 
 export interface AppearanceEntry {
   entityId: string;
   attribute: string;
   description: string;
+  category?: AttributeCategory;
 }
 
 export interface SceneInfo {
@@ -49,13 +87,25 @@ export interface DemeanorEntry {
 // --- Unchanged section types ---
 
 export interface StoryThread {
+  id: string;
   description: string;
+  hook?: string;
+  resolutionHint: string;
+  lastReferencedAt?: string;
+  status: "active" | "evolved" | "resolved" | "stale";
+  evolvedInto?: string;
   /** ISO date string when this thread was added */
   createdAt?: string;
 }
 
 export interface HardFact {
   fact: string;
+  summary?: string;
+  tags?: FactTag[];
+  establishedAt?: string;
+  lastConfirmedAt?: string;
+  superseded: boolean;
+  supersededBy?: string;
   /** ISO date string when this fact was added */
   createdAt?: string;
 }
@@ -87,6 +137,15 @@ export interface StructuredStoryState {
 let _idCounter = 0;
 function generateEntityId(): string {
   return `e-${Date.now()}-${++_idCounter}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function generateStoryItemId(prefix: "thread" | "fact", base: string): string {
+  const normalized = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return `${prefix}-${normalized || Date.now().toString()}`;
 }
 
 /** Resolve an entity name from an ID. Returns the ID itself as fallback. */
@@ -203,6 +262,252 @@ export function remapEntityIds(
       presentEntityIds: state.scene.presentEntityIds.map(r),
     },
     demeanor: state.demeanor.map((d) => ({ ...d, entityId: r(d.entityId) })),
+  };
+}
+
+function normalizeTextKey(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+const ATTRIBUTE_KEYWORDS: Record<AttributeCategory, readonly string[]> = {
+  face: [
+    "face",
+    "eyes",
+    "eye",
+    "smile",
+    "mouth",
+    "jaw",
+    "nose",
+    "skin",
+    "freckles",
+  ],
+  hair: ["hair", "hairstyle", "bangs", "braid", "ponytail", "curl"],
+  build: [
+    "build",
+    "body",
+    "height",
+    "weight",
+    "frame",
+    "posture",
+    "hands",
+    "feet",
+    "toes",
+  ],
+  outfit: [
+    "outfit",
+    "clothes",
+    "clothing",
+    "wear",
+    "jacket",
+    "shirt",
+    "pants",
+    "skirt",
+    "dress",
+    "shoes",
+  ],
+  voice: ["voice", "tone", "accent", "speech", "sound", "laugh"],
+  scent: ["scent", "smell", "odor", "perfume", "hygiene"],
+  movement: ["movement", "moves", "walk", "gait", "gesture", "stance"],
+  presence: ["presence", "aura", "vibe", "energy", "impression"],
+};
+
+const TONE_KEYWORDS: Record<RelationshipTone, readonly string[]> = {
+  hostile: ["hate", "hostile", "enemy", "threat", "resent", "furious"],
+  cold: ["cold", "distant", "awkward", "strained", "tense", "guarded"],
+  neutral: ["neutral", "professional", "acquaintance", "unknown"],
+  warm: ["warm", "friendly", "trust", "fond", "care"],
+  close: ["close", "best friend", "family", "devoted", "loyal"],
+  intimate: ["intimate", "romantic", "dating", "lover", "married"],
+};
+
+const FACT_TAG_KEYWORDS: Record<FactTag, readonly string[]> = {
+  biographical: ["name", "age", "job", "occupation", "birthday", "background"],
+  spatial: ["location", "room", "street", "city", "home", "at", "in"],
+  relational: [
+    "friend",
+    "enemy",
+    "sibling",
+    "partner",
+    "relationship",
+    "trust",
+  ],
+  temporal: ["today", "yesterday", "tomorrow", "before", "after", "since"],
+  world: ["law", "magic", "rule", "world", "setting", "faction"],
+  event: ["happened", "incident", "attack", "meeting", "promise", "deal"],
+};
+
+function inferAttributeCategory(
+  attribute: string,
+  description = "",
+): AttributeCategory {
+  const haystack = `${attribute} ${description}`.toLowerCase();
+  const scoreByCategory = Object.entries(ATTRIBUTE_KEYWORDS).map(
+    ([category, words]) => {
+      const score = words.reduce(
+        (sum, word) => sum + (haystack.includes(word) ? 1 : 0),
+        0,
+      );
+      return { category: category as AttributeCategory, score };
+    },
+  );
+  scoreByCategory.sort((a, b) => b.score - a.score);
+  return scoreByCategory[0]?.score ? scoreByCategory[0].category : "presence";
+}
+
+function inferRelationshipTone(text: string): RelationshipTone {
+  const lower = text.toLowerCase();
+  const order: RelationshipTone[] = [
+    "intimate",
+    "close",
+    "warm",
+    "neutral",
+    "cold",
+    "hostile",
+  ];
+  for (const tone of order) {
+    if (TONE_KEYWORDS[tone].some((word) => lower.includes(word))) return tone;
+  }
+  return "neutral";
+}
+
+function inferFactTags(fact: string): FactTag[] {
+  const lower = fact.toLowerCase();
+  const tags = (
+    Object.entries(FACT_TAG_KEYWORDS) as [FactTag, readonly string[]][]
+  )
+    .filter(([, words]) => words.some((word) => lower.includes(word)))
+    .map(([tag]) => tag);
+  return tags.length > 0 ? tags : ["event"];
+}
+
+function summarizeFact(fact: string): string {
+  const normalized = fact.trim().replace(/\s+/g, " ");
+  if (!normalized) return "fact";
+  const firstClause = normalized.split(/[.;:!?]/)[0] ?? normalized;
+  const words = firstClause.split(" ");
+  return words.slice(0, 8).join(" ");
+}
+
+function deriveThreadHook(description: string): string {
+  const normalized = description.trim().replace(/\s+/g, " ");
+  if (!normalized) return "open thread";
+  const firstClause = normalized.split(/[.;:!?]/)[0] ?? normalized;
+  const words = firstClause.split(" ");
+  return words.slice(0, 7).join(" ");
+}
+
+/**
+ * Preserve lifecycle metadata across markdown roundtrips.
+ * Incoming parsed state only carries active markdown-visible items.
+ */
+export function reconcileLifecycleState(
+  previous: StructuredStoryState | null,
+  incoming: StructuredStoryState,
+): StructuredStoryState {
+  if (!previous) return incoming;
+
+  const now = new Date().toISOString().slice(0, 10);
+
+  const prevFacts = new Map(
+    previous.hardFacts.map((f) => [normalizeTextKey(f.fact), f]),
+  );
+  const nextFacts = incoming.hardFacts.map((f) => {
+    const match = prevFacts.get(normalizeTextKey(f.fact));
+    return {
+      ...f,
+      summary: f.summary ?? match?.summary ?? summarizeFact(f.fact),
+      tags: f.tags ?? match?.tags ?? inferFactTags(f.fact),
+      createdAt: match?.createdAt ?? f.createdAt ?? now,
+      establishedAt: match?.establishedAt ?? f.establishedAt ?? now,
+      lastConfirmedAt: match?.lastConfirmedAt ?? f.lastConfirmedAt ?? now,
+      superseded: false,
+      supersededBy: undefined,
+    };
+  });
+
+  const nextFactKeys = new Set(nextFacts.map((f) => normalizeTextKey(f.fact)));
+  const archivedFacts = previous.hardFacts
+    .filter((f) => !nextFactKeys.has(normalizeTextKey(f.fact)))
+    .map((f) => ({
+      ...f,
+      superseded: true,
+      supersededBy:
+        f.supersededBy ?? `Superseded during state update on ${now}`,
+    }));
+
+  const prevThreadsById = new Map(previous.openThreads.map((t) => [t.id, t]));
+  const prevThreadsByText = new Map(
+    previous.openThreads.map((t) => [normalizeTextKey(t.description), t]),
+  );
+  const nextThreads = incoming.openThreads.map((t) => {
+    const match =
+      prevThreadsById.get(t.id) ??
+      prevThreadsByText.get(normalizeTextKey(t.description));
+    return {
+      ...t,
+      id: match?.id ?? t.id ?? generateStoryItemId("thread", t.description),
+      hook: t.hook ?? match?.hook ?? deriveThreadHook(t.description),
+      resolutionHint: match?.resolutionHint ?? t.resolutionHint ?? "",
+      lastReferencedAt:
+        match?.lastReferencedAt ?? t.lastReferencedAt ?? t.createdAt ?? now,
+      status: t.status ?? match?.status ?? "active",
+      evolvedInto: match?.evolvedInto ?? t.evolvedInto,
+      createdAt: match?.createdAt ?? t.createdAt ?? now,
+    };
+  });
+
+  const nextThreadIds = new Set(nextThreads.map((t) => t.id));
+  const archivedThreads = previous.openThreads
+    .filter((t) => !nextThreadIds.has(t.id))
+    .map((t) => ({
+      ...t,
+      status:
+        t.status === "resolved" || t.status === "stale" ? t.status : "resolved",
+    }));
+
+  return {
+    ...incoming,
+    hardFacts: [...nextFacts, ...archivedFacts],
+    openThreads: [...nextThreads, ...archivedThreads],
+  };
+}
+
+export function ensureLifecycleDefaults(
+  state: StructuredStoryState,
+): StructuredStoryState {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    ...state,
+    relationships: state.relationships.map((rel) => ({
+      ...rel,
+      tone: rel.tone ?? inferRelationshipTone(rel.description),
+    })),
+    appearance: state.appearance.map((entry) => ({
+      ...entry,
+      category:
+        entry.category ??
+        inferAttributeCategory(entry.attribute, entry.description),
+    })),
+    openThreads: state.openThreads.map((thread) => ({
+      id: thread.id ?? generateStoryItemId("thread", thread.description),
+      description: thread.description,
+      hook: thread.hook ?? deriveThreadHook(thread.description),
+      resolutionHint: thread.resolutionHint ?? "",
+      lastReferencedAt: thread.lastReferencedAt ?? thread.createdAt ?? today,
+      status: thread.status ?? "active",
+      evolvedInto: thread.evolvedInto,
+      createdAt: thread.createdAt ?? today,
+    })),
+    hardFacts: state.hardFacts.map((fact) => ({
+      fact: fact.fact,
+      summary: fact.summary ?? summarizeFact(fact.fact),
+      tags: fact.tags ?? inferFactTags(fact.fact),
+      createdAt: fact.createdAt ?? today,
+      establishedAt: fact.establishedAt ?? fact.createdAt ?? today,
+      lastConfirmedAt: fact.lastConfirmedAt ?? fact.createdAt ?? today,
+      superseded: fact.superseded ?? false,
+      supersededBy: fact.supersededBy,
+    })),
   };
 }
 
@@ -718,11 +1023,13 @@ function resolveRawToState(
       toEntityId: resolveEntityId(entities, r.to),
       description: r.description,
       details: r.details,
+      tone: inferRelationshipTone(`${r.description}\n${r.details.join(" ")}`),
     })),
     appearance: raw.appearance.map((a) => ({
       entityId: resolveEntityId(entities, a.character),
       attribute: a.attribute,
       description: a.description,
+      category: inferAttributeCategory(a.attribute, a.description),
     })),
     scene: {
       location: raw.scene.location,
@@ -739,11 +1046,23 @@ function resolveRawToState(
       energy: d.energy,
     })),
     openThreads: raw.openThreads.map((d) => ({
+      id: generateStoryItemId("thread", d.text),
       description: d.text,
+      hook: deriveThreadHook(d.text),
+      resolutionHint: "",
+      lastReferencedAt: d.createdAt,
+      status: "active",
+      evolvedInto: undefined,
       createdAt: d.createdAt,
     })),
     hardFacts: raw.hardFacts.map((f) => ({
       fact: f.text,
+      summary: summarizeFact(f.text),
+      tags: inferFactTags(f.text),
+      establishedAt: f.createdAt,
+      lastConfirmedAt: f.createdAt,
+      superseded: false,
+      supersededBy: undefined,
       createdAt: f.createdAt,
     })),
     style: raw.style,
@@ -778,7 +1097,9 @@ export function parseMarkdownToStructured(
   }
 
   const entities = buildEntityRegistry(raw);
-  return resolveRawToState(raw, entities, customSections);
+  return ensureLifecycleDefaults(
+    resolveRawToState(raw, entities, customSections),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -915,22 +1236,30 @@ export function structuredToMarkdown(state: StructuredStoryState): string {
     );
   }
   if (state.openThreads.length > 0) {
-    const threadItems = state.openThreads.map((t) => ({
-      text: t.description,
-      createdAt: t.createdAt,
-    }));
-    sections.push(
-      `## Open Threads\n\n${serializeTimestampedList(threadItems)}`,
-    );
+    const threadItems = state.openThreads
+      .filter((t) => t.status === "active" || t.status === "evolved")
+      .map((t) => ({
+        text: t.description,
+        createdAt: t.createdAt,
+      }));
+    if (threadItems.length > 0) {
+      sections.push(
+        `## Open Threads\n\n${serializeTimestampedList(threadItems)}`,
+      );
+    }
   }
   if (state.hardFacts.length > 0) {
-    const factItems = state.hardFacts.map((f) => ({
-      text: f.fact,
-      createdAt: f.createdAt,
-    }));
-    sections.push(
-      `## Hard Facts (do not contradict these)\n\n${serializeTimestampedList(factItems)}`,
-    );
+    const factItems = state.hardFacts
+      .filter((f) => !f.superseded)
+      .map((f) => ({
+        text: f.fact,
+        createdAt: f.establishedAt ?? f.createdAt,
+      }));
+    if (factItems.length > 0) {
+      sections.push(
+        `## Hard Facts (do not contradict these)\n\n${serializeTimestampedList(factItems)}`,
+      );
+    }
   }
   if (state.style.length > 0) {
     sections.push(`## Style\n\n${serializeBulletList(state.style)}`);

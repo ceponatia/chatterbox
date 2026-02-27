@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Trash2 } from "lucide-react";
+import { Scissors, Trash2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-interface ConfirmDeleteButtonProps {
+interface ConfirmActionButtonProps {
   onConfirm: () => void;
+  icon: LucideIcon;
+  idleTitle: string;
+  confirmTitle: string;
   /** Classes applied when in idle (non-confirming) state */
   idleClassName?: string;
   /** Classes applied when in confirming state */
@@ -15,12 +18,15 @@ interface ConfirmDeleteButtonProps {
   className?: string;
 }
 
-export function ConfirmDeleteButton({
+export function ConfirmActionButton({
   onConfirm,
+  icon: Icon,
+  idleTitle,
+  confirmTitle,
   idleClassName = "w-6",
   confirmClassName = "w-auto gap-1 px-1.5 bg-destructive/15",
   className,
-}: ConfirmDeleteButtonProps) {
+}: ConfirmActionButtonProps) {
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
 
@@ -43,9 +49,9 @@ export function ConfirmDeleteButton({
       className={cn(
         "h-6 p-0 text-destructive hover:text-destructive",
         confirming ? confirmClassName : idleClassName,
-        className
+        className,
       )}
-      title={confirming ? "Click again to delete" : "Delete"}
+      title={confirming ? confirmTitle : idleTitle}
       onClick={(e) => {
         e.stopPropagation();
         if (confirming) {
@@ -56,8 +62,60 @@ export function ConfirmDeleteButton({
         }
       }}
     >
-      <Trash2 className="h-3 w-3" />
+      <Icon className="h-3 w-3" />
       {confirming && <span className="text-[10px] font-medium">?</span>}
     </Button>
+  );
+}
+
+interface ConfirmDeleteButtonProps {
+  onConfirm: () => void;
+  idleClassName?: string;
+  confirmClassName?: string;
+  className?: string;
+}
+
+export function ConfirmDeleteButton({
+  onConfirm,
+  idleClassName,
+  confirmClassName,
+  className,
+}: ConfirmDeleteButtonProps) {
+  return (
+    <ConfirmActionButton
+      onConfirm={onConfirm}
+      icon={Trash2}
+      idleTitle="Delete"
+      confirmTitle="Click again to delete"
+      idleClassName={idleClassName}
+      confirmClassName={confirmClassName}
+      className={className}
+    />
+  );
+}
+
+interface ConfirmTruncateButtonProps {
+  onConfirm: () => void;
+  idleClassName?: string;
+  confirmClassName?: string;
+  className?: string;
+}
+
+export function ConfirmTruncateButton({
+  onConfirm,
+  idleClassName,
+  confirmClassName = "w-auto gap-1 px-1.5 bg-amber-500/15",
+  className,
+}: ConfirmTruncateButtonProps) {
+  return (
+    <ConfirmActionButton
+      onConfirm={onConfirm}
+      icon={Scissors}
+      idleTitle="Delete all after"
+      confirmTitle="Click again to delete all after"
+      idleClassName={idleClassName}
+      confirmClassName={confirmClassName}
+      className={cn("text-amber-500 hover:text-amber-500", className)}
+    />
   );
 }

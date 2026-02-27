@@ -17,15 +17,22 @@ The monolithic `buildSystem()` has been replaced by the segmented prompt assembl
 
 1. **Import & parse**: When the user imports a `.md` system prompt file, `parseSystemPromptToSegments()` from `@chatterbox/prompt-assembly` parses it into `SerializedSegment[]`. The UI switches from a raw textarea to a per-segment collapsible editor showing content, policy badges, token estimates, and inclusion status.
 2. **Client-side tracking**: `useAssemblyTracker` hook (`src/lib/hooks/use-assembly-tracker.ts`) runs the assembler after each user message to update `lastIncludedAt` (segment ID → last turn included). Accepts optional `customSegments` to use user-provided segments instead of defaults.
-3. **Transport**: `liveConfig` sends `lastIncludedAt` and `customSegments` to the chat route alongside `systemPrompt`, `storyState`, and `settings`.
-4. **Server-side**: `/api/chat/route.ts` creates an `AssemblyContext` from the request (including configurable `tokenBudget` from Settings). If `customSegments` are provided, creates a per-request assembler via `createAssemblerFromSerialized()`; otherwise uses the default assembler. The route appends a hard `Response Boundary (Critical)` guardrail to the final system prompt to forbid writing on behalf of the user/player and constrain generation to NPCs/environment. `logAssembly()` provides structured effectiveness logging.
+3. **Transport**: `liveConfig` sends `lastIncludedAt`, `customSegments`, and `presentEntityIds` to the chat route alongside `systemPrompt`, `storyState`, and `settings`.
+4. **Server-side**: `/api/chat/route.ts` creates an `AssemblyContext` from the request (including configurable `tokenBudget` from Settings and optional `presentEntityIds` for `on_presence` policies). If `customSegments` are provided, creates a per-request assembler via `createAssemblerFromSerialized()`; otherwise uses the default assembler. The route appends a hard `Response Boundary (Critical)` guardrail to the final system prompt to forbid writing on behalf of the user/player and constrain generation to NPCs/environment. `logAssembly()` provides structured effectiveness logging.
 5. **Persistence**: `lastIncludedAt` and `customSegments` are stored on the `Conversation` record in Postgres (via `/api/conversations/[id]`) and auto-saved by `useAutoSave`.
+
+### Character behavior files (`on_presence` segments)
+
+- `SystemPromptEditor` supports importing per-character `.md` behavior files linked to an entity.
+- Import creates/updates segment ID `character_behavior_{entityId}` with policy `{ type: "on_presence", entityId }`, `priority: "high"`, and category `"character"`.
+- Linked `on_presence` segments display an entity-link indicator in the segment card metadata.
+- Character segment lookups are derived from `customSegments` (`entityId -> segmentId`) and used for dynamic cascade resets.
 
 ### State management
 
 - `src/lib/defaults.ts` — Rules-only `DEFAULT_SYSTEM_PROMPT` template with `{{ char }}`/`{{ user }}` placeholders. Contains NEVER/ALWAYS rules, output format, setting/scope, voice/speech behavioral rules, and interaction guidelines. No character data — that lives in story state. `DEFAULT_STORY_STATE` is empty (new conversations use `emptyStructuredState()` directly).
 - `src/lib/storage.ts` — `Conversation` data model with DB-backed CRUD (Postgres). `createConversation()` initializes with `emptyStructuredState()` and parses `DEFAULT_SYSTEM_PROMPT` into segments so both typed editors are immediately available. `migrateConversation()` detects old cast-based format (IM03) and re-parses from markdown to entity-based format (IM04). Active conversation ID is not persisted; app opens into a fresh conversation each load.
-- `src/lib/story-state-model.ts` — Entity-centric `StructuredStoryState` types (see IM04). Characters are `Entity` objects with stable UUIDs. Sections reference entities by `entityId` instead of inline name strings. Two-pass parser: entity extraction → ID-resolved section parsing. Parser handles both legacy flat `## Appearance` format and new character-centric `## Characters` format (`### CharName` > `#### Appearance` > `- **key**: values`). Serializer emits the new `## Characters` grouped format. Key exports: `Entity`, `findOrCreateEntity()`, `findEntityByName()`, `resolveEntityName()`, `reconcileEntities()` (preserves UUIDs across pipeline updates).
+- `src/lib/story-state-model.ts` — Entity-centric `StructuredStoryState` types (see IM04). Characters are `Entity` objects with stable UUIDs. Sections reference entities by `entityId` instead of inline name strings. Two-pass parser: entity extraction → ID-resolved section parsing. Parser handles both legacy flat `## Appearance` format and new character-centric `## Characters` format (`### CharName` > `#### Appearance` > `- **key**: values`). Serializer emits the new `## Characters` grouped format. Hard facts now carry lifecycle metadata (`establishedAt`, `lastConfirmedAt`, `superseded`, `supersededBy`) and superseded facts are excluded from serialized markdown. Threads now carry lifecycle metadata (`id`, `resolutionHint`, `lastReferencedAt`, `status`, `evolvedInto`) and resolved/stale threads are excluded from serialized markdown. Additional tool-ready metadata is derived deterministically: `AppearanceEntry.category` (`face|hair|build|outfit|voice|scent|movement|presence`), `Relationship.tone` (`hostile|cold|neutral|warm|close|intimate`), `StoryThread.hook`, and `HardFact.summary` + `HardFact.tags` (`biographical|spatial|relational|temporal|world|event`). Key exports: `Entity`, `findOrCreateEntity()`, `findEntityByName()`, `resolveEntityName()`, `reconcileEntities()` (preserves UUIDs across pipeline updates), `reconcileLifecycleState()`, `ensureLifecycleDefaults()`.
 - `src/lib/hooks/use-field-setters.ts` — React state for all conversation fields (including `customSegments`, `structuredState`). Story state handlers extracted to `useStoryStateHandlers()` sub-hook. `updateStoryStateFromSummary()` uses `reconcileEntities()` to preserve entity UUIDs when pipeline returns updated markdown. System prompt import triggers `parseSystemPromptToSegments()` and stores both parsed segments and assembled markdown. `handleStructuredStateUpdate()` syncs structured → markdown.
 - `src/lib/hooks/use-conversation-manager.ts` — hydration, auto-save, auto-title, conversation switching. Hydrates and persists `structuredState`. `hydrateConversation` uses `fieldsRef.current` (stable ref) to avoid re-render loops — do not add `fields` to its dependency array.
 - `src/lib/hooks/use-summarization.ts` — (legacy, unused) previously triggered `/api/summarize` for manual story state updates.
@@ -40,6 +47,12 @@ A single-pass hybrid pipeline that automatically updates story state after assis
 3. **Validation** (deterministic) — schema, novelty, completeness checks, diff percentage.
 4. **Auto-accept** (deterministic) — disposition scoring: auto_accepted / flagged / retried. Retried triggers one retry, then falls back to flagged.
 5. **Cascade triggers** — fact types (e.g. `scene_change`, `hard_fact_superseded`) reset `lastIncludedAt` for related segments so they re-inject next turn.
+
+Presence freshness behavior:
+
+- Deterministic scanner (`src/lib/presence-scanner.ts`) runs after each completed assistant response.
+- Scanner updates `structuredState.scene.presentEntityIds` conservatively from assistant text mentions.
+- Pipeline prompt allows `character_enters` and `character_leaves` facts; cascade resets can target `on_presence` character segments dynamically.
 
 Key files:
 
@@ -70,11 +83,21 @@ Key files:
 - `src/components/sidebar/state-history.tsx` — scrollable history of all state changes with expandable inline details (validation badges, extracted facts). Clicking an entry row opens a detail modal.
 - `src/components/sidebar/state-history-detail.tsx` — full-screen modal for a state history entry showing validation badges, extracted facts with type/confidence, and a line-level diff between previous and new state.
 - `src/components/sidebar/story-state-editor.tsx` — Orchestrator for story state UI: header, import/reset, and `StructuredEditorBody` which renders all typed sections. All sections are always visible with Add buttons (no empty-state hiding).
-- `src/components/sidebar/story-state-sections.tsx` — Extracted typed section editors: `EntitiesSection`, `RelationshipsSection`, `CharactersSection`, `SceneSection`, `DemeanorSection`, `BulletListSection`, `CustomSectionEditor`. Character name fields use `EntitySelect` combobox with autocomplete from entity registry. Typing an unknown name auto-creates a new entity on blur. `CharactersSection` groups entries by entity with collapsible sub-containers and an "Appearance" sub-heading; each attribute row auto-detects tag-style (comma-separated, no periods) vs prose and renders an appropriate input. Shows state history and "recently updated" indicator.
+- `src/components/sidebar/story-state-sections.tsx` — Extracted typed section editors: `EntitiesSection`, `RelationshipsSection`, `CharactersSection`, `SceneSection`, `DemeanorSection`, `OpenThreadsSection`, `HardFactsSection`, `BulletListSection`, `CustomSectionEditor`. Character name fields use `EntitySelect` combobox with autocomplete from entity registry. Typing an unknown name auto-creates a new entity on blur. `CharactersSection` groups entries by entity with collapsible sub-containers and an "Appearance" sub-heading; each attribute row auto-detects tag-style (comma-separated, no periods) vs prose and renders an appropriate input. `OpenThreadsSection` and `HardFactsSection` include archived/restore lifecycle controls for resolved/stale threads and superseded facts.
+- `SceneSection` uses manual entity toggle chips for "Who is present" (multi-select), not free-text comma entry.
 - `src/lib/hooks/use-sync-status.ts` — `useSyncStatus` hook tracking save lifecycle for Story State and System Prompt. Three states: `saved` (green dot), `pending` (yellow dot — edit made, waiting for 500ms debounce save), `error` (red dot — conversion failure). Wired through `useAutoSave` in conversation manager. `SyncDot` component in `page.tsx` renders the colored indicator in each tab.
-- `src/components/sidebar/system-prompt-editor.tsx` — dual-mode: raw textarea when no segments exist, per-segment collapsible editor after import. Each segment card shows label, policy badge, token estimate, turns-since-included indicator, and editable content.
+- `src/components/sidebar/system-prompt-editor.tsx` — dual-mode: raw textarea when no segments exist, per-segment collapsible editor after import. Each segment card shows label, policy badge, token estimate, turns-since-included indicator, editable content, and optional omitted-summary text for skipped-turn context notes.
 - `src/lib/hooks/use-state-history.ts` — `useStateHistoryEntries` hook using async API fetch to read DB-backed state history
 - `src/lib/hooks/use-state-pipeline.ts` — returns `historyVersion` counter and `recentlyUpdated` flag
+- `src/lib/state-pipeline/pipeline-socket.ts` — single-pass update now applies a deterministic lifecycle stage after LLM output to update thread statuses and hard-fact confirmation metadata before validation.
+- `src/app/api/state-rollback/route.ts` — one-shot rollback pipeline used after message truncation (`Delete all after`)
+
+### Truncate after message
+
+- Message actions include a `Delete all after` control (Scissors icon) on each message except the last.
+- Flow: truncate messages in client state -> auto-save persists trimmed message array -> call `/api/state-rollback` with deleted + remaining context -> apply returned state -> append history entry with `disposition: "rollback"` -> apply cascade resets.
+- If story state is empty, truncation still happens and rollback is skipped.
+- Truncation updates `lastPipelineTurn` to the remaining user-turn count so periodic pipeline windowing stays aligned.
 
 ### Mobile UI (iPhone Safari)
 
@@ -115,9 +138,11 @@ Chat controls on mobile:
 ### API routes
 
 - `/api/chat` — streaming chat via OpenRouter, uses segmented prompt assembler with semantic topic scores. Accepts optional `customSegments` from client to override default segments. Appends a final hard guardrail reminding the model to never write for the user/player.
+- `/api/chat` — applies tiered message-history compression before model invocation: last 8 turns are verbatim, mid-history is pair-summarized, oldest history is digested into a short summary block (`[Conversation History Summary]`) injected before verbatim turns. Importance scoring can promote older high-value turns into verbatim/summary tiers.
 - `/api/chat` — also appends a runtime **Player Control Boundary** that binds `{{ user }}` to the second member of the story state's `## Cast` list (canonical single player character). If this identity cannot be resolved, instructions force ambiguity-safe NPC/environment-only narration with clarification instead of writing for the player.
 - `/api/summarize` — (legacy) manual story state update with truncation detection, retry escalation, and structural completeness checks. No longer triggered from the UI.
 - `/api/state-update` — single-pass hybrid state pipeline (one LLM call → updated state + fact list → validate → auto-accept → cascade resets). Message windowing via `lastPipelineTurn`.
+- `/api/state-rollback` — rollback pipeline for truncate-after actions. Removes state introduced only in deleted messages, validates output, retries once with validation feedback, then returns cascade resets.
 - `/api/conversations` — list conversation metadata from Postgres
 - `/api/conversations/[id]` — fetch/upsert/delete a conversation record in Postgres
 - `/api/conversations/[id]/state-history` — fetch/append/delete per-conversation state history entries

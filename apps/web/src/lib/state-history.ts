@@ -30,7 +30,12 @@ export interface StateHistoryEntry {
   newState: string;
   extractedFacts: ExtractedFact[];
   validation: ValidationReport;
-  disposition: "auto_accepted" | "flagged" | "retried" | "manual_edit";
+  disposition:
+    | "auto_accepted"
+    | "flagged"
+    | "retried"
+    | "manual_edit"
+    | "rollback";
 }
 
 // ---------------------------------------------------------------------------

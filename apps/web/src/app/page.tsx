@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Sheet,
@@ -46,10 +45,12 @@ import type { Settings } from "@/lib/defaults";
 import { useConversationManager } from "@/lib/hooks/use-conversation-manager";
 import type { SyncStatus } from "@/lib/hooks/use-sync-status";
 import { useMessageActions } from "@/lib/hooks/use-message-actions";
+import { useDeleteAfterRollback } from "@/lib/hooks/use-delete-after-rollback";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
 import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
 import { getModelEntry } from "@/lib/model-registry";
 import { trapTabKey } from "@/lib/focus-trap";
+import { scanPresenceFromAssistantMessage } from "@/lib/presence-scanner";
 
 // Module-level config that the transport body function reads at request time.
 const liveConfig = {
@@ -58,6 +59,7 @@ const liveConfig = {
   settings: DEFAULT_SETTINGS as Settings,
   lastIncludedAt: {} as Record<string, number>,
   customSegments: null as SerializedSegment[] | null,
+  presentEntityIds: [] as string[],
 };
 
 export default function Home() {
@@ -65,7 +67,6 @@ export default function Home() {
   return <HomeLayout state={state} />;
 }
 
-// eslint-disable-next-line max-lines-per-function
 function useLiveChatState() {
   const transport = useMemo(
     () =>
@@ -77,6 +78,7 @@ function useLiveChatState() {
           settings: liveConfig.settings,
           lastIncludedAt: liveConfig.lastIncludedAt,
           customSegments: liveConfig.customSegments,
+          presentEntityIds: liveConfig.presentEntityIds,
         }),
       }),
     [],
@@ -92,6 +94,7 @@ function useLiveChatState() {
       settings: Settings;
       lastIncludedAt?: Record<string, number>;
       customSegments?: SerializedSegment[] | null;
+      presentEntityIds?: string[];
     }) => {
       liveConfig.systemPrompt = c.systemPrompt;
       liveConfig.storyState = c.storyState;
@@ -99,6 +102,8 @@ function useLiveChatState() {
       if (c.lastIncludedAt) liveConfig.lastIncludedAt = c.lastIncludedAt;
       if (c.customSegments !== undefined)
         liveConfig.customSegments = c.customSegments;
+      if (c.presentEntityIds !== undefined)
+        liveConfig.presentEntityIds = c.presentEntityIds;
     },
     [],
   );
@@ -121,16 +126,18 @@ function useHomeState() {
     lastIncludedAt: conv.lastIncludedAt,
     setLastIncludedAt: conv.setLastIncludedAt,
     customSegments: conv.customSegments,
+    presentEntityIds: conv.structuredState?.scene.presentEntityIds ?? [],
   });
 
+  const setLastIncludedAt = conv.setLastIncludedAt;
   const onCascadeResets = useCallback(
     (ids: string[]) =>
-      conv.setLastIncludedAt((p) => {
+      setLastIncludedAt((p) => {
         const n = { ...p };
         for (const id of ids) n[id] = 0;
         return n;
       }),
-    [conv.setLastIncludedAt],
+    [setLastIncludedAt],
   );
 
   const pipeline = useStatePipeline({
@@ -142,9 +149,80 @@ function useHomeState() {
     onStateUpdate: conv.updateStoryStateFromSummary,
     autoSummarizeInterval: conv.settings.autoSummarizeInterval,
     onCascadeResets,
+    customSegments: conv.customSegments,
     lastPipelineTurn: conv.lastPipelineTurn,
     setLastPipelineTurn: conv.setLastPipelineTurn,
   });
+
+  const msgActions = useMessageActions({ messages, setMessages, sendMessage });
+  const { handleDeleteAfterWithRollback, rollbackHistoryVersion } =
+    useDeleteAfterRollback({
+      messages,
+      handleDeleteAfter: msgActions.handleDeleteAfter,
+      storyState: conv.storyState,
+      activeConvId: conv.activeConvId,
+      model: conv.settings.model,
+      setLastPipelineTurn: conv.setLastPipelineTurn,
+      updateStoryStateFromSummary: conv.updateStoryStateFromSummary,
+      onCascadeResets,
+      customSegments: conv.customSegments,
+    });
+
+  const lastScannedAssistantIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isLoading || !conv.structuredState) return;
+
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (
+      !lastAssistant ||
+      lastScannedAssistantIdRef.current === lastAssistant.id
+    )
+      return;
+    lastScannedAssistantIdRef.current = lastAssistant.id;
+
+    const assistantText = lastAssistant.parts
+      ?.filter(
+        (part): part is Extract<typeof part, { type: "text" }> =>
+          part.type === "text",
+      )
+      .map((part) => part.text)
+      .join("\n")
+      .trim();
+    if (!assistantText) return;
+
+    const scene = conv.structuredState.scene;
+    const { addEntityIds, removeEntityIds } = scanPresenceFromAssistantMessage({
+      assistantText,
+      entities: conv.structuredState.entities,
+      currentPresentEntityIds: scene.presentEntityIds,
+    });
+    if (addEntityIds.length === 0 && removeEntityIds.length === 0) return;
+
+    const nextPresent = scene.presentEntityIds.filter(
+      (entityId) => !removeEntityIds.includes(entityId),
+    );
+    for (const entityId of addEntityIds) {
+      if (!nextPresent.includes(entityId)) nextPresent.push(entityId);
+    }
+    if (
+      nextPresent.length === scene.presentEntityIds.length &&
+      nextPresent.every(
+        (entityId, index) => entityId === scene.presentEntityIds[index],
+      )
+    ) {
+      return;
+    }
+
+    conv.handleStructuredStateUpdate({
+      ...conv.structuredState,
+      scene: {
+        ...scene,
+        presentEntityIds: nextPresent,
+      },
+    });
+  }, [isLoading, messages, conv]);
 
   return {
     chat,
@@ -153,9 +231,12 @@ function useHomeState() {
     isLoading,
     stateHistory: useStateHistoryEntries(
       conv.activeConvId,
-      pipeline.historyVersion,
+      pipeline.historyVersion + rollbackHistoryVersion,
     ),
-    msgActions: useMessageActions({ messages, setMessages, sendMessage }),
+    msgActions: {
+      ...msgActions,
+      handleDeleteAfter: handleDeleteAfterWithRollback,
+    },
     mobile: useMobileSidebar(),
     activeTabState: useState("story-state"),
     mobileSidebarTriggerRef: useRef<HTMLButtonElement | null>(null),
@@ -176,7 +257,6 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
       messages={chat.messages}
     />
   );
-
   return (
     <div className="flex h-dvh overflow-hidden safe-top">
       <MobileSidebarOverlay
@@ -186,12 +266,10 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
       >
         {sidebar}
       </MobileSidebarOverlay>
-
       <ChatPane
         state={state}
         mobileSidebarTriggerRef={mobileSidebarTriggerRef}
       />
-
       <aside className="hidden w-125 shrink-0 border-l lg:flex lg:flex-col">
         <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
           <h2 className="text-sm font-semibold">Configuration</h2>
@@ -228,6 +306,7 @@ function ChatPane({
         isLoading={isLoading}
         onEdit={msgActions.handleEditMessage}
         onDelete={msgActions.handleDeleteMessage}
+        onDeleteAfter={msgActions.handleDeleteAfter}
         onRetry={msgActions.handleRetryMessage}
         onEditAndGenerate={msgActions.handleEditAndGenerate}
       />
@@ -241,10 +320,6 @@ function ChatPane({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Sub-components extracted to reduce per-function LOC / cyclomatic complexity
-// ---------------------------------------------------------------------------
 
 function MobileSidebarOverlay({
   open,
@@ -405,6 +480,8 @@ const SidebarContent = memo(function SidebarContent({
             baseline={conv.systemPromptBaseline}
             segments={conv.customSegments}
             onSegmentUpdate={conv.handleSegmentUpdate}
+            entities={conv.structuredState?.entities ?? []}
+            onCharacterFileImport={conv.handleCharacterFileImport}
             lastIncludedAt={conv.lastIncludedAt}
             turnNumber={turnNumber}
           />

@@ -15,6 +15,7 @@ interface MessageListProps {
   isLoading: boolean;
   onEdit: (id: string, newText: string) => void;
   onDelete: (id: string) => void;
+  onDeleteAfter: (id: string) => void;
   onRetry: (id: string) => void;
   onEditAndGenerate: (id: string, newText: string) => void;
 }
@@ -24,6 +25,7 @@ export const MessageList = memo(function MessageList({
   isLoading,
   onEdit,
   onDelete,
+  onDeleteAfter,
   onRetry,
   onEditAndGenerate,
 }: MessageListProps) {
@@ -46,14 +48,16 @@ export const MessageList = memo(function MessageList({
           <ShowMoreButton hiddenCount={hiddenCount} onClick={handleShowMore} />
         )}
         <div ref={topAnchorRef} />
-        {visibleMessages.map((message) => (
+        {visibleMessages.map((message, index) => (
           <MessageBubble
             key={message.id}
             message={message}
             canRetry={retryIds.has(message.id)}
+            isLastMessage={index === visibleMessages.length - 1}
             isLoading={isLoading}
             onEdit={onEdit}
             onDelete={onDelete}
+            onDeleteAfter={onDeleteAfter}
             onRetry={onRetry}
             onEditAndGenerate={onEditAndGenerate}
           />

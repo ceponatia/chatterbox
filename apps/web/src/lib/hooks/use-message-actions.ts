@@ -9,23 +9,32 @@ interface Params {
   sendMessage: (params: { text: string }) => void;
 }
 
-function findPrecedingUserMessage(messages: UIMessage[], targetIdx: number): number {
-  const msg = messages[targetIdx];
-  if (!msg) return -1;
-  if (msg.role === "user") return targetIdx;
-  let i = targetIdx - 1;
-  while (i >= 0 && messages[i]?.role !== "user") i--;
-  return i;
+function findPrecedingUserMessage(
+  messages: UIMessage[],
+  targetIdx: number,
+): number {
+  for (let index = targetIdx; index >= 0; index--) {
+    if (messages[index]?.role === "user") return index;
+  }
+  return -1;
 }
 
 function extractTextFromMessage(msg: UIMessage): string {
-  return msg.parts
-    ?.filter((p): p is Extract<typeof p, { type: "text" }> => p.type === "text")
-    .map((p) => p.text)
-    .join("") ?? "";
+  return (
+    msg.parts
+      ?.filter(
+        (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+      )
+      .map((p) => p.text)
+      .join("") ?? ""
+  );
 }
 
-export function useMessageActions({ messages, setMessages, sendMessage }: Params) {
+export function useMessageActions({
+  messages,
+  setMessages,
+  sendMessage,
+}: Params) {
   const [input, setInput] = useState("");
 
   const handleEditMessage = useCallback(
@@ -34,18 +43,30 @@ export function useMessageActions({ messages, setMessages, sendMessage }: Params
         messages.map((m) =>
           m.id === id
             ? { ...m, parts: [{ type: "text" as const, text: newText }] }
-            : m
-        )
+            : m,
+        ),
       );
     },
-    [messages, setMessages]
+    [messages, setMessages],
   );
 
   const handleDeleteMessage = useCallback(
     (id: string) => {
       setMessages(messages.filter((m) => m.id !== id));
     },
-    [messages, setMessages]
+    [messages, setMessages],
+  );
+
+  const handleDeleteAfter = useCallback(
+    (id: string): UIMessage[] => {
+      const idx = messages.findIndex((m) => m.id === id);
+      if (idx < 0) return [];
+      const kept = messages.slice(0, idx + 1);
+      const removed = messages.slice(idx + 1);
+      setMessages(kept);
+      return removed;
+    },
+    [messages, setMessages],
   );
 
   const handleRetryMessage = useCallback(
@@ -62,7 +83,7 @@ export function useMessageActions({ messages, setMessages, sendMessage }: Params
       setMessages(messages.slice(0, userIdx));
       sendMessage({ text: userText });
     },
-    [messages, setMessages, sendMessage]
+    [messages, setMessages, sendMessage],
   );
 
   const handleEditAndGenerate = useCallback(
@@ -72,7 +93,7 @@ export function useMessageActions({ messages, setMessages, sendMessage }: Params
       setMessages(messages.slice(0, idx));
       sendMessage({ text: newText });
     },
-    [messages, setMessages, sendMessage]
+    [messages, setMessages, sendMessage],
   );
 
   const handleSend = useCallback(
@@ -83,7 +104,7 @@ export function useMessageActions({ messages, setMessages, sendMessage }: Params
       setInput("");
       sendMessage({ text });
     },
-    [input, sendMessage]
+    [input, sendMessage],
   );
 
   const handleClearChat = useCallback(() => {
@@ -95,6 +116,7 @@ export function useMessageActions({ messages, setMessages, sendMessage }: Params
     setInput,
     handleEditMessage,
     handleDeleteMessage,
+    handleDeleteAfter,
     handleRetryMessage,
     handleEditAndGenerate,
     handleSend,

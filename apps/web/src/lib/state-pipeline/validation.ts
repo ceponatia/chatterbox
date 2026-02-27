@@ -2,8 +2,8 @@
  * State validation — deterministic checks on candidate story state.
  *
  * Checks: schema, novelty, completeness, diff percentage.
- * Hard fact preservation is no longer enforced — the pipeline now
- * reasons about relevance and intentionally removes superseded facts.
+ * Hard fact preservation is lifecycle-aware.
+ * Facts may be removed only when explicitly superseded.
  */
 
 import type { ValidationReport, ExtractedFact } from "@/lib/state-history";
@@ -62,10 +62,21 @@ export function validateState(
     return afterHeader.length > 0;
   });
 
-  // 2. Hard fact preservation — tracked for history but no longer blocks acceptance.
-  //    The pipeline intentionally removes superseded facts via reasoning.
+  // 2. Hard fact preservation (lifecycle-aware)
   const prevHardFacts = extractHardFacts(previous);
-  const allHardFactsPreserved = true;
+  const supersededDetails = extractedFacts
+    .filter((f) => f.type === "hard_fact_superseded")
+    .map((f) => f.detail.toLowerCase());
+  const allHardFactsPreserved = prevHardFacts.every((fact) => {
+    const normalized = fact.toLowerCase();
+    const kept = candidate.toLowerCase().includes(normalized);
+    if (kept) return true;
+    return supersededDetails.some(
+      (detail) =>
+        normalized.includes(detail.slice(0, 24)) ||
+        detail.includes(normalized.slice(0, 24)),
+    );
+  });
 
   // 3. Novelty check — new hard facts should come from extracted facts
   const candHardFacts = extractHardFacts(candidate);

@@ -10,12 +10,13 @@ import type {
   Relationship,
   AppearanceEntry,
   DemeanorEntry,
+  StoryThread,
+  HardFact,
+  AttributeCategory,
+  FactTag,
+  RelationshipTone,
 } from "@/lib/story-state-model";
-import {
-  resolveEntityName,
-  findOrCreateEntity,
-  findEntityByName,
-} from "@/lib/story-state-model";
+import { resolveEntityName, findOrCreateEntity } from "@/lib/story-state-model";
 import { DeferredInput, DeferredTextarea } from "./deferred-inputs";
 import {
   EntityCard,
@@ -28,6 +29,26 @@ export {
   TimestampedBulletListSection,
   CustomSectionEditor,
 } from "./bullet-list-sections";
+
+const RELATIONSHIP_TONES: RelationshipTone[] = [
+  "hostile",
+  "cold",
+  "neutral",
+  "warm",
+  "close",
+  "intimate",
+];
+
+const ATTRIBUTE_CATEGORIES: AttributeCategory[] = [
+  "face",
+  "hair",
+  "build",
+  "outfit",
+  "voice",
+  "scent",
+  "movement",
+  "presence",
+];
 
 // ---------------------------------------------------------------------------
 // Typed section editors
@@ -117,7 +138,13 @@ export function RelationshipsSection({
   const add = () =>
     onUpdate([
       ...relationships,
-      { fromEntityId: "", toEntityId: "", description: "", details: [] },
+      {
+        fromEntityId: "",
+        toEntityId: "",
+        description: "",
+        details: [],
+        tone: "neutral",
+      },
     ]);
   const remove = (i: number) =>
     onUpdate(relationships.filter((_, idx) => idx !== i));
@@ -183,6 +210,22 @@ export function RelationshipsSection({
               className="min-h-12 font-mono text-[11px] leading-relaxed"
               rows={2}
             />
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-muted-foreground">Tone</label>
+              <select
+                className="h-7 rounded border bg-background px-2 text-[11px]"
+                value={r.tone ?? "neutral"}
+                onChange={(e) =>
+                  update(i, { tone: e.target.value as RelationshipTone })
+                }
+              >
+                {RELATIONSHIP_TONES.map((tone) => (
+                  <option key={tone} value={tone}>
+                    {tone}
+                  </option>
+                ))}
+              </select>
+            </div>
             {r.details.length > 0 && (
               <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
                 {r.details.map((d, di) => (
@@ -256,11 +299,24 @@ export function CharactersSection({
     onUpdate(entries.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
 
   const addForEntity = (entityId: string) =>
-    onUpdate([...entries, { entityId, attribute: "", description: "" }]);
+    onUpdate([
+      ...entries,
+      {
+        entityId,
+        attribute: "",
+        description: "",
+        category: "presence",
+      },
+    ]);
   const addNew = () =>
     onUpdate([
       ...entries,
-      { entityId: entities[0]?.id ?? "", attribute: "", description: "" },
+      {
+        entityId: entities[0]?.id ?? "",
+        attribute: "",
+        description: "",
+        category: "presence",
+      },
     ]);
   const remove = (i: number) => onUpdate(entries.filter((_, idx) => idx !== i));
 
@@ -307,6 +363,8 @@ export function CharactersSection({
                   onDescriptionChange={(val) =>
                     update(origIdx, { description: val })
                   }
+                  category={e.category ?? "presence"}
+                  onCategoryChange={(val) => update(origIdx, { category: val })}
                   onRemove={() => remove(origIdx)}
                 />
               ))}
@@ -351,12 +409,16 @@ function addTag(description: string): string {
 function AppearanceAttributeRow({
   attribute,
   description,
+  category,
+  onCategoryChange,
   onAttributeChange,
   onDescriptionChange,
   onRemove,
 }: {
   attribute: string;
   description: string;
+  category: AttributeCategory;
+  onCategoryChange: (val: AttributeCategory) => void;
   onAttributeChange: (val: string) => void;
   onDescriptionChange: (val: string) => void;
   onRemove: () => void;
@@ -388,6 +450,19 @@ function AppearanceAttributeRow({
           placeholder="Attribute (e.g. eyes, hair, outfit)"
           className="h-5 text-[11px] font-medium flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
         />
+        <select
+          className="h-5 rounded border bg-background px-1 text-[9px]"
+          value={category}
+          onChange={(e) =>
+            onCategoryChange(e.target.value as AttributeCategory)
+          }
+        >
+          {ATTRIBUTE_CATEGORIES.map((entryCategory) => (
+            <option key={entryCategory} value={entryCategory}>
+              {entryCategory}
+            </option>
+          ))}
+        </select>
         <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0">
           {tagValues.length}
         </Badge>
@@ -452,6 +527,15 @@ export function SceneSection({
   const presentNames = scene.presentEntityIds.map((id) =>
     resolveEntityName(entities, id),
   );
+
+  const togglePresent = (entityId: string) => {
+    const exists = scene.presentEntityIds.includes(entityId);
+    const presentEntityIds = exists
+      ? scene.presentEntityIds.filter((id) => id !== entityId)
+      : [...scene.presentEntityIds, entityId];
+    onUpdate({ ...scene, presentEntityIds });
+  };
+
   return (
     <SectionShell title="Scene">
       <div className="flex flex-col gap-1.5">
@@ -469,22 +553,33 @@ export function SceneSection({
         <label className="text-[10px] text-muted-foreground">
           Who is present
         </label>
-        <DeferredInput
-          value={presentNames.join(", ")}
-          onCommit={(val) => {
-            const names = val
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean);
-            const ids = names.map((n) => {
-              const match = findEntityByName(entities, n);
-              return match ? match.id : n;
-            });
-            onUpdate({ ...scene, presentEntityIds: ids });
-          }}
-          placeholder="Character names, comma-separated..."
-          className="h-7 text-[11px]"
-        />
+        <div className="flex flex-wrap gap-1">
+          {entities.map((entity) => {
+            const selected = scene.presentEntityIds.includes(entity.id);
+            return (
+              <Button
+                key={entity.id}
+                type="button"
+                variant={selected ? "secondary" : "outline"}
+                size="sm"
+                className="h-6 px-2 text-[10px]"
+                onClick={() => togglePresent(entity.id)}
+              >
+                {entity.name || entity.id}
+              </Button>
+            );
+          })}
+          {entities.length === 0 && (
+            <span className="text-[10px] text-muted-foreground">
+              Add cast members first to toggle scene presence.
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          {presentNames.length > 0
+            ? `Present: ${presentNames.join(", ")}`
+            : "Present: none selected"}
+        </span>
       </div>
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] text-muted-foreground">Atmosphere</label>
@@ -572,6 +667,294 @@ export function DemeanorSection({
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> Add demeanor
+      </Button>
+    </SectionShell>
+  );
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseFactTags(input: string): FactTag[] {
+  return input
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((tag): tag is FactTag => {
+      return [
+        "biographical",
+        "spatial",
+        "relational",
+        "temporal",
+        "world",
+        "event",
+      ].includes(tag);
+    });
+}
+
+export function OpenThreadsSection({
+  entries,
+  onUpdate,
+}: {
+  entries: StoryThread[];
+  onUpdate: (entries: StoryThread[]) => void;
+}) {
+  const active = entries.filter(
+    (t) => t.status === "active" || t.status === "evolved",
+  );
+  const archived = entries.filter(
+    (t) => t.status === "resolved" || t.status === "stale",
+  );
+
+  const updateById = (id: string, patch: Partial<StoryThread>) =>
+    onUpdate(entries.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  const removeById = (id: string) =>
+    onUpdate(entries.filter((t) => t.id !== id));
+  const add = () =>
+    onUpdate([
+      ...entries,
+      {
+        id: `thread-${Date.now()}`,
+        description: "",
+        hook: "",
+        resolutionHint: "",
+        lastReferencedAt: todayIso(),
+        status: "active",
+        createdAt: todayIso(),
+      },
+    ]);
+
+  return (
+    <SectionShell title="Open Threads" badge={`${active.length}`}>
+      {active.map((thread) => (
+        <EntityCard
+          key={thread.id}
+          label={thread.description || "(new thread)"}
+          badge={
+            <Badge variant="outline" className="text-[9px] px-1 py-0">
+              {thread.status}
+            </Badge>
+          }
+          onRemove={() => removeById(thread.id)}
+        >
+          <DeferredTextarea
+            value={thread.description}
+            onCommit={(val) => updateById(thread.id, { description: val })}
+            placeholder="Thread description..."
+            className="min-h-10 font-mono text-[11px] leading-relaxed"
+            rows={2}
+          />
+          <DeferredInput
+            value={thread.hook ?? ""}
+            onCommit={(val) => updateById(thread.id, { hook: val })}
+            placeholder="Thread hook (short evocative label)"
+            className="h-7 text-[11px]"
+          />
+          <DeferredInput
+            value={thread.resolutionHint}
+            onCommit={(val) => updateById(thread.id, { resolutionHint: val })}
+            placeholder="Resolution hint (what would resolve this?)"
+            className="h-7 text-[11px]"
+          />
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-muted-foreground">Status</label>
+            <select
+              className="h-7 rounded border bg-background px-2 text-[11px]"
+              value={thread.status}
+              onChange={(e) =>
+                updateById(thread.id, {
+                  status: e.target.value as StoryThread["status"],
+                })
+              }
+            >
+              <option value="active">active</option>
+              <option value="evolved">evolved</option>
+              <option value="resolved">resolved</option>
+              <option value="stale">stale</option>
+            </select>
+            <span className="text-[10px] text-muted-foreground">
+              ref {thread.lastReferencedAt ?? "-"}
+            </span>
+          </div>
+        </EntityCard>
+      ))}
+      {archived.length > 0 && (
+        <div className="rounded border border-dashed p-2">
+          <div className="mb-1 text-[10px] font-medium text-muted-foreground">
+            Archived ({archived.length})
+          </div>
+          <div className="flex flex-col gap-1">
+            {archived.map((thread) => (
+              <div
+                key={thread.id}
+                className="flex items-center gap-2 text-[10px]"
+              >
+                <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                  {thread.status}
+                </Badge>
+                <span className="truncate">{thread.description}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto h-5 px-1 text-[9px]"
+                  onClick={() => updateById(thread.id, { status: "active" })}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start text-xs"
+        onClick={add}
+      >
+        <Plus className="mr-1 h-3 w-3" /> Add thread
+      </Button>
+    </SectionShell>
+  );
+}
+
+export function HardFactsSection({
+  entries,
+  onUpdate,
+}: {
+  entries: HardFact[];
+  onUpdate: (entries: HardFact[]) => void;
+}) {
+  const active = entries.filter((f) => !f.superseded);
+  const archived = entries.filter((f) => f.superseded);
+
+  const updateAt = (index: number, patch: Partial<HardFact>) =>
+    onUpdate(entries.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  const removeAt = (index: number) =>
+    onUpdate(entries.filter((_, i) => i !== index));
+  const add = () =>
+    onUpdate([
+      ...entries,
+      {
+        fact: "",
+        summary: "",
+        tags: ["event"],
+        createdAt: todayIso(),
+        establishedAt: todayIso(),
+        lastConfirmedAt: todayIso(),
+        superseded: false,
+      },
+    ]);
+
+  return (
+    <SectionShell title="Hard Facts" badge={`${active.length}`}>
+      {active.map((fact) => {
+        const idx = entries.indexOf(fact);
+        return (
+          <EntityCard
+            key={`${fact.fact}-${idx}`}
+            label={fact.fact || "(new fact)"}
+            onRemove={() => removeAt(idx)}
+          >
+            <DeferredTextarea
+              value={fact.fact}
+              onCommit={(val) => updateAt(idx, { fact: val })}
+              placeholder="Hard fact..."
+              className="min-h-10 font-mono text-[11px] leading-relaxed"
+              rows={2}
+            />
+            <DeferredInput
+              value={fact.summary ?? ""}
+              onCommit={(val) => updateAt(idx, { summary: val || undefined })}
+              placeholder="Summary label"
+              className="h-7 text-[11px]"
+            />
+            <DeferredInput
+              value={(fact.tags ?? []).join(", ")}
+              onCommit={(val) =>
+                updateAt(idx, {
+                  tags: parseFactTags(val),
+                })
+              }
+              placeholder="Tags (biographical, spatial, relational, temporal, world, event)"
+              className="h-7 text-[11px]"
+            />
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span>est {fact.establishedAt ?? fact.createdAt ?? "-"}</span>
+              <span>confirmed {fact.lastConfirmedAt ?? "-"}</span>
+            </div>
+            <DeferredInput
+              value={fact.supersededBy ?? ""}
+              onCommit={(val) =>
+                updateAt(idx, { supersededBy: val.trim() || undefined })
+              }
+              placeholder="Superseded by (optional rationale)"
+              className="h-7 text-[11px]"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 self-start text-[10px]"
+              onClick={() =>
+                updateAt(idx, {
+                  superseded: true,
+                  supersededBy:
+                    fact.supersededBy ?? `Manually superseded on ${todayIso()}`,
+                })
+              }
+            >
+              Supersede
+            </Button>
+          </EntityCard>
+        );
+      })}
+      {archived.length > 0 && (
+        <div className="rounded border border-dashed p-2">
+          <div className="mb-1 text-[10px] font-medium text-muted-foreground">
+            Superseded Archive ({archived.length})
+          </div>
+          <div className="flex flex-col gap-1">
+            {archived.map((fact) => {
+              const idx = entries.indexOf(fact);
+              return (
+                <div
+                  key={`${fact.fact}-${idx}`}
+                  className="flex items-center gap-2 text-[10px]"
+                >
+                  <span className="truncate">{fact.fact}</span>
+                  {fact.supersededBy && (
+                    <span className="truncate text-muted-foreground">
+                      ({fact.supersededBy})
+                    </span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-5 px-1 text-[9px]"
+                    onClick={() =>
+                      updateAt(idx, {
+                        superseded: false,
+                        lastConfirmedAt: todayIso(),
+                        supersededBy: undefined,
+                      })
+                    }
+                  >
+                    Restore
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start text-xs"
+        onClick={add}
+      >
+        <Plus className="mr-1 h-3 w-3" /> Add fact
       </Button>
     </SectionShell>
   );

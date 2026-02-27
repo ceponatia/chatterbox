@@ -20,24 +20,64 @@ const TRIGGER_MAP: Record<string, readonly string[]> = {
   cast_change: ["relationship_status", "interaction_guide"],
   relationship_shift: ["relationship_status", "backstory"],
   hard_fact_superseded: ["relationship_status"],
+  scene_reverted: ["appearance_visual", "outfit_hairstyle", "setting_premise"],
+  appearance_reverted: ["appearance_visual", "outfit_hairstyle"],
+  relationship_reverted: ["relationship_status", "backstory"],
+  hard_fact_removed: ["relationship_status"],
+  thread_removed: ["interaction_guide"],
   correction: [
     "appearance_visual",
     "outfit_hairstyle",
     "setting_premise",
     "interaction_guide",
   ],
+  character_enters: [],
+  character_leaves: [],
 };
+
+interface CharacterSegmentLookup {
+  [entityId: string]: string;
+}
 
 /**
  * Given extracted facts, return segment IDs whose lastIncludedAt should
  * be reset to 0 so they are re-injected on the next turn.
  */
-export function computeCascadeResets(facts: ExtractedFact[]): string[] {
+function parseEntityIdFromDetail(detail: string): string | null {
+  const text = detail.trim();
+  const idMatch = text.match(/\b(e-[a-z0-9-]{6,})\b/i);
+  if (idMatch?.[1]) return idMatch[1];
+
+  const parenMatch = text.match(/\((e-[a-z0-9-]{6,})\)/i);
+  if (parenMatch?.[1]) return parenMatch[1];
+
+  return null;
+}
+
+export function computeCascadeResets(
+  facts: ExtractedFact[],
+  characterSegmentIds?: CharacterSegmentLookup,
+): string[] {
   const resets = new Set<string>();
   for (const fact of facts) {
     const segments = TRIGGER_MAP[fact.type];
     if (segments) {
       for (const id of segments) resets.add(id);
+    }
+
+    if (
+      characterSegmentIds &&
+      (fact.type === "character_enters" || fact.type === "character_leaves")
+    ) {
+      const entityId = parseEntityIdFromDetail(fact.detail);
+      if (entityId) {
+        const segmentId = characterSegmentIds[entityId];
+        if (segmentId) resets.add(segmentId);
+      } else {
+        for (const segmentId of Object.values(characterSegmentIds)) {
+          resets.add(segmentId);
+        }
+      }
     }
   }
   return [...resets];

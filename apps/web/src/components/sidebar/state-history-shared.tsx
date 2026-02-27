@@ -1,6 +1,12 @@
 "use client";
 
-import { CheckCircle2, AlertTriangle, RefreshCw, Pencil } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Pencil,
+  Scissors,
+} from "lucide-react";
 
 export const DISPOSITION_CONFIG = {
   auto_accepted: {
@@ -22,6 +28,11 @@ export const DISPOSITION_CONFIG = {
     label: "Manual",
     icon: Pencil,
     className: "text-blue-600 border-blue-500/50",
+  },
+  rollback: {
+    label: "Rollback",
+    icon: Scissors,
+    className: "text-violet-600 border-violet-500/50",
   },
 } as const;
 

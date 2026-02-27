@@ -8,6 +8,9 @@ import {
   type ValidationReport,
 } from "@/lib/state-history";
 import { generateId } from "@/lib/storage";
+import type { SerializedSegment } from "@chatterbox/prompt-assembly";
+import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
+import { buildCharacterSegmentLookup } from "@/lib/prompt-segment-utils";
 
 interface StateUpdateResponse {
   newState: string;
@@ -30,6 +33,7 @@ interface Params {
   autoSummarizeInterval: number;
   /** Callback to reset lastIncludedAt entries for cascade triggers */
   onCascadeResets?: (segmentIds: string[]) => void;
+  customSegments?: SerializedSegment[] | null;
   lastPipelineTurn: number;
   setLastPipelineTurn: (turn: number) => void;
 }
@@ -43,6 +47,7 @@ async function applyPipelineResult(
   turnNumber: number,
   onStateUpdate: (s: string) => void,
   onCascadeResets?: (ids: string[]) => void,
+  customSegments?: SerializedSegment[] | null,
 ): Promise<boolean> {
   if (data.newState === currentState || !data.newState.trim()) return false;
 
@@ -69,8 +74,16 @@ async function applyPipelineResult(
   }
 
   // Apply cascade resets so triggered segments re-inject next turn
-  if (data.cascadeResets?.length && onCascadeResets) {
-    onCascadeResets(data.cascadeResets);
+  if (onCascadeResets) {
+    const dynamicResets = computeCascadeResets(
+      data.extractedFacts,
+      buildCharacterSegmentLookup(customSegments),
+    );
+    const merged = new Set<string>([
+      ...(data.cascadeResets ?? []),
+      ...dynamicResets,
+    ]);
+    if (merged.size > 0) onCascadeResets([...merged]);
   }
 
   console.log(
@@ -96,6 +109,7 @@ export function useStatePipeline({
   onStateUpdate,
   autoSummarizeInterval,
   onCascadeResets,
+  customSegments,
   lastPipelineTurn,
   setLastPipelineTurn,
 }: Params) {
@@ -147,6 +161,7 @@ export function useStatePipeline({
           turnNumber,
           onStateUpdate,
           onCascadeResets,
+          customSegments,
         );
         if (applied) {
           setHistoryVersion((v) => v + 1);
@@ -169,6 +184,7 @@ export function useStatePipeline({
       conversationId,
       onStateUpdate,
       onCascadeResets,
+      customSegments,
       setLastPipelineTurn,
     ],
   );

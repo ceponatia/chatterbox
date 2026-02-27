@@ -33,6 +33,9 @@ export interface AssemblyContext {
   /** Current story state fields (for on_state_field checks) */
   readonly stateFields: Readonly<Record<string, string>>;
 
+  /** Entity IDs currently present in the active scene (for on_presence checks) */
+  readonly presentEntityIds?: readonly string[];
+
   /** Total token budget for the system prompt area */
   readonly tokenBudget: number;
 

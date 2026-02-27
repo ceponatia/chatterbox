@@ -57,6 +57,16 @@ export const HEADING_MAPPINGS: readonly HeadingMapping[] = [
     includeHeading: true,
   },
   {
+    pattern: /^narration\s+guidelines/i,
+    id: "narration_guidelines",
+    label: "Narration Guidelines",
+    policy: { type: "every_n", n: 3 },
+    priority: "normal",
+    order: 5,
+    category: "rules",
+    includeHeading: true,
+  },
+  {
     pattern: /^setting\s+(and\s+)?scope/i,
     id: "setting_premise",
     label: "Setting & Premise",

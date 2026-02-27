@@ -237,6 +237,7 @@ function processKnownSection(
     order: mapping.order,
     tokenEstimate: estimateTokens(fullContent),
     category: mapping.category,
+    omittedSummary: undefined,
   };
 }
 
@@ -289,6 +290,7 @@ export function parseSystemPromptToSegments(
         order: 80 + unknownCounter,
         tokenEstimate: estimateTokens(fullContent),
         category: "custom",
+        omittedSummary: undefined,
       });
     }
   }
@@ -324,6 +326,8 @@ function deserializePolicy(sp: SerializedPolicy): InjectionPolicy {
       return { type: "on_topic", keywords: sp.keywords };
     case "on_state_field":
       return { type: "on_state_field", field: sp.field };
+    case "on_presence":
+      return { type: "on_presence", entityId: sp.entityId };
   }
 }
 
@@ -338,6 +342,7 @@ export function deserializeSegment(ss: SerializedSegment): PromptSegment {
     order: ss.order,
     tokenEstimate: ss.tokenEstimate,
     category: ss.category,
+    omittedSummary: ss.omittedSummary,
   };
 }
 

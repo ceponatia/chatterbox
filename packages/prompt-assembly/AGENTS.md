@@ -90,10 +90,11 @@ This package depends on `@chatterbox/sockets` for the `AssemblyContext`, `Assemb
 A `PromptSegment` is a self-contained piece of context with:
 
 - **content**: the actual text
-- **policy**: when to inject (`always`, `every_n`, `on_topic`, `on_state_field`, `custom`)
+- **policy**: when to inject (`always`, `every_n`, `on_topic`, `on_state_field`, `on_presence`, `custom`)
 - **priority**: `critical` (never dropped) > `high` > `normal` > `low`
 - **order**: numeric sort weight within the same priority tier
 - **tokenEstimate**: approximate token count for budget enforcement
+- **omittedSummary**: optional one-line hint appended in omitted-context notes
 
 ### Assembly algorithm
 
@@ -102,7 +103,12 @@ A `PromptSegment` is a self-contained piece of context with:
 3. Sort eligible by priority then order
 4. Greedily add segments until `tokenBudget` is reached (configurable via `Settings.tokenBudget`, default 2500)
 5. Critical segments are always included (budget overflow allowed)
-6. Generate an "omitted context" note grouped by category listing what was skipped
+6. Generate an "omitted context" note grouped by category listing what was skipped (includes `omittedSummary` when present)
+
+### Presence detection
+
+- `on_presence` policies evaluate against `AssemblyContext.presentEntityIds`.
+- Segment is included when `presentEntityIds` contains `policy.entityId`.
 
 ### Topic detection
 
@@ -120,6 +126,7 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 | Segment | Policy | Priority |
 |---------|--------|----------|
 | `core_rules`, `output_format`, `setting_premise`, `character_identity` | `always` | critical/high |
+| `narration_guidelines` | `every_n(3)` | normal |
 | `speech_patterns` | `every_n(2)` | high |
 | `vocabulary_humor`, `mannerisms` | `every_n(3)` | normal |
 | `interaction_guide` | `every_n(3)` | normal |
@@ -142,13 +149,16 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 5. Assigning default policies, priorities, and categories based on the heading mapping
 6. Capturing unknown sections as generic `custom_N` segments with `always` policy
 
+Additional heading mapping:
+- `Narration Guidelines` headings map to the `narration_guidelines` segment (`every_n(3)`, `normal`, `rules` category).
+
 `segmentsToMarkdown(segments)` converts segments back to flat markdown (non-mutating — copies before sorting).
 
 `createAssemblerFromSerialized(segments)` creates a `PromptAssembler` from `SerializedSegment[]` by deserializing policies and registering all segments.
 
 ### SerializedSegment / SerializedPolicy
 
-JSON-safe representations of `PromptSegment` / `InjectionPolicy` for localStorage persistence and API transport. Both types live in `types.ts`. `SerializedPolicy` excludes the `custom` policy variant (which contains a function) since functions aren't serializable.
+JSON-safe representations of `PromptSegment` / `InjectionPolicy` for localStorage persistence and API transport. Both types live in `types.ts`. `SerializedPolicy` excludes the `custom` policy variant (which contains a function) since functions aren't serializable. `SerializedPolicy` includes `on_presence`, and `SerializedSegment` includes optional `omittedSummary`.
 
 ### Adding a new segment
 

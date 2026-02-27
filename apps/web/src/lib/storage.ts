@@ -13,6 +13,7 @@ import type { StructuredStoryState } from "./story-state-model";
 import {
   parseMarkdownToStructured,
   emptyStructuredState,
+  ensureLifecycleDefaults,
 } from "./story-state-model";
 
 export type { Settings };
@@ -152,6 +153,9 @@ function migrateConversation(conv: Conversation): Conversation {
     conv.structuredState = conv.storyState
       ? parseMarkdownToStructured(conv.storyState)
       : null;
+  }
+  if (conv.structuredState) {
+    conv.structuredState = ensureLifecycleDefaults(conv.structuredState);
   }
   return conv;
 }

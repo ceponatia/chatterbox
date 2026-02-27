@@ -23,6 +23,7 @@ interface Params {
     storyState: string;
     settings: Settings;
     customSegments?: SerializedSegment[] | null;
+    presentEntityIds?: string[];
   }) => void;
   onConversationSwitch?: () => void;
 }
@@ -56,6 +57,7 @@ export function useConversationManager({
         storyState: conv.storyState,
         settings: conv.settings,
         customSegments: conv.customSegments,
+        presentEntityIds: conv.structuredState?.scene.presentEntityIds ?? [],
       });
     },
     [setMessages, fieldsRef, syncRef],
@@ -122,12 +124,14 @@ function useConfigSyncEffect(
       storyState: fields.storyState,
       settings: fields.settings,
       customSegments: fields.customSegments,
+      presentEntityIds: fields.structuredState?.scene.presentEntityIds ?? [],
     });
   }, [
     fields.systemPrompt,
     fields.storyState,
     fields.settings,
     fields.customSegments,
+    fields.structuredState,
     onConfigSync,
   ]);
 }

@@ -21,6 +21,7 @@ interface ConfigSync {
     storyState: string;
     settings: Settings;
     customSegments?: SerializedSegment[] | null;
+    presentEntityIds?: string[];
   }): void;
 }
 

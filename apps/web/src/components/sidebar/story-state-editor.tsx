@@ -17,8 +17,9 @@ import {
   CharactersSection,
   SceneSection,
   DemeanorSection,
+  OpenThreadsSection,
+  HardFactsSection,
   BulletListSection,
-  TimestampedBulletListSection,
   CustomSectionEditor,
 } from "./story-state-sections";
 
@@ -158,15 +159,12 @@ function StructuredEditorBody({
   state: StructuredStoryState;
   onUpdate: (state: StructuredStoryState) => void;
 }) {
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
   const patch = useCallback(
     <K extends keyof StructuredStoryState>(
       key: K,
       value: StructuredStoryState[K],
-    ) => onUpdate({ ...stateRef.current, [key]: value }),
-    [onUpdate],
+    ) => onUpdate({ ...state, [key]: value }),
+    [onUpdate, state],
   );
 
   const { entities } = state;
@@ -199,35 +197,13 @@ function StructuredEditorBody({
         onUpdate={(v) => patch("demeanor", v)}
         onEntitiesUpdate={(v) => patch("entities", v)}
       />
-      <TimestampedBulletListSection
-        title="Open Threads"
-        items={state.openThreads.map((t) => ({
-          text: t.description,
-          createdAt: t.createdAt,
-        }))}
-        onUpdate={(items) =>
-          patch(
-            "openThreads",
-            items.map((d) => ({ description: d.text, createdAt: d.createdAt })),
-          )
-        }
-        placeholder="Thread description..."
-        addLabel="Add thread"
+      <OpenThreadsSection
+        entries={state.openThreads}
+        onUpdate={(items) => patch("openThreads", items)}
       />
-      <TimestampedBulletListSection
-        title="Hard Facts"
-        items={state.hardFacts.map((f) => ({
-          text: f.fact,
-          createdAt: f.createdAt,
-        }))}
-        onUpdate={(items) =>
-          patch(
-            "hardFacts",
-            items.map((f) => ({ fact: f.text, createdAt: f.createdAt })),
-          )
-        }
-        placeholder="Hard fact..."
-        addLabel="Add fact"
+      <HardFactsSection
+        entries={state.hardFacts}
+        onUpdate={(items) => patch("hardFacts", items)}
       />
       <BulletListSection
         title="Style"
