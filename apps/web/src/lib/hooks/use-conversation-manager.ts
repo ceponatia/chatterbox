@@ -45,6 +45,7 @@ export function useConversationManager({ messages, setMessages, onConfigSync, on
       fields.setSettings(conv.settings);
       fields.setSystemPromptBaseline(conv.systemPromptBaseline);
       fields.setStoryStateBaseline(conv.storyStateBaseline);
+      fields.setLastIncludedAt(conv.lastIncludedAt ?? {});
       onConfigSync({ systemPrompt: conv.systemPrompt, storyState: conv.storyState, settings: conv.settings });
     },
     [setMessages, fields, onConfigSync]
@@ -143,7 +144,7 @@ function useAutoSave(
   setConversations: (c: ConversationMeta[]) => void,
 ) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { systemPrompt, storyState, previousStoryState, storyStateLastUpdated, settings, systemPromptBaseline, storyStateBaseline } = fields;
+  const { systemPrompt, storyState, previousStoryState, storyStateLastUpdated, settings, systemPromptBaseline, storyStateBaseline, lastIncludedAt } = fields;
 
   useEffect(() => {
     if (!activeConvRef.current || !activeConvId) return;
@@ -151,12 +152,12 @@ function useAutoSave(
     saveTimeoutRef.current = setTimeout(() => {
       const conv = activeConvRef.current;
       if (!conv) return;
-      Object.assign(conv, { messages, systemPrompt, storyState, previousStoryState, storyStateLastUpdated, settings, systemPromptBaseline, storyStateBaseline });
+      Object.assign(conv, { messages, systemPrompt, storyState, previousStoryState, storyStateLastUpdated, settings, systemPromptBaseline, storyStateBaseline, lastIncludedAt });
       saveConversation(conv);
       setConversations(listConversations());
     }, 500);
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [messages, systemPrompt, storyState, previousStoryState, storyStateLastUpdated, settings, systemPromptBaseline, storyStateBaseline, activeConvId, activeConvRef, setConversations]);
+  }, [messages, systemPrompt, storyState, previousStoryState, storyStateLastUpdated, settings, systemPromptBaseline, storyStateBaseline, lastIncludedAt, activeConvId, activeConvRef, setConversations]);
 }
 
 function useAutoTitle(

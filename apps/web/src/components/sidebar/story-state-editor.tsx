@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { RotateCcw, Clock, Upload } from "lucide-react";
 import { StoryStateReview, type StoryStateReviewProps } from "./story-state-review";
+import { StateHistory } from "./state-history";
+import type { StateHistoryEntry } from "@/lib/state-history";
 
 export interface PendingReview extends StoryStateReviewProps {
   active: boolean;
@@ -20,6 +22,12 @@ interface StoryStateEditorProps {
   baseline: string | null;
   lastUpdated: string | null;
   review: PendingReview;
+  /** When false (production mode), the blocking review section is hidden */
+  reviewMode: boolean;
+  /** Recent state update indicator — true briefly after a pipeline update */
+  recentlyUpdated: boolean;
+  /** State history entries to display */
+  stateHistory: StateHistoryEntry[];
 }
 
 function formatTimestamp(iso: string): string {
@@ -33,7 +41,7 @@ function formatTimestamp(iso: string): string {
   });
 }
 
-export function StoryStateEditor({ value, onChange, onImport, onReset, baseline, lastUpdated, review }: StoryStateEditorProps) {
+export function StoryStateEditor({ value, onChange, onImport, onReset, baseline, lastUpdated, review, reviewMode, recentlyUpdated, stateHistory }: StoryStateEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,12 +63,17 @@ export function StoryStateEditor({ value, onChange, onImport, onReset, baseline,
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-0.5">
           <Label className="text-sm font-semibold">Story State</Label>
-          {lastUpdated && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
-              Last updated: {formatTimestamp(lastUpdated)}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {recentlyUpdated && (
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" title="State recently updated" />
+            )}
+            {lastUpdated && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Clock className="h-2.5 w-2.5" />
+                Last updated: {formatTimestamp(lastUpdated)}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <input
@@ -96,8 +109,8 @@ export function StoryStateEditor({ value, onChange, onImport, onReset, baseline,
         Cast, scene, threads, hard facts. Injected after system prompt each request. Update every 10–20 turns.
       </p>
 
-      {/* Pending review section — shown inline when summarization completes */}
-      {review.active && (
+      {/* Pending review section — only shown in review mode */}
+      {reviewMode && review.active && (
         <>
           <StoryStateReview
             proposedStoryState={review.proposedStoryState}
@@ -116,6 +129,9 @@ export function StoryStateEditor({ value, onChange, onImport, onReset, baseline,
         className="min-h-48 font-mono text-xs leading-relaxed"
         placeholder="Enter story state..."
       />
+
+      <Separator />
+      <StateHistory entries={stateHistory} />
     </div>
   );
 }

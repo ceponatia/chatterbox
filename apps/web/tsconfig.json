@@ -23,6 +23,7 @@
   ],
   "exclude": ["node_modules"],
   "references": [
-    { "path": "../../packages/sockets" }
+    { "path": "../../packages/sockets" },
+    { "path": "../../packages/prompt-assembly" }
   ]
 }

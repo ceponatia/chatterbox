@@ -23,6 +23,8 @@ export interface Conversation extends ConversationMeta {
   settings: Settings;
   systemPromptBaseline: string | null;
   storyStateBaseline: string | null;
+  /** Prompt assembly turn tracker: segment ID → last turn included */
+  lastIncludedAt: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +97,7 @@ export function createConversation(title = "New Chat"): Conversation {
     settings: { ...DEFAULT_SETTINGS },
     systemPromptBaseline: null,
     storyStateBaseline: null,
+    lastIncludedAt: {},
   };
   // Persist full blob
   localStorage.setItem(convKey(conv.id), JSON.stringify(conv));
@@ -117,6 +120,7 @@ export function loadConversation(id: string): Conversation | null {
     conv.settings = { ...DEFAULT_SETTINGS, ...conv.settings };
     if (conv.systemPromptBaseline === undefined) conv.systemPromptBaseline = null;
     if (conv.storyStateBaseline === undefined) conv.storyStateBaseline = null;
+    if (!conv.lastIncludedAt) conv.lastIncludedAt = {};
     return conv;
   } catch {
     return null;

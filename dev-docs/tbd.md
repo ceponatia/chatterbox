@@ -2,9 +2,11 @@
 
 ## Overview
 
-## Ideas
+Add tbd items here. When a decent number are ready, create a plan document for them and then move the lines to a section called "Completed in Phase 2" or "Completed in Phase 3", etc.
 
-## Completed
+## Phase 2 Ideas
+
+## Completed in Phase 1
 
 - A system to load quotes and conversation snippets for NPCs that the LLM uses for examples when writing dialogue. → see `plan-npc-systems.md` §1
 - A system for intelligently determining the NPCs attitude toward the player and keeping it tracked in state, changing it when necessary. It should be able to move bi-directionally (closer affinity and more rapport, or more distance and less rapport). → see `plan-npc-systems.md` §2

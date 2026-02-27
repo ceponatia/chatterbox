@@ -1,6 +1,8 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText, UIMessage, convertToModelMessages } from "ai";
 import { logRequest, startTimer, logStreamStart, logStreamEnd, logReasoning } from "@/lib/api-logger";
+import { createDefaultAssembler } from "@chatterbox/prompt-assembly";
+import type { AssemblyContext, AssemblyResult } from "@chatterbox/prompt-assembly";
 
 interface ChatSettings {
   temperature?: number;
@@ -8,7 +10,10 @@ interface ChatSettings {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
+  tokenBudget?: number;
 }
+
+const assembler = createDefaultAssembler();
 
 const MAX_MESSAGES = 40;
 
@@ -17,8 +22,18 @@ const openrouter = createOpenRouter({
   headers: { "HTTP-Referer": "http://localhost:3000", "X-Title": "Chatterbox" },
 });
 
-function buildSystem(systemPrompt: string, storyState: string): string {
-  return storyState ? `${systemPrompt}\n\n## Current Story State\n${storyState}` : systemPrompt;
+/** Parse story state markdown into field map for on_state_field policies. */
+function parseStateFields(storyState: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  const sections = storyState.split(/^## /m).filter(Boolean);
+  for (const section of sections) {
+    const newlineIdx = section.indexOf("\n");
+    if (newlineIdx === -1) continue;
+    const key = section.slice(0, newlineIdx).trim().toLowerCase().replace(/\s+/g, "_");
+    const value = section.slice(newlineIdx + 1).trim();
+    if (key && value) fields[key] = value;
+  }
+  return fields;
 }
 
 function windowMessages(messages: UIMessage[]): UIMessage[] {
@@ -40,6 +55,38 @@ function resolveSettings(s: ChatSettings) {
   };
 }
 
+function buildAssemblyContext(
+  messages: UIMessage[], storyState: string, settings: ChatSettings, lastIncludedAt?: Record<string, number>,
+): AssemblyContext {
+  const turnNumber = messages.filter(m => m.role === "user").length;
+  const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+  const userText = lastUserMsg?.parts?.find(p => p.type === "text");
+  const currentUserMessage = userText && userText.type === "text" ? userText.text : "";
+  return {
+    turnNumber,
+    lastIncludedAt: lastIncludedAt ?? {},
+    currentUserMessage,
+    stateFields: parseStateFields(storyState),
+    tokenBudget: settings.tokenBudget ?? 2500,
+  };
+}
+
+function logAssembly(assembly: AssemblyResult, ctx: AssemblyContext) {
+  const budgetPct = Math.round((assembly.tokenEstimate / ctx.tokenBudget) * 100);
+  const omittedReasons = new Map<string, number>();
+  for (const o of assembly.omitted) {
+    omittedReasons.set(o.reason, (omittedReasons.get(o.reason) ?? 0) + 1);
+  }
+  const reasonSummary = [...omittedReasons.entries()].map(([r, n]) => `${r}(${n})`).join(", ");
+  console.log(
+    `  \x1b[2m🧩 assembly t${ctx.turnNumber}: ` +
+    `${assembly.included.length} included, ${assembly.omitted.length} omitted, ` +
+    `~${assembly.tokenEstimate}/${ctx.tokenBudget} tokens (${budgetPct}%)` +
+    (reasonSummary ? ` | omit: ${reasonSummary}` : "") +
+    `\x1b[0m`,
+  );
+}
+
 function streamCallbacks(elapsed: () => number) {
   return {
     onError({ error }: { error: unknown }) { console.error(`\x1b[31m✗ /api/chat stream error:\x1b[0m`, error); },
@@ -52,18 +99,26 @@ function streamCallbacks(elapsed: () => number) {
 }
 
 export async function POST(req: Request) {
-  const { messages, systemPrompt, storyState, settings } = (await req.json()) as {
+  const { messages, systemPrompt: _rawSystemPrompt, storyState, settings, lastIncludedAt } = (await req.json()) as {
     messages: UIMessage[]; systemPrompt: string; storyState: string; settings: ChatSettings;
+    lastIncludedAt?: Record<string, number>;
   };
 
   const windowed = windowMessages(messages);
-  logRequest("/api/chat", { messages: windowed, systemPrompt, storyState, settings });
   const elapsed = startTimer();
+  const ctx = buildAssemblyContext(messages, storyState, settings, lastIncludedAt);
+  const assembly = assembler.assemble(ctx);
+  const system = storyState
+    ? `${assembly.systemPrompt}\n\n## Current Story State\n${storyState}`
+    : assembly.systemPrompt;
+
+  logAssembly(assembly, ctx);
+  logRequest("/api/chat", { messages: windowed, storyState, settings });
 
   try {
     const result = streamText({
       model: openrouter(process.env.OPENROUTER_MODEL || "z-ai/glm-5"),
-      system: buildSystem(systemPrompt, storyState),
+      system,
       messages: await convertToModelMessages(windowed),
       ...resolveSettings(settings),
       providerOptions: { openrouter: { reasoning: { effort: "high" }, provider: { order: ["Phala", "NovitaAI", "Z.ai"] } } },

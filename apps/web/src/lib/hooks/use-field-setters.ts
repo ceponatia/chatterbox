@@ -12,6 +12,7 @@ export function useFieldSetters() {
   const [storyStateLastUpdated, setStoryStateLastUpdated] = useState<string | null>(null);
   const [previousStoryState, setPreviousStoryState] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [lastIncludedAt, setLastIncludedAt] = useState<Record<string, number>>({});
 
   const handleSystemPromptChange = useCallback((value: string) => {
     setSystemPrompt(value);
@@ -64,6 +65,7 @@ export function useFieldSetters() {
     storyStateLastUpdated, setStoryStateLastUpdated,
     previousStoryState, setPreviousStoryState,
     settings, setSettings,
+    lastIncludedAt, setLastIncludedAt,
     handleSystemPromptChange,
     handleStoryStateChange,
     handleStoryStateImport,

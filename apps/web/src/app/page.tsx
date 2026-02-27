@@ -3,6 +3,8 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState, useMemo, useCallback } from "react";
+import type { StateHistoryEntry } from "@/lib/state-history";
+import { useStateHistoryEntries } from "@/lib/hooks/use-state-history";
 import { Settings as SettingsIcon, BookOpen, ScrollText, Trash2, Sparkles, PanelLeftOpen, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +23,15 @@ import type { Settings } from "@/lib/defaults";
 import { useConversationManager } from "@/lib/hooks/use-conversation-manager";
 import { useSummarization } from "@/lib/hooks/use-summarization";
 import { useMessageActions } from "@/lib/hooks/use-message-actions";
+import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
+import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
 
 // Module-level config that the transport body function reads at request time.
 const liveConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   storyState: DEFAULT_STORY_STATE,
   settings: DEFAULT_SETTINGS as Settings,
+  lastIncludedAt: {} as Record<string, number>,
 };
 
 export default function Home() {
@@ -38,6 +43,7 @@ export default function Home() {
           systemPrompt: liveConfig.systemPrompt,
           storyState: liveConfig.storyState,
           settings: liveConfig.settings,
+          lastIncludedAt: liveConfig.lastIncludedAt,
         }),
       }),
     []
@@ -46,10 +52,11 @@ export default function Home() {
   const { messages, sendMessage, stop, status, setMessages } = useChat({ transport });
   const isLoading = status === "submitted" || status === "streaming";
 
-  const syncConfig = useCallback((c: { systemPrompt: string; storyState: string; settings: Settings }) => {
+  const syncConfig = useCallback((c: { systemPrompt: string; storyState: string; settings: Settings; lastIncludedAt?: Record<string, number> }) => {
     liveConfig.systemPrompt = c.systemPrompt;
     liveConfig.storyState = c.storyState;
     liveConfig.settings = c.settings;
+    if (c.lastIncludedAt) liveConfig.lastIncludedAt = c.lastIncludedAt;
   }, []);
 
   const conv = useConversationManager({
@@ -67,31 +74,35 @@ export default function Home() {
     onAccept: conv.updateStoryStateFromSummary,
   });
 
-  const msgActions = useMessageActions({ messages, setMessages, sendMessage });
+  useAssemblyTracker({
+    messages,
+    storyState: conv.storyState,
+    lastIncludedAt: conv.lastIncludedAt,
+    setLastIncludedAt: conv.setLastIncludedAt,
+  });
 
-  // --- Config sidebar state ---
+  const pipeline = useStatePipeline({
+    messages, isLoading, storyState: conv.storyState, conversationId: conv.activeConvId,
+    onStateUpdate: conv.updateStoryStateFromSummary, autoSummarizeInterval: conv.settings.autoSummarizeInterval,
+  });
+  const stateHistory = useStateHistoryEntries(conv.activeConvId, pipeline.historyVersion);
+  const msgActions = useMessageActions({ messages, setMessages, sendMessage });
   const [configOpen, setConfigOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("story-state");
-
-  const sidebarContent = (
-    <SidebarContent
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
-      conv={conv}
-      summarization={summarization}
-    />
+  const sidebar = (
+    <SidebarContent activeTab={activeTab} setActiveTab={setActiveTab} conv={conv}
+      summarization={summarization} recentlyUpdated={pipeline.recentlyUpdated} stateHistory={stateHistory} />
   );
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Chat column */}
       <div className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
           conv={conv}
           messages={messages}
           isLoading={isLoading}
           summarization={summarization}
-          configSheet={{ open: configOpen, setOpen: setConfigOpen, content: sidebarContent }}
+          configSheet={{ open: configOpen, setOpen: setConfigOpen, content: sidebar }}
           onClearChat={msgActions.handleClearChat}
         />
 
@@ -124,7 +135,7 @@ export default function Home() {
           )}
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {sidebarContent}
+          {sidebar}
         </div>
       </aside>
     </div>
@@ -136,15 +147,14 @@ export default function Home() {
 // ---------------------------------------------------------------------------
 
 function SidebarContent({
-  activeTab,
-  setActiveTab,
-  conv,
-  summarization,
+  activeTab, setActiveTab, conv, summarization, recentlyUpdated, stateHistory,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   conv: ReturnType<typeof useConversationManager>;
   summarization: ReturnType<typeof useSummarization>;
+  recentlyUpdated: boolean;
+  stateHistory: StateHistoryEntry[];
 }) {
   return (
     <>
@@ -153,7 +163,10 @@ function SidebarContent({
           <TabsTrigger value="story-state" className="relative flex-1">
             <ScrollText className="mr-1 h-3 w-3" />
             Story State
-            {summarization.hasPendingReview && (
+            {recentlyUpdated && (
+              <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+            )}
+            {!recentlyUpdated && summarization.hasPendingReview && (
               <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
             )}
           </TabsTrigger>
@@ -174,6 +187,9 @@ function SidebarContent({
             onReset={conv.handleStoryStateReset}
             baseline={conv.storyStateBaseline}
             lastUpdated={conv.storyStateLastUpdated}
+            reviewMode={conv.settings.reviewMode}
+            recentlyUpdated={recentlyUpdated}
+            stateHistory={stateHistory}
             review={{
               active: summarization.hasPendingReview,
               proposedStoryState: summarization.proposedStoryState,
@@ -320,3 +336,4 @@ function ChatHeader({
     </header>
   );
 }
+

@@ -125,6 +125,10 @@ export type Settings = {
   frequencyPenalty: number;
   presencePenalty: number;
   autoSummarizeInterval: number;
+  /** When true, show blocking review UI for summarization. When false, updates are silent. */
+  reviewMode: boolean;
+  /** Token budget for the segmented system prompt (excludes story state) */
+  tokenBudget: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -134,4 +138,6 @@ export const DEFAULT_SETTINGS: Settings = {
   frequencyPenalty: 0,
   presencePenalty: 0,
   autoSummarizeInterval: 15,
+  reviewMode: false,
+  tokenBudget: 2500,
 };

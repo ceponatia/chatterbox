@@ -10,7 +10,16 @@ const openrouter = createOpenRouter({
   },
 });
 
-const SUMMARIZE_INSTRUCTION = `Update the Story State for continuity. Keep it under 800 tokens. Use EXACTLY the following sections in this order:
+const REQUIRED_SECTIONS = [
+  "## Cast", "## Relationships", "## Appearance", "## Scene",
+  "## Current Demeanor", "## Open Threads", "## Hard Facts",
+];
+
+function isStateComplete(text: string): boolean {
+  return REQUIRED_SECTIONS.every(section => text.includes(section));
+}
+
+const SUMMARIZE_INSTRUCTION = `Update the Story State for continuity. Keep it under 1200 tokens. Use EXACTLY the following sections in this order:
 
 ## Cast
 - One bullet per character: **Name** — age, role, 1-line summary of who they are right now.
@@ -52,6 +61,66 @@ Important rules:
 - Preserve existing details in every section unless they changed — do not drop information.
 - Output ONLY the updated Story State block, no commentary or preamble.`;
 
+const PROVIDER_OPTIONS = {
+  openrouter: {
+    reasoning: { effort: "medium" as const },
+    provider: { order: ["Phala", "NovitaAI", "Z.ai"] },
+  },
+};
+
+type GenerateResult = Awaited<ReturnType<typeof generateText>>;
+type ModelMessages = NonNullable<Parameters<typeof generateText>[0]["messages"]>;
+
+async function generateWithRetries(
+  model: string,
+  system: string,
+  modelMessages: ModelMessages,
+  elapsed: () => number,
+): Promise<GenerateResult> {
+  const generate = (maxTokens = 2048) =>
+    generateText({
+      model: openrouter(model),
+      system,
+      messages: modelMessages,
+      temperature: 0.4,
+      maxOutputTokens: maxTokens,
+      providerOptions: PROVIDER_OPTIONS,
+    });
+
+  let result = await generate();
+  logReasoning("/api/summarize", result.reasoningText);
+  logResponse("/api/summarize", elapsed(), result.text);
+
+  // Retry on truncation or empty response
+  if (result.finishReason === "length" || !result.text.trim()) {
+    console.warn(`\x1b[33m⚠ /api/summarize: ${result.finishReason === "length" ? "truncated" : "empty"}, retrying…\x1b[0m`);
+    const retryElapsed = startTimer();
+    result = await generate();
+    logReasoning("/api/summarize (retry)", result.reasoningText);
+    logResponse("/api/summarize (retry)", retryElapsed(), result.text);
+  }
+
+  // If still truncated, escalate with higher token limit
+  if (result.finishReason === "length") {
+    console.warn("\x1b[33m⚠ /api/summarize: still truncated, retrying with 4096 limit…\x1b[0m");
+    const escalateElapsed = startTimer();
+    result = await generate(4096);
+    logReasoning("/api/summarize (escalate)", result.reasoningText);
+    logResponse("/api/summarize (escalate)", escalateElapsed(), result.text);
+  }
+
+  // Structural completeness check — retry if sections are missing
+  if (result.text.trim() && !isStateComplete(result.text)) {
+    console.warn("\x1b[33m⚠ /api/summarize: missing required sections, retrying…\x1b[0m");
+    const structElapsed = startTimer();
+    result = await generate();
+    logReasoning("/api/summarize (struct-retry)", result.reasoningText);
+    logResponse("/api/summarize (struct-retry)", structElapsed(), result.text);
+  }
+
+  return result;
+}
+
 export async function POST(req: Request) {
   try {
     const { messages, currentStoryState, systemPrompt } = (await req.json()) as {
@@ -78,42 +147,21 @@ export async function POST(req: Request) {
       },
     ];
 
-    const generate = () =>
-      generateText({
-        model: openrouter(model),
-        system,
-        messages: modelMessages,
-        temperature: 0.4,
-        maxOutputTokens: 1024,
-        providerOptions: {
-          openrouter: {
-            reasoning: { effort: "medium" },
-            provider: { order: ["Phala", "NovitaAI", "Z.ai"] },
-          },
-        },
-      });
-
-    let result = await generate();
-    logReasoning("/api/summarize", result.reasoningText);
-    logResponse("/api/summarize", elapsed(), result.text);
+    const result = await generateWithRetries(model, system, modelMessages, elapsed);
 
     if (!result.text.trim()) {
-      console.warn("\x1b[33m⚠ /api/summarize: empty response, retrying once…\x1b[0m");
-      const retryElapsed = startTimer();
-      result = await generate();
-      logReasoning("/api/summarize (retry)", result.reasoningText);
-      logResponse("/api/summarize (retry)", retryElapsed(), result.text);
-    }
-
-    if (!result.text.trim()) {
-      console.warn("\x1b[33m⚠ /api/summarize: still empty after retry\x1b[0m");
+      console.warn("\x1b[33m⚠ /api/summarize: still empty after retries\x1b[0m");
       return Response.json(
         { error: "Provider returned empty response after retry. Please try again." },
         { status: 502 }
       );
     }
 
-    return Response.json({ storyState: result.text });
+    return Response.json({
+      storyState: result.text,
+      complete: isStateComplete(result.text),
+      finishReason: result.finishReason,
+    });
   } catch (error) {
     console.error("Summarize API error:", error);
     return Response.json(

@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "apps/web" },
-    { "path": "packages/sockets" }
+    { "path": "packages/sockets" },
+    { "path": "packages/prompt-assembly" }
   ]
 }

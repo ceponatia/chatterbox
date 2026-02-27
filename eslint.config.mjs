@@ -25,8 +25,8 @@ const eslintConfig = defineConfig([
       "boundaries/elements": [
         { type: "app", pattern: ["apps/*"], capture: ["app"] },
         { type: "sockets", pattern: ["packages/sockets"] },
+        { type: "prompt-assembly", pattern: ["packages/prompt-assembly"] },
         // Future packages register here:
-        // { type: "prompt-assembly", pattern: ["packages/prompt-assembly"] },
         // { type: "state-pipeline", pattern: ["packages/state-pipeline"] },
       ],
       "boundaries/dependency-nodes": ["import", "dynamic-import"],
@@ -38,8 +38,10 @@ const eslintConfig = defineConfig([
         {
           default: "disallow",
           rules: [
-            // Apps can import from sockets (and future declared packages)
-            { from: "app", allow: ["sockets"] },
+            // Apps can import from sockets and prompt-assembly
+            { from: "app", allow: ["sockets", "prompt-assembly"] },
+            // Prompt-assembly can import from sockets (its only dependency)
+            { from: "prompt-assembly", allow: ["sockets"] },
             // Sockets is a leaf — it cannot import from any other package
             { from: "sockets", allow: [] },
           ],

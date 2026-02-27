@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@chatterbox/sockets": "workspace:*",
+    "@chatterbox/prompt-assembly": "workspace:*",
     "@ai-sdk/react": "^3.0.81",
     "@openrouter/ai-sdk-provider": "^2.2.3",
     "ai": "^6.0.79",

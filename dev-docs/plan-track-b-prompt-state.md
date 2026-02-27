@@ -1,6 +1,6 @@
 ---
-Status: In Progress
-Last Updated: 2026-02-13 13:52
+Status: In Progress — Phase 5 next
+Last Updated: 2026-02-13 15:15
 ---
 
 # Track B: Prompt & State Optimization — Implementation Plan
@@ -699,47 +699,53 @@ This is an advanced version of the multi-stage pipeline that fully decomposes th
 
 ## Build Sequence
 
-### Phase 0: Fix truncation (1 day)
+### Phase 0: Fix truncation (1 day) ✅ DONE
 
-1. Increase `maxOutputTokens` to 2048 in `/api/summarize`
-2. Add `finishReason` check and retry on truncation
-3. Add structural completeness check for required sections
+1. ✅ Increase `maxOutputTokens` to 2048 in `/api/summarize`
+2. ✅ Add `finishReason` check and retry on truncation (with escalation to 4096)
+3. ✅ Add structural completeness check for required sections
 4. Log reasoning token usage to confirm provider behavior
 
-### Phase 1: Prompt assembler skeleton (2-3 days)
+### Phase 1: Prompt assembler skeleton (2-3 days) ✅ DONE
 
-1. Create `src/lib/prompt-assembly/types.ts` with type definitions
-2. Create `src/lib/prompt-assembly/assembler.ts` with the `PromptAssembler` class
-3. Split `DEFAULT_SYSTEM_PROMPT` into segment files
-4. Create segment registry (`segments/index.ts`)
-5. Replace `buildSystem()` in `route.ts` with assembler call
-6. Add turn tracker to conversation state
-7. Implement `always` and `every_n` policies
+> **Note**: Monorepo conversion already completed. The assembler lives in
+> `packages/prompt-assembly/` (`@chatterbox/prompt-assembly`) instead of
+> `src/lib/prompt-assembly/`. It depends on `@chatterbox/sockets` for boundary types.
 
-### Phase 2: State pipeline v0 (3-5 days)
+1. ✅ Create types (`PromptSegment`, `InjectionPolicy`, etc.) — `packages/prompt-assembly/src/types.ts`
+2. ✅ Create `PromptAssembler` class — `packages/prompt-assembly/src/assembler.ts`
+3. ✅ Split `DEFAULT_SYSTEM_PROMPT` into 13 segment files — `packages/prompt-assembly/src/segments/`
+4. ✅ Create segment registry + `createDefaultAssembler()` factory — `packages/prompt-assembly/src/segments/index.ts`
+5. ✅ Implement `always`, `every_n`, `on_topic`, `on_state_field`, and `custom` policies
+6. ✅ Create `PromptAssemblySocket` adapter — `packages/prompt-assembly/src/socket-adapter.ts`
+7. ✅ Workspace config: tsconfig refs, eslint boundaries, pnpm install
+8. ✅ Replace `buildSystem()` in `route.ts` with assembler call
+9. ✅ Add turn tracker (`lastIncludedAt`) to conversation state + `useAssemblyTracker` hook
 
-1. Create `/api/state-update` route with fact extraction stage
-2. Create merge stage (deterministic for simple fields, LLM for complex)
-3. Create validation stage (schema + preservation + completeness checks)
-4. Create auto-accept logic with confidence scoring
-5. Wire up fire-and-forget trigger in the client after assistant responses
-6. Add state history data model and localStorage persistence
+### Phase 2: State pipeline v0 (3-5 days) ✅ DONE
 
-### Phase 3: UI updates (2-3 days)
+1. ✅ Create `/api/state-update` route with fact extraction stage — `apps/web/src/app/api/state-update/route.ts`
+2. ✅ Create merge stage (LLM-assisted, constrained input: existing state + fact list only)
+3. ✅ Create validation stage (schema, preservation, novelty, completeness) — `apps/web/src/lib/state-pipeline/validation.ts`
+4. ✅ Create auto-accept logic with confidence scoring — `apps/web/src/lib/state-pipeline/auto-accept.ts`
+5. ✅ Wire up fire-and-forget trigger via `useStatePipeline` hook — `apps/web/src/lib/hooks/use-state-pipeline.ts`
+6. ✅ Add state history data model and localStorage persistence — `apps/web/src/lib/state-history.ts`
 
-1. Add State History component to the Story State sidebar tab
-2. Add production/review mode toggle in Settings
-3. Remove blocking review modal in production mode
-4. Add subtle "state updated" indicator
-5. Keep existing `StoryStateReview` component for review mode
+### Phase 3: UI updates (2-3 days) ✅ DONE
 
-### Phase 4: Advanced assembly (2-3 days)
+1. ✅ Add State History component — `apps/web/src/components/sidebar/state-history.tsx`
+2. ✅ Add production/review mode toggle — `reviewMode` in Settings, toggle in `settings-panel.tsx`
+3. ✅ Remove blocking review modal in production mode — `StoryStateReview` gated by `reviewMode`
+4. ✅ Add subtle "state updated" indicator — green pulsing dot on Story State tab + editor header
+5. ✅ Keep existing `StoryStateReview` component for review mode — unchanged, shown when `reviewMode: true`
 
-1. Implement `on_topic` policy with keyword detection
-2. Implement `on_state_field` policy
-3. Add token budget enforcement to the assembler
-4. Add "omitted context" summary note generation
-5. Add segment effectiveness logging
+### Phase 4: Advanced assembly (2-3 days) ✅ DONE
+
+1. ✅ Enhanced `on_topic` policy — word-boundary matching + basic stemming in `topic-detector.ts`, expanded keywords to `appearance_visual`, `outfit_hairstyle`, `backstory` segments
+2. ✅ `on_state_field` policy already wired — `relationship_status` segment uses `on_state_field("relationships")`
+3. ✅ Token budget configurable — `Settings.tokenBudget` (default 2500), UI in `settings-panel.tsx`, wired through chat route
+4. ✅ Omitted context note improved — grouped by category in `assembler.ts buildResult()`
+5. ✅ Segment effectiveness logging — `logAssembly()` in chat route: turn number, included/omitted counts, token usage %, omit reasons
 
 ### Phase 5: Pipeline sophistication (ongoing)
 
