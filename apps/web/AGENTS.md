@@ -30,6 +30,9 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `useAssemblyTracker` updates per-segment inclusion state (`lastIncludedAt`) after turns.
 - `liveConfig` sends `customSegments`, `lastIncludedAt`, `presentEntityIds`, and settings to `/api/chat`.
 - `/api/chat` assembles the final prompt, appends hard player-control guardrails, and logs assembly behavior.
+- `/api/chat` uses a larger context window budget for compression (`MAX_MESSAGES=60`, `VERBATIM_TIER_SIZE=20`, `SUMMARY_TIER_SIZE=20`) to improve 10-15 turn recall.
+- Default assembly settings in `src/lib/defaults.ts` use `tokenBudget=4500` and `maxTokens=1500`.
+- Prompt defaults enforce one conversational beat per turn and require sensory/body-language grounding in each response.
 
 ### Story state and pipeline
 

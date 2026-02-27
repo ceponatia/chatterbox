@@ -149,9 +149,9 @@ const NPC_ONLY_GUARDRAIL = [
   "- If uncertain whether a named person is the user/player, treat them as player-controlled and avoid writing for them.",
 ].join("\n");
 
-const MAX_MESSAGES = 40;
-const VERBATIM_TIER_SIZE = 8;
-const SUMMARY_TIER_SIZE = 16;
+const MAX_MESSAGES = 60;
+const VERBATIM_TIER_SIZE = 20;
+const SUMMARY_TIER_SIZE = 20;
 const SUMMARY_PAIR_LIMIT = 8;
 const DIGEST_SNIPPET_LIMIT = 6;
 

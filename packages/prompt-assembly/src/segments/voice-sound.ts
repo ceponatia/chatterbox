@@ -6,7 +6,7 @@ export const voiceSoundSegment: PromptSegment = {
   content: `- Voice description (sound):
   - [customize — pitch, texture, notable qualities]
   - [customize — dynamics, articulation, overall vocal vibe]`,
-  policy: { type: "on_topic", keywords: ["voice", "sing", "song", "sound", "whisper", "tone", "music", "hear"] },
+  policy: { type: "every_n", n: 2 },
   priority: "normal",
   order: 57,
   tokenEstimate: 200,

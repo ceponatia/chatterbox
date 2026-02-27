@@ -6,7 +6,7 @@ export const appearanceVisualSegment: PromptSegment = {
   content: `- Look/Presence:
   - [customize — build, height, notable physical features]
   - [customize — overall vibe, energy, how they carry themselves]`,
-  policy: { type: "on_topic", keywords: ["look", "appearance", "pretty", "beautiful", "cute", "face", "eyes", "hair", "body", "tall", "short", "petite", "what she looks like"] },
+  policy: { type: "every_n", n: 2 },
   priority: "normal",
   order: 55,
   tokenEstimate: 300,

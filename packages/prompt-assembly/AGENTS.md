@@ -130,9 +130,9 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 | `speech_patterns` | `every_n(2)` | high |
 | `vocabulary_humor`, `mannerisms` | `every_n(3)` | normal |
 | `interaction_guide` | `every_n(3)` | normal |
-| `appearance_visual` | `on_topic` (look, face, eyes, ...) | normal |
-| `outfit_hairstyle` | `on_topic` (outfit, wear, clothes, ...) | normal |
-| `voice_sound` | `on_topic` (voice, sing, song, ...) | normal |
+| `appearance_visual` | `every_n(2)` | normal |
+| `outfit_hairstyle` | `every_n(2)` | normal |
+| `voice_sound` | `every_n(2)` | normal |
 | `backstory` | `on_topic` (remember, school, ...) | normal |
 | `relationship_status` | `on_state_field("relationships")` | normal |
 
