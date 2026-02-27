@@ -52,7 +52,6 @@ chatterbox/
 ### Key things that are gitignored
 
 - `prompts/` — character-specific system prompts and story states (local-only)
-- `dev-docs/` — planning and implementation documents (local-only)
 - `.env*` — environment files
 
 ## Dependency graph
@@ -65,6 +64,21 @@ apps/web → @chatterbox/sockets
 `@chatterbox/sockets` is a strict leaf — it cannot import from any other package.
 
 ## Non-negotiable boundaries
+
+### Markdown characters
+
+<!-- markdownlint-disable -->
+<!-- cspell:disable -->
+Do not use any typographic or "smart" punctuation.
+
+- Forbidden Characters (non-ASCII)
+  - En dash: –
+  - Em dash: —
+  - Curly quotes: “ ” ‘ ’
+  - Ellipsis: …
+  - Non-breaking spaces
+  <!-- cspell:enable -->
+<!-- markdownlint-restore -->
 
 ### Package boundaries
 
