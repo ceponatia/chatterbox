@@ -1,127 +1,227 @@
 /**
- * /api/state-update — Multi-stage state pipeline.
+ * /api/state-update — Single-pass hybrid state pipeline.
  *
- * Stage 1: Fact extraction (LLM) — extract new facts from recent messages
- * Stage 2: State merge (LLM) — patch existing state with extracted facts
- * Stage 3: Validation (deterministic) — schema, preservation, novelty, completeness
- * Stage 4: Auto-accept (deterministic) — disposition based on validation
+ * One LLM call reads recent conversation + current state and outputs:
+ *   1. A complete updated story state document
+ *   2. A structured list of facts/changes for history logging
+ *
+ * Message windowing: only recent messages are sent (since last pipeline
+ * turn + overlap buffer) to keep context focused and cost low.
+ *
+ * Deterministic post-processing: validation → auto-accept → cascade resets.
  */
 
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, UIMessage, convertToModelMessages } from "ai";
-import { logRequest, startTimer, logResponse, logReasoning } from "@/lib/api-logger";
+import {
+  logRequest,
+  startTimer,
+  logResponse,
+  logReasoning,
+  log,
+  logWarn,
+  logError,
+} from "@/lib/api-logger";
 import { validateState } from "@/lib/state-pipeline/validation";
 import { determineDisposition } from "@/lib/state-pipeline/auto-accept";
-import { processFacts } from "@/lib/state-pipeline/fact-processing";
 import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
-import { buildSectionMergeGroups, buildSectionMergePrompt } from "@/lib/state-pipeline/section-merge";
+import { env, getBaseUrl } from "@/lib/env";
 import type { ExtractedFact } from "@/lib/state-history";
 
 const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
+  apiKey: env.OPENROUTER_API_KEY,
   headers: {
-    "HTTP-Referer": "http://localhost:3000",
+    "HTTP-Referer": getBaseUrl(),
     "X-Title": "Chatterbox",
   },
 });
 
 const PROVIDER_OPTIONS = {
   openrouter: {
-    reasoning: { effort: "low" as const },
-    provider: { order: ["Phala", "NovitaAI", "Z.ai"] },
+    reasoning: { effort: "high" as const },
+    provider: {
+      order: ["SiliconFlow", "GMICloud", "Friendli", "Venice", "AtlasCloud"],
+    },
   },
 };
 
 // ---------------------------------------------------------------------------
-// Stage 1: Fact Extraction
+// Message windowing
 // ---------------------------------------------------------------------------
 
-const FACT_EXTRACTION_INSTRUCTION = `You are a fact extractor. Read the recent messages and extract ONLY new facts as a JSON array.
+/** Extra messages before the pipeline window for narrative context. */
+const OVERLAP_MESSAGES = 10;
 
-Each fact must have:
-- "type": one of "scene_change", "relationship_shift", "appearance_change", "mood_change", "new_thread", "thread_resolved", "hard_fact", "cast_change"
-- "detail": a concise one-line description of the fact
-- "sourceTurn": the turn number (count of user messages) where this fact was established
-- "confidence": 0.0 to 1.0 — how certain you are this fact was explicitly stated (not inferred)
+/**
+ * Trim messages to a window: messages since `lastPipelineTurn` plus an
+ * overlap buffer for narrative context. Counts user messages to locate
+ * the window start, then includes a few earlier messages for continuity.
+ */
+function windowMessages(
+  messages: UIMessage[],
+  lastPipelineTurn: number,
+): UIMessage[] {
+  if (lastPipelineTurn <= 0) {
+    // First run — send up to 40 messages
+    return messages.slice(-40);
+  }
 
-Rules:
-- Only extract facts directly stated or clearly demonstrated in the messages.
-- Do NOT infer motivations, predict future events, or speculate about off-screen happenings.
-- If something is ambiguous, do not extract it.
-- Do NOT repeat facts already captured in the Current Story State.
-- Output ONLY valid JSON: { "facts": [...] }
-- If there are no new facts, output: { "facts": [] }`;
+  // Find the message index where the pipeline window starts
+  let userCount = 0;
+  let windowStartIdx = 0;
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i]!.role === "user") userCount++;
+    if (userCount > lastPipelineTurn) {
+      windowStartIdx = i;
+      break;
+    }
+  }
 
-async function extractFacts(
+  // Back up by OVERLAP_MESSAGES for context
+  const startIdx = Math.max(0, windowStartIdx - OVERLAP_MESSAGES);
+  return messages.slice(startIdx);
+}
+
+// ---------------------------------------------------------------------------
+// Single-pass prompt
+// ---------------------------------------------------------------------------
+
+const STATE_UPDATE_INSTRUCTION = `You are a story state editor for an ongoing roleplay. You will read the recent conversation messages and the current story state, then produce TWO things:
+
+1. **Updated Story State** — a complete, corrected story state document
+2. **Change Log** — a structured list of what changed and why
+
+## Instructions for updating the story state
+
+Review EVERY section of the current story state against what is happening in the conversation. For each section:
+
+### Cast
+- Update character descriptions to reflect development
+- Add new characters that have appeared
+- Update roles if they have changed
+
+### Relationships
+- Update dynamics that have shifted (strangers → friends, tension → trust, etc.)
+- Remove relationship descriptions superseded by newer ones
+- Add new relationships that have formed
+
+### Characters
+- This section uses nested headings: ### CharacterName > #### Appearance > - **key**: comma-separated values
+- Update entries that have changed (clothing, hair, injuries, etc.)
+- Preserve unchanged entries
+- Add new appearance details introduced in conversation
+- Keep the compact comma-separated format for appearance values
+
+### Scene
+- Overwrite to reflect the CURRENT location, who is present, and atmosphere
+- This section should always match what is happening RIGHT NOW in the conversation
+
+### Current Demeanor
+- Re-evaluate each character's mood and energy based on recent events
+- This section should reflect the characters' emotional state RIGHT NOW
+
+### Open Threads
+- REMOVE threads that have been resolved or are no longer relevant
+- UPDATE threads whose nature has evolved
+- ADD new unresolved plot hooks or tensions
+- Aim for 3-8 active threads maximum
+- Each thread must end with (added: YYYY-MM-DD) — preserve original dates for kept items, use today's date for new ones
+
+### Hard Facts
+- CRITICALLY review every existing fact for current relevance
+- REMOVE facts that have been SUPERSEDED (e.g., "they are strangers" once they become friends; "interested in each other" once they start dating)
+- UPDATE facts whose details have changed
+- ADD new established facts
+- Character biographical facts (name, age, occupation) rarely change — only update if the story explicitly changes them
+- Relationship-status and situational facts MUST be updated or removed as the situation evolves
+- Each fact must end with (added: YYYY-MM-DD)
+- Aim for 10-20 hard facts maximum — prune aggressively
+
+## Rules
+- ALWAYS use full character names exactly as they appear in the Cast section (e.g., "Kaho Higashi" not "Kaho", "Nagato Jiro" not "Jiro"). This applies to ALL sections — Cast, Relationships, Characters, Demeanor, etc.
+- Do NOT blindly preserve old content. If something is outdated, remove or update it.
+- Do NOT invent information beyond what the conversation and existing state provide.
+- Output ALL 7 sections even if some are unchanged.
+- Keep the total story state under 1200 tokens.
+
+## Output format
+
+Output ONLY valid JSON with this exact structure:
+{
+  "updatedState": "## Cast\\n...\\n\\n## Relationships\\n...\\n\\n## Characters\\n\\n### CharName\\n\\n#### Appearance\\n\\n- **key**: values\\n...\\n\\n## Scene\\n...\\n\\n## Current Demeanor\\n...\\n\\n## Open Threads\\n...\\n\\n## Hard Facts\\n...",
+  "changes": [
+    {
+      "type": "scene_change|relationship_shift|appearance_change|mood_change|new_thread|thread_resolved|hard_fact|hard_fact_superseded|cast_change",
+      "detail": "concise one-line description",
+      "sourceTurn": 0,
+      "confidence": 0.9
+    }
+  ]
+}
+
+- "updatedState" must be the COMPLETE story state as a markdown string with all 7 sections.
+- "changes" lists every modification you made, including removals. Use "hard_fact_superseded" for removed facts and "thread_resolved" for removed threads.
+- If nothing needs to change, return the current state unchanged and an empty changes array.
+- sourceTurn is the approximate user-message count where the change originated.
+- confidence is 0.0-1.0 for how certain you are.`;
+
+// ---------------------------------------------------------------------------
+// LLM call
+// ---------------------------------------------------------------------------
+
+interface HybridResult {
+  updatedState: string;
+  changes: ExtractedFact[];
+}
+
+async function runHybridUpdate(
   model: string,
   messages: UIMessage[],
   currentState: string,
-): Promise<ExtractedFact[]> {
+): Promise<HybridResult> {
   const elapsed = startTimer();
   const converted = await convertToModelMessages(messages);
 
   const result = await generateText({
     model: openrouter(model),
-    system: `You are analyzing a roleplay conversation. Here is the current story state:\n\n${currentState}`,
+    system:
+      "You are analyzing a roleplay conversation to update its story state." +
+      "\n\nCurrent Story State:\n\n" +
+      currentState,
     messages: [
       ...converted,
       {
         role: "user" as const,
-        content: [{ type: "text" as const, text: FACT_EXTRACTION_INSTRUCTION }],
+        content: [{ type: "text" as const, text: STATE_UPDATE_INSTRUCTION }],
       },
     ],
-    temperature: 0.2,
-    maxOutputTokens: 1024,
+    temperature: 0.15,
+    maxOutputTokens: 3072,
     providerOptions: PROVIDER_OPTIONS,
   });
 
-  logReasoning("/api/state-update [extract]", result.reasoningText);
-  logResponse("/api/state-update [extract]", elapsed(), result.text);
+  logReasoning("/api/state-update", result.reasoningText);
+  logResponse("/api/state-update", elapsed(), result.text);
 
   try {
     const cleaned = result.text.replace(/```json\n?|\n?```/g, "").trim();
-    const parsed = JSON.parse(cleaned) as { facts: ExtractedFact[] };
-    return Array.isArray(parsed.facts) ? parsed.facts : [];
+    const parsed = JSON.parse(cleaned) as {
+      updatedState?: string;
+      changes?: ExtractedFact[];
+    };
+    return {
+      updatedState: (parsed.updatedState ?? "").trim(),
+      changes: Array.isArray(parsed.changes) ? parsed.changes : [],
+    };
   } catch {
-    console.warn("\x1b[33m⚠ /api/state-update: failed to parse fact extraction JSON\x1b[0m");
-    return [];
+    logWarn("/api/state-update: failed to parse LLM JSON, falling back");
+    // Fallback: treat the entire output as state text if it looks like markdown
+    const text = result.text.trim();
+    if (text.includes("## ")) {
+      return { updatedState: text, changes: [] };
+    }
+    return { updatedState: "", changes: [] };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Stage 2: State Merge
-// ---------------------------------------------------------------------------
-
-
-async function mergeState(
-  model: string,
-  currentState: string,
-  facts: ExtractedFact[],
-): Promise<string> {
-  if (facts.length === 0) return currentState;
-
-  const elapsed = startTimer();
-  const groups = buildSectionMergeGroups(facts);
-  const mergePrompt = buildSectionMergePrompt(groups);
-
-  const result = await generateText({
-    model: openrouter(model),
-    system: `You are editing a story state document. Here is the current state:\n\n${currentState}`,
-    messages: [
-      {
-        role: "user" as const,
-        content: [{ type: "text" as const, text: mergePrompt }],
-      },
-    ],
-    temperature: 0.3,
-    maxOutputTokens: 2048,
-    providerOptions: PROVIDER_OPTIONS,
-  });
-
-  logReasoning("/api/state-update [merge]", result.reasoningText);
-  logResponse("/api/state-update [merge]", elapsed(), result.text);
-
-  return result.text.trim() || currentState;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,30 +230,38 @@ async function mergeState(
 
 export async function POST(req: Request) {
   try {
-    const { messages, currentStoryState, turnNumber } = (await req.json()) as {
+    const body = (await req.json()) as {
       messages: UIMessage[];
       currentStoryState: string;
       turnNumber: number;
+      lastPipelineTurn?: number;
     };
+    const { currentStoryState, turnNumber } = body;
+    const lastPipelineTurn = body.lastPipelineTurn ?? 0;
 
-    logRequest("/api/state-update", { turnNumber, messageCount: messages.length });
-    const model = process.env.OPENROUTER_MODEL || "z-ai/glm-5";
+    // Window messages to recent turns only
+    const windowed = windowMessages(body.messages, lastPipelineTurn);
 
-    // Stage 1: Extract facts
-    const rawFacts = await extractFacts(model, messages, currentStoryState);
+    logRequest("/api/state-update", {
+      turnNumber,
+      totalMessages: body.messages.length,
+      windowedMessages: windowed.length,
+      lastPipelineTurn,
+    });
+    const model = env.OPENROUTER_MODEL;
 
-    // Stage 1.5: Confidence filter + deduplication
-    const processed = processFacts(rawFacts, currentStoryState);
-    const facts = processed.accepted;
-    console.log(
-      `  \x1b[2m📋 facts: ${rawFacts.length} extracted, ${facts.length} accepted, ` +
-      `${processed.lowConfidence.length} low-conf, ${processed.duplicates.length} dupes\x1b[0m`,
+    // Single-pass: update state + extract changes
+    let { updatedState, changes } = await runHybridUpdate(
+      model,
+      windowed,
+      currentStoryState,
     );
 
-    if (facts.length === 0) {
+    // If the LLM returned empty state, keep current
+    if (!updatedState) {
       return Response.json({
         newState: currentStoryState,
-        extractedFacts: rawFacts,
+        extractedFacts: changes,
         validation: {
           schemaValid: true,
           allHardFactsPreserved: true,
@@ -162,51 +270,52 @@ export async function POST(req: Request) {
           diffPercentage: 0,
         },
         disposition: "auto_accepted",
-        cascadeResets: computeCascadeResets(rawFacts),
+        cascadeResets: computeCascadeResets(changes),
         turnNumber,
       });
     }
 
-    // Stage 2: Merge facts into state (per-section specialized)
-    let candidateState = await mergeState(model, currentStoryState, facts);
-
-    // Stage 3: Validate
-    let validation = validateState(candidateState, currentStoryState, facts);
-
-    // Stage 4: Auto-accept / flag / retry
+    // Validate
+    let validation = validateState(updatedState, currentStoryState, changes);
     let disposition = determineDisposition(validation);
 
-    // If retried, try merge once more
+    // Retry once on schema failure
     if (disposition === "retried") {
-      console.warn("\x1b[33m⚠ /api/state-update: validation failed, retrying merge…\x1b[0m");
-      candidateState = await mergeState(model, currentStoryState, facts);
-      validation = validateState(candidateState, currentStoryState, facts);
-      disposition = determineDisposition(validation);
-      // If still failing, flag instead of rejecting entirely
+      logWarn("/api/state-update: validation failed, retrying…");
+      const retry = await runHybridUpdate(model, windowed, currentStoryState);
+      if (retry.updatedState) {
+        updatedState = retry.updatedState;
+        changes = retry.changes;
+        validation = validateState(updatedState, currentStoryState, changes);
+        disposition = determineDisposition(validation);
+      }
       if (disposition === "retried") disposition = "flagged";
     }
 
-    const cascadeResets = computeCascadeResets(facts);
-    console.log(
+    const cascadeResets = computeCascadeResets(changes);
+    log(
       `  \x1b[2m✅ state-update: ${disposition}, diff ${validation.diffPercentage}%, ` +
-      `${facts.length} facts` +
-      (cascadeResets.length > 0 ? `, cascade: ${cascadeResets.join(", ")}` : "") +
-      `\x1b[0m`,
+        `${changes.length} changes` +
+        (cascadeResets.length > 0
+          ? `, cascade: ${cascadeResets.join(", ")}`
+          : "") +
+        `\x1b[0m`,
+      "info",
     );
 
     return Response.json({
-      newState: candidateState,
-      extractedFacts: rawFacts,
+      newState: updatedState,
+      extractedFacts: changes,
       validation,
       disposition,
       cascadeResets,
       turnNumber,
     });
   } catch (error) {
-    console.error("State update API error:", error);
+    logError("State update API error:", error);
     return Response.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -22,4 +22,24 @@ model Conversation {
   lastIncludedAt      Json     @default("{}")
   customSegments      Json?
   structuredState     Json?
+  lastSummarizedTurn  Int      @default(0)
+  lastPipelineTurn    Int      @default(0)
+  stateHistoryEntries StateHistoryEntry[]
+}
+
+model StateHistoryEntry {
+  id             String   @id @db.Uuid
+  conversationId String   @db.Uuid
+  timestamp      DateTime @db.Timestamptz(6)
+  turnStart      Int
+  turnEnd        Int
+  previousState  String
+  newState       String
+  extractedFacts Json
+  validation     Json
+  disposition    String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, timestamp])
 }

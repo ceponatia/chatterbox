@@ -15,7 +15,11 @@ const CONFIDENCE_THRESHOLD = 0.6;
  * strip leading punctuation/bullets.
  */
 function normalize(s: string): string {
-  return s.toLowerCase().replace(/^[-*•]\s*/, "").replace(/\s+/g, " ").trim();
+  return s
+    .toLowerCase()
+    .replace(/^[-*•]\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
@@ -59,7 +63,14 @@ export function processFacts(
   const duplicates: ExtractedFact[] = [];
 
   for (const fact of facts) {
-    if (fact.confidence < CONFIDENCE_THRESHOLD) {
+    // Corrections and superseded markers always pass — they exist to fix stale state
+    if (
+      fact.type === "correction" ||
+      fact.type === "hard_fact_superseded" ||
+      fact.type === "thread_resolved"
+    ) {
+      accepted.push(fact);
+    } else if (fact.confidence < CONFIDENCE_THRESHOLD) {
       lowConfidence.push(fact);
     } else if (isDuplicate(fact, stateNormalized)) {
       duplicates.push(fact);

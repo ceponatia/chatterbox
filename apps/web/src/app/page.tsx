@@ -5,12 +5,28 @@ import { DefaultChatTransport } from "ai";
 import { useState, useMemo, useCallback } from "react";
 import type { StateHistoryEntry } from "@/lib/state-history";
 import { useStateHistoryEntries } from "@/lib/hooks/use-state-history";
-import { Settings as SettingsIcon, BookOpen, ScrollText, Trash2, Sparkles, PanelLeftOpen, Plus, SlidersHorizontal, ArrowLeft } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  BookOpen,
+  ScrollText,
+  Trash2,
+  Sparkles,
+  PanelLeftOpen,
+  Plus,
+  SlidersHorizontal,
+  ArrowLeft,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useMobileSidebar } from "@/lib/hooks/use-mobile-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { MessageList } from "@/components/chat/message-list";
@@ -21,11 +37,14 @@ import { StoryStateEditor } from "@/components/sidebar/story-state-editor";
 import { SettingsPanel } from "@/components/sidebar/settings-panel";
 import { ConversationList } from "@/components/sidebar/conversation-list";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_STORY_STATE, DEFAULT_SETTINGS } from "@/lib/defaults";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_STORY_STATE,
+  DEFAULT_SETTINGS,
+} from "@/lib/defaults";
 import type { Settings } from "@/lib/defaults";
 import { useConversationManager } from "@/lib/hooks/use-conversation-manager";
 import type { SyncStatus } from "@/lib/hooks/use-sync-status";
-import { useSummarization } from "@/lib/hooks/use-summarization";
 import { useMessageActions } from "@/lib/hooks/use-message-actions";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
 import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
@@ -40,41 +59,48 @@ const liveConfig = {
 };
 
 export default function Home() {
-  const transport = useMemo(() => new DefaultChatTransport({
-    api: "/api/chat",
-    body: () => ({
-      systemPrompt: liveConfig.systemPrompt, storyState: liveConfig.storyState,
-      settings: liveConfig.settings, lastIncludedAt: liveConfig.lastIncludedAt,
-      customSegments: liveConfig.customSegments,
-    }),
-  }), []);
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        body: () => ({
+          systemPrompt: liveConfig.systemPrompt,
+          storyState: liveConfig.storyState,
+          settings: liveConfig.settings,
+          lastIncludedAt: liveConfig.lastIncludedAt,
+          customSegments: liveConfig.customSegments,
+        }),
+      }),
+    [],
+  );
 
-  const { messages, sendMessage, stop, status, setMessages } = useChat({ transport });
+  const { messages, sendMessage, stop, status, setMessages } = useChat({
+    transport,
+  });
   const isLoading = status === "submitted" || status === "streaming";
 
-  const syncConfig = useCallback((c: { systemPrompt: string; storyState: string; settings: Settings; lastIncludedAt?: Record<string, number>; customSegments?: SerializedSegment[] | null }) => {
-    liveConfig.systemPrompt = c.systemPrompt;
-    liveConfig.storyState = c.storyState;
-    liveConfig.settings = c.settings;
-    if (c.lastIncludedAt) liveConfig.lastIncludedAt = c.lastIncludedAt;
-    if (c.customSegments !== undefined) liveConfig.customSegments = c.customSegments;
-  }, []);
+  const syncConfig = useCallback(
+    (c: {
+      systemPrompt: string;
+      storyState: string;
+      settings: Settings;
+      lastIncludedAt?: Record<string, number>;
+      customSegments?: SerializedSegment[] | null;
+    }) => {
+      liveConfig.systemPrompt = c.systemPrompt;
+      liveConfig.storyState = c.storyState;
+      liveConfig.settings = c.settings;
+      if (c.lastIncludedAt) liveConfig.lastIncludedAt = c.lastIncludedAt;
+      if (c.customSegments !== undefined)
+        liveConfig.customSegments = c.customSegments;
+    },
+    [],
+  );
 
   const conv = useConversationManager({
     messages,
     setMessages,
     onConfigSync: syncConfig,
-    onConversationSwitch: () => summarization.reset(),
-  });
-
-  const summarization = useSummarization({
-    messages,
-    isLoading,
-    autoSummarizeInterval: conv.settings.autoSummarizeInterval,
-    liveConfig,
-    onAccept: conv.updateStoryStateFromSummary,
-    lastSummarizedTurn: conv.lastSummarizedTurn,
-    setLastSummarizedTurn: conv.setLastSummarizedTurn,
   });
 
   useAssemblyTracker({
@@ -86,36 +112,55 @@ export default function Home() {
   });
 
   const handleCascadeResets = useCallback(
-    (ids: string[]) => conv.setLastIncludedAt(p => { const n = { ...p }; for (const id of ids) n[id] = 0; return n; }),
+    (ids: string[]) =>
+      conv.setLastIncludedAt((p) => {
+        const n = { ...p };
+        for (const id of ids) n[id] = 0;
+        return n;
+      }),
     [conv],
   );
   const pipeline = useStatePipeline({
-    messages, isLoading, storyState: conv.storyState, conversationId: conv.activeConvId,
-    onStateUpdate: conv.updateStoryStateFromSummary, autoSummarizeInterval: conv.settings.autoSummarizeInterval,
+    messages,
+    isLoading,
+    storyState: conv.storyState,
+    conversationId: conv.activeConvId,
+    onStateUpdate: conv.updateStoryStateFromSummary,
+    autoSummarizeInterval: conv.settings.autoSummarizeInterval,
     onCascadeResets: handleCascadeResets,
     lastPipelineTurn: conv.lastPipelineTurn,
     setLastPipelineTurn: conv.setLastPipelineTurn,
   });
-  const stateHistory = useStateHistoryEntries(conv.activeConvId, pipeline.historyVersion);
+  const stateHistory = useStateHistoryEntries(
+    conv.activeConvId,
+    pipeline.historyVersion,
+  );
   const msgActions = useMessageActions({ messages, setMessages, sendMessage });
   const [activeTab, setActiveTab] = useState("story-state");
   const mobile = useMobileSidebar();
   const sidebar = (
-    <SidebarContent activeTab={activeTab} setActiveTab={setActiveTab} conv={conv}
-      summarization={summarization} recentlyUpdated={pipeline.recentlyUpdated} stateHistory={stateHistory}
-      messages={messages} />
+    <SidebarContent
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      conv={conv}
+      recentlyUpdated={pipeline.recentlyUpdated}
+      stateHistory={stateHistory}
+      messages={messages}
+    />
   );
 
   return (
     <div className="flex h-dvh overflow-hidden safe-top">
-      <MobileSidebarOverlay open={mobile.open} onClose={mobile.close}>{sidebar}</MobileSidebarOverlay>
+      <MobileSidebarOverlay open={mobile.open} onClose={mobile.close}>
+        {sidebar}
+      </MobileSidebarOverlay>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
           conv={conv}
           messages={messages}
           isLoading={isLoading}
-          summarization={summarization}
+          onTriggerPipeline={pipeline.triggerPipeline}
           onOpenMobileSidebar={mobile.toggle}
           onClearChat={msgActions.handleClearChat}
         />
@@ -143,9 +188,7 @@ export default function Home() {
         <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
           <h2 className="text-sm font-semibold">Configuration</h2>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {sidebar}
-        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{sidebar}</div>
       </aside>
     </div>
   );
@@ -155,12 +198,25 @@ export default function Home() {
 // Sub-components extracted to reduce per-function LOC / cyclomatic complexity
 // ---------------------------------------------------------------------------
 
-function MobileSidebarOverlay({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+function MobileSidebarOverlay({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden">
       <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4 safe-top">
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={onClose}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <h2 className="text-sm font-semibold">Configuration</h2>
@@ -194,17 +250,21 @@ function SyncDot({ status, pulse }: { status: SyncStatus; pulse?: boolean }) {
 }
 
 function SidebarContent({
-  activeTab, setActiveTab, conv, summarization, recentlyUpdated, stateHistory, messages,
+  activeTab,
+  setActiveTab,
+  conv,
+  recentlyUpdated,
+  stateHistory,
+  messages,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   conv: ReturnType<typeof useConversationManager>;
-  summarization: ReturnType<typeof useSummarization>;
   recentlyUpdated: boolean;
   stateHistory: StateHistoryEntry[];
   messages: ReturnType<typeof useChat>["messages"];
 }) {
-  const turnNumber = messages.filter(m => m.role === "user").length;
+  const turnNumber = messages.filter((m) => m.role === "user").length;
   return (
     <>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -212,7 +272,10 @@ function SidebarContent({
           <TabsTrigger value="story-state" className="relative flex-1">
             <ScrollText className="mr-1 h-3 w-3" />
             Story State
-            <SyncDot status={recentlyUpdated ? "saved" : conv.storyStateSync} pulse={recentlyUpdated} />
+            <SyncDot
+              status={recentlyUpdated ? "saved" : conv.storyStateSync}
+              pulse={recentlyUpdated}
+            />
           </TabsTrigger>
           <TabsTrigger value="system-prompt" className="relative flex-1">
             <BookOpen className="mr-1 h-3 w-3" />
@@ -232,19 +295,12 @@ function SidebarContent({
             onReset={conv.handleStoryStateReset}
             baseline={conv.storyStateBaseline}
             lastUpdated={conv.storyStateLastUpdated}
-            reviewMode={conv.settings.reviewMode}
             recentlyUpdated={recentlyUpdated}
             stateHistory={stateHistory}
             structuredState={conv.structuredState}
-            onStructuredStateUpdate={(s) => conv.handleStructuredStateUpdate(s, conv.markStoryStateError)}
-            review={{
-              active: false,
-              proposedStoryState: summarization.proposedStoryState,
-              currentStoryState: conv.storyState,
-              isGenerating: summarization.isSummarizing,
-              onAccept: summarization.handleAcceptSummary,
-              onReject: summarization.handleRejectSummary,
-            }}
+            onStructuredStateUpdate={(s) =>
+              conv.handleStructuredStateUpdate(s, conv.markStoryStateError)
+            }
           />
         </TabsContent>
         <TabsContent value="system-prompt" className="mt-4">
@@ -277,11 +333,20 @@ function SidebarContent({
   );
 }
 
-function ConversationDrawer({ conv }: { conv: ReturnType<typeof useConversationManager> }) {
+function ConversationDrawer({
+  conv,
+}: {
+  conv: ReturnType<typeof useConversationManager>;
+}) {
   return (
     <Sheet open={conv.convDrawerOpen} onOpenChange={conv.setConvDrawerOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Conversations">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          title="Conversations"
+        >
           <PanelLeftOpen className="h-4 w-4" />
         </Button>
       </SheetTrigger>
@@ -305,14 +370,14 @@ function ChatHeader({
   conv,
   messages,
   isLoading,
-  summarization,
+  onTriggerPipeline,
   onOpenMobileSidebar,
   onClearChat,
 }: {
   conv: ReturnType<typeof useConversationManager>;
   messages: ReturnType<typeof useChat>["messages"];
   isLoading: boolean;
-  summarization: ReturnType<typeof useSummarization>;
+  onTriggerPipeline: () => void;
   onOpenMobileSidebar: () => void;
   onClearChat: () => void;
 }) {
@@ -320,14 +385,17 @@ function ChatHeader({
     <header className="flex h-14 shrink-0 items-center justify-between border-b px-3 lg:h-16 lg:px-4">
       <div className="flex items-center gap-2 lg:gap-3">
         <ConversationDrawer conv={conv} />
-        <h1 className="hidden text-base font-bold lg:inline lg:text-lg">RP Sketcher</h1>
+        <h1 className="hidden text-base font-bold lg:inline lg:text-lg">
+          RP Sketcher
+        </h1>
         <TurnCounter
           messages={messages}
           autoSummarizeInterval={conv.settings.autoSummarizeInterval}
-          lastSummarizedTurn={conv.lastSummarizedTurn}
+          lastPipelineTurn={conv.lastPipelineTurn}
         />
         <p className="hidden text-xs text-muted-foreground lg:block">
-          Model: <code className="rounded bg-muted px-1 py-0.5">z-ai/glm-5</code>
+          Model:{" "}
+          <code className="rounded bg-muted px-1 py-0.5">z-ai/glm-5</code>
           <br />
           Quick n&apos; dirty RP interface for model testing
         </p>
@@ -346,13 +414,13 @@ function ChatHeader({
         <Button
           variant="ghost"
           size="sm"
-          onClick={summarization.triggerSummarize}
-          disabled={messages.length < 2 || isLoading || summarization.isSummarizing}
-          title="Summarize & update Story State"
+          onClick={onTriggerPipeline}
+          disabled={messages.length < 2 || isLoading}
+          title="Update Story State"
           className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
         >
           <Sparkles className="h-4 w-4 lg:mr-1" />
-          <span className="hidden lg:inline">Summarize</span>
+          <span className="hidden lg:inline">Update State</span>
         </Button>
         <Button
           variant="ghost"
@@ -378,4 +446,3 @@ function ChatHeader({
     </header>
   );
 }
-

@@ -1,9 +1,26 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText, UIMessage, convertToModelMessages } from "ai";
-import { logRequest, startTimer, logStreamStart, logStreamEnd, logReasoning } from "@/lib/api-logger";
-import { createDefaultAssembler, createAssemblerFromSerialized } from "@chatterbox/prompt-assembly";
-import type { AssemblyContext, AssemblyResult, SerializedSegment } from "@chatterbox/prompt-assembly";
+import {
+  logRequest,
+  startTimer,
+  logStreamStart,
+  logStreamEnd,
+  logReasoning,
+  log,
+  logWarn,
+  logError,
+} from "@/lib/api-logger";
+import {
+  createDefaultAssembler,
+  createAssemblerFromSerialized,
+} from "@chatterbox/prompt-assembly";
+import type {
+  AssemblyContext,
+  AssemblyResult,
+  SerializedSegment,
+} from "@chatterbox/prompt-assembly";
 import { computeTopicScores } from "@/lib/topic-embeddings";
+import { env, getBaseUrl } from "@/lib/env";
 
 interface ChatSettings {
   temperature?: number;
@@ -15,7 +32,9 @@ interface ChatSettings {
 }
 
 function buildSystemPrompt(assemblyPrompt: string, storyState: string): string {
-  const stateSection = storyState ? `\n\n## Current Story State\n${storyState}` : "";
+  const stateSection = storyState
+    ? `\n\n## Current Story State\n\nThe following is the current canon of this roleplay. All facts listed are established truth — do not contradict them, especially Hard Facts.\n\n${storyState}`
+    : "";
   return `${assemblyPrompt}${stateSection}\n\n${NPC_ONLY_GUARDRAIL}`;
 }
 
@@ -31,8 +50,8 @@ const NPC_ONLY_GUARDRAIL = [
 const MAX_MESSAGES = 40;
 
 const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  headers: { "HTTP-Referer": "http://localhost:3000", "X-Title": "Chatterbox" },
+  apiKey: env.OPENROUTER_API_KEY,
+  headers: { "HTTP-Referer": getBaseUrl(), "X-Title": "Chatterbox" },
 });
 
 /** Parse story state markdown into field map for on_state_field policies. */
@@ -42,7 +61,12 @@ function parseStateFields(storyState: string): Record<string, string> {
   for (const section of sections) {
     const newlineIdx = section.indexOf("\n");
     if (newlineIdx === -1) continue;
-    const key = section.slice(0, newlineIdx).trim().toLowerCase().replace(/\s+/g, "_");
+    const key = section
+      .slice(0, newlineIdx)
+      .trim()
+      .toLowerCase()
+      .replace(/\s*\(.*\)$/, "")
+      .replace(/\s+/g, "_");
     const value = section.slice(newlineIdx + 1).trim();
     if (key && value) fields[key] = value;
   }
@@ -51,11 +75,20 @@ function parseStateFields(storyState: string): Record<string, string> {
 
 function windowMessages(messages: UIMessage[]): UIMessage[] {
   if (messages.length <= MAX_MESSAGES) return messages;
-  console.log(`  \x1b[2m✂ windowed ${messages.length} → ${MAX_MESSAGES} messages\x1b[0m`);
+  log(
+    `  \x1b[2m✂ windowed ${messages.length} → ${MAX_MESSAGES} messages\x1b[0m`,
+    "info",
+  );
   return messages.slice(-MAX_MESSAGES);
 }
 
-const SETTING_DEFAULTS = { temperature: 0.85, maxTokens: 1024, topP: 1, frequencyPenalty: 0, presencePenalty: 0 };
+const SETTING_DEFAULTS = {
+  temperature: 0.85,
+  maxTokens: 1024,
+  topP: 1,
+  frequencyPenalty: 0,
+  presencePenalty: 0,
+};
 
 function resolveSettings(s: ChatSettings) {
   const merged = { ...SETTING_DEFAULTS, ...s };
@@ -69,12 +102,16 @@ function resolveSettings(s: ChatSettings) {
 }
 
 async function buildAssemblyContext(
-  messages: UIMessage[], storyState: string, settings: ChatSettings, lastIncludedAt?: Record<string, number>,
+  messages: UIMessage[],
+  storyState: string,
+  settings: ChatSettings,
+  lastIncludedAt?: Record<string, number>,
 ): Promise<AssemblyContext> {
-  const turnNumber = messages.filter(m => m.role === "user").length;
-  const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-  const userText = lastUserMsg?.parts?.find(p => p.type === "text");
-  const currentUserMessage = userText && userText.type === "text" ? userText.text : "";
+  const turnNumber = messages.filter((m) => m.role === "user").length;
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+  const userText = lastUserMsg?.parts?.find((p) => p.type === "text");
+  const currentUserMessage =
+    userText && userText.type === "text" ? userText.text : "";
   const topicScores = await computeTopicScores(currentUserMessage);
   return {
     turnNumber,
@@ -87,43 +124,74 @@ async function buildAssemblyContext(
 }
 
 function logAssembly(assembly: AssemblyResult, ctx: AssemblyContext) {
-  const budgetPct = Math.round((assembly.tokenEstimate / ctx.tokenBudget) * 100);
+  const budgetPct = Math.round(
+    (assembly.tokenEstimate / ctx.tokenBudget) * 100,
+  );
   const omittedReasons = new Map<string, number>();
   for (const o of assembly.omitted) {
     omittedReasons.set(o.reason, (omittedReasons.get(o.reason) ?? 0) + 1);
   }
-  const reasonSummary = [...omittedReasons.entries()].map(([r, n]) => `${r}(${n})`).join(", ");
-  console.log(
+  const reasonSummary = [...omittedReasons.entries()]
+    .map(([r, n]) => `${r}(${n})`)
+    .join(", ");
+  log(
     `  \x1b[2m🧩 assembly t${ctx.turnNumber}: ` +
-    `${assembly.included.length} included, ${assembly.omitted.length} omitted, ` +
-    `~${assembly.tokenEstimate}/${ctx.tokenBudget} tokens (${budgetPct}%)` +
-    (reasonSummary ? ` | omit: ${reasonSummary}` : "") +
-    `\x1b[0m`,
+      `${assembly.included.length} included, ${assembly.omitted.length} omitted, ` +
+      `~${assembly.tokenEstimate}/${ctx.tokenBudget} tokens (${budgetPct}%)` +
+      (reasonSummary ? ` | omit: ${reasonSummary}` : "") +
+      `\x1b[0m`,
+    "info",
   );
 }
 
 function streamCallbacks(elapsed: () => number) {
   return {
-    onError({ error }: { error: unknown }) { console.error(`\x1b[31m✗ /api/chat stream error:\x1b[0m`, error); },
-    onFinish({ text, reasoningText }: { text: string; reasoningText?: string }) {
+    onError({ error }: { error: unknown }) {
+      logError("/api/chat stream error:", error);
+    },
+    onFinish({
+      text,
+      reasoningText,
+    }: {
+      text: string;
+      reasoningText?: string;
+    }) {
       logReasoning("/api/chat", reasoningText);
       logStreamEnd("/api/chat", elapsed(), text.length);
-      if (text.length === 0 && !reasoningText) console.warn(`\x1b[33m⚠ /api/chat: 0 chars returned\x1b[0m`);
+      if (text.length === 0 && !reasoningText)
+        logWarn("/api/chat: 0 chars returned");
     },
   };
 }
 
 export async function POST(req: Request) {
-  const { messages, systemPrompt: _rawSystemPrompt, storyState, settings, lastIncludedAt, customSegments } = (await req.json()) as {
-    messages: UIMessage[]; systemPrompt: string; storyState: string; settings: ChatSettings;
+  const {
+    messages,
+    systemPrompt: _rawSystemPrompt,
+    storyState,
+    settings,
+    lastIncludedAt,
+    customSegments,
+  } = (await req.json()) as {
+    messages: UIMessage[];
+    systemPrompt: string;
+    storyState: string;
+    settings: ChatSettings;
     lastIncludedAt?: Record<string, number>;
     customSegments?: SerializedSegment[] | null;
   };
 
   const windowed = windowMessages(messages);
   const elapsed = startTimer();
-  const ctx = await buildAssemblyContext(messages, storyState, settings, lastIncludedAt);
-  const assembler = customSegments ? createAssemblerFromSerialized(customSegments) : defaultAssembler;
+  const ctx = await buildAssemblyContext(
+    messages,
+    storyState,
+    settings,
+    lastIncludedAt,
+  );
+  const assembler = customSegments
+    ? createAssemblerFromSerialized(customSegments)
+    : defaultAssembler;
   const assembly = assembler.assemble(ctx);
   const system = buildSystemPrompt(assembly.systemPrompt, storyState);
 
@@ -132,17 +200,33 @@ export async function POST(req: Request) {
 
   try {
     const result = streamText({
-      model: openrouter(process.env.OPENROUTER_MODEL || "z-ai/glm-5"),
+      model: openrouter(env.OPENROUTER_MODEL),
       system,
       messages: await convertToModelMessages(windowed),
       ...resolveSettings(settings),
-      providerOptions: { openrouter: { reasoning: { effort: "high" }, provider: { order: ["Phala", "NovitaAI", "Z.ai"] } } },
+      providerOptions: {
+        openrouter: {
+          reasoning: { effort: "high" },
+          provider: {
+            order: [
+              "SiliconFlow",
+              "GMICloud",
+              "Friendli",
+              "Venice",
+              "AtlasCloud",
+            ],
+          },
+        },
+      },
       ...streamCallbacks(elapsed),
     });
     logStreamStart("/api/chat");
     return result.toUIMessageStreamResponse();
   } catch (error) {
-    console.error(`\x1b[31m✗ /api/chat fatal error:\x1b[0m`, error);
-    return Response.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+    logError("/api/chat fatal error:", error);
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 },
+    );
   }
 }

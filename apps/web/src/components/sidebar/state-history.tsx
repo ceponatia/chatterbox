@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { History, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle, RefreshCw, Pencil } from "lucide-react";
 import type { StateHistoryEntry } from "@/lib/state-history";
+import { StateHistoryDetail } from "@/components/sidebar/state-history-detail";
 
 interface StateHistoryProps {
   entries: StateHistoryEntry[];
@@ -25,6 +26,7 @@ function formatTime(iso: string): string {
 
 export function StateHistory({ entries }: StateHistoryProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [detailEntry, setDetailEntry] = useState<StateHistoryEntry | null>(null);
 
   if (entries.length === 0) {
     return (
@@ -49,34 +51,40 @@ export function StateHistory({ entries }: StateHistoryProps) {
             entry={entry}
             isExpanded={expanded === entry.id}
             onToggle={() => setExpanded(expanded === entry.id ? null : entry.id)}
+            onOpenDetail={() => setDetailEntry(entry)}
           />
         ))}
       </div>
+      <StateHistoryDetail entry={detailEntry} onClose={() => setDetailEntry(null)} />
     </div>
   );
 }
 
-function HistoryEntry({ entry, isExpanded, onToggle }: {
-  entry: StateHistoryEntry; isExpanded: boolean; onToggle: () => void;
+function HistoryEntry({ entry, isExpanded, onToggle, onOpenDetail }: {
+  entry: StateHistoryEntry; isExpanded: boolean; onToggle: () => void; onOpenDetail: () => void;
 }) {
   const config = DISPOSITION_CONFIG[entry.disposition];
   const Icon = config.icon;
 
   return (
     <div className="rounded-md border border-border/50 bg-background/50 text-xs">
-      <Button variant="ghost" size="sm" className="h-auto w-full justify-between px-2.5 py-1.5" onClick={onToggle}>
-        <div className="flex items-center gap-2">
-          <Icon className={`h-3 w-3 ${config.className.split(" ")[0]}`} />
+      <div className="flex items-center">
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/50 rounded-l-md transition-colors"
+          onClick={onOpenDetail}
+        >
+          <Icon className={`h-3 w-3 shrink-0 ${config.className.split(" ")[0]}`} />
           <span className="text-muted-foreground">{formatTime(entry.timestamp)}</span>
           <span className="text-muted-foreground">turns {entry.turnRange[0]}–{entry.turnRange[1]}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
           <Badge variant="outline" className={`text-[9px] px-1 py-0 ${config.className}`}>
             {config.label}
           </Badge>
+        </button>
+        <Button variant="ghost" size="sm" className="h-auto shrink-0 px-1.5 py-1.5" onClick={onToggle}>
           {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </div>
-      </Button>
+        </Button>
+      </div>
 
       {isExpanded && <ExpandedDetails entry={entry} />}
     </div>

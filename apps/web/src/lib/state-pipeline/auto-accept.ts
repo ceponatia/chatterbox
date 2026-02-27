@@ -17,8 +17,8 @@ export function determineDisposition(report: ValidationReport): Disposition {
     return "retried";
   }
 
-  // Flag for review: hard facts removed or massive diff
-  if (!report.allHardFactsPreserved || report.diffPercentage > 50) {
+  // Flag for review: massive diff (possible hallucination)
+  if (report.diffPercentage > 50) {
     return "flagged";
   }
 

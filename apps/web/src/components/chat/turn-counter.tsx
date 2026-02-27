@@ -6,14 +6,14 @@ import { UIMessage } from "ai";
 interface TurnCounterProps {
   messages: UIMessage[];
   autoSummarizeInterval: number;
-  lastSummarizedTurn: number;
+  lastPipelineTurn: number;
 }
 
-export function TurnCounter({ messages, autoSummarizeInterval, lastSummarizedTurn }: TurnCounterProps) {
+export function TurnCounter({ messages, autoSummarizeInterval, lastPipelineTurn }: TurnCounterProps) {
   const turns = messages.filter((m) => m.role === "user").length;
-  const sinceLast = turns - lastSummarizedTurn;
-  const turnsUntilSummarize = autoSummarizeInterval - (sinceLast % autoSummarizeInterval);
-  const nearSummarize = turnsUntilSummarize <= 3 && turns > 0;
+  const sinceLast = turns - lastPipelineTurn;
+  const turnsUntilUpdate = autoSummarizeInterval - (sinceLast % autoSummarizeInterval);
+  const nearUpdate = turnsUntilUpdate <= 3 && turns > 0;
 
   return (
     <div className="flex items-center gap-2">
@@ -22,12 +22,12 @@ export function TurnCounter({ messages, autoSummarizeInterval, lastSummarizedTur
       </Badge>
       {turns > 0 && (
         <Badge
-          variant={nearSummarize ? "destructive" : "outline"}
+          variant={nearUpdate ? "destructive" : "outline"}
           className="text-xs"
         >
-          {nearSummarize
-            ? `Summarize in ${turnsUntilSummarize}`
-            : `Next summary: ${turnsUntilSummarize} turns`}
+          {nearUpdate
+            ? `State update in ${turnsUntilUpdate}`
+            : `Next update: ${turnsUntilUpdate} turns`}
         </Badge>
       )}
     </div>

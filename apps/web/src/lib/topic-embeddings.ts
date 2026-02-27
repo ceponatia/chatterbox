@@ -9,27 +9,30 @@
  * Uses a lightweight embedding model via OpenRouter.
  */
 
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { embed, embedMany } from "ai";
+import { env, getBaseUrl } from "./env";
 
 const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  headers: { "HTTP-Referer": "http://localhost:3000", "X-Title": "Chatterbox" },
+  apiKey: env.OPENROUTER_API_KEY,
+  headers: { "HTTP-Referer": getBaseUrl(), "X-Title": "Chatterbox" },
 });
 
 /** Segment topic descriptions for embedding comparison. */
 const SEGMENT_TOPICS: Record<string, string> = {
-  appearance_visual: "physical appearance, how someone looks, beauty, face, body, eyes, hair",
-  outfit_hairstyle: "clothing, outfit, what someone is wearing, fashion, shoes, hairstyle",
+  appearance_visual:
+    "physical appearance, how someone looks, beauty, face, body, eyes, hair",
+  outfit_hairstyle:
+    "clothing, outfit, what someone is wearing, fashion, shoes, hairstyle",
   voice_sound: "voice, singing, music, sound, tone, pitch, speaking voice",
-  backstory: "shared history, memories, school days, childhood, reconnecting after time apart",
+  backstory:
+    "shared history, memories, school days, childhood, reconnecting after time apart",
   relationship_status: "romantic relationship, boyfriend, dating, partner",
 };
 
 const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 
 /** Cache segment embeddings since they don't change. */
-let segmentEmbeddingsCache: { ids: string[]; vectors: number[][] } | null = null;
+let segmentEmbeddingsCache: { ids: string[]; vectors: number[][] } | null =
+  null;
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
@@ -46,11 +49,14 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
-async function getSegmentEmbeddings(): Promise<{ ids: string[]; vectors: number[][] }> {
+async function getSegmentEmbeddings(): Promise<{
+  ids: string[];
+  vectors: number[][];
+}> {
   if (segmentEmbeddingsCache) return segmentEmbeddingsCache;
 
   const ids = Object.keys(SEGMENT_TOPICS);
-  const texts = ids.map(id => SEGMENT_TOPICS[id] ?? "");
+  const texts = ids.map((id) => SEGMENT_TOPICS[id] ?? "");
 
   const { embeddings } = await embedMany({
     model: openrouter.textEmbeddingModel(EMBEDDING_MODEL),
@@ -68,7 +74,9 @@ async function getSegmentEmbeddings(): Promise<{ ids: string[]; vectors: number[
  * Returns a Record<segmentId, score> where score is 0.0–1.0.
  * Returns empty object if embedding fails (graceful degradation).
  */
-export async function computeTopicScores(userMessage: string): Promise<Record<string, number>> {
+export async function computeTopicScores(
+  userMessage: string,
+): Promise<Record<string, number>> {
   if (!userMessage.trim()) return {};
 
   try {
@@ -90,7 +98,10 @@ export async function computeTopicScores(userMessage: string): Promise<Record<st
     }
     return scores;
   } catch (err) {
-    console.warn("\x1b[33m⚠ topic-embeddings: failed, falling back to keyword-only\x1b[0m", err);
+    console.warn(
+      "\x1b[33m⚠ topic-embeddings: failed, falling back to keyword-only\x1b[0m",
+      err,
+    );
     return {};
   }
 }

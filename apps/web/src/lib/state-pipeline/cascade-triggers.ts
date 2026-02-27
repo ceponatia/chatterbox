@@ -19,6 +19,13 @@ const TRIGGER_MAP: Record<string, readonly string[]> = {
   appearance_change: ["appearance_visual", "outfit_hairstyle"],
   cast_change: ["relationship_status", "interaction_guide"],
   relationship_shift: ["relationship_status", "backstory"],
+  hard_fact_superseded: ["relationship_status"],
+  correction: [
+    "appearance_visual",
+    "outfit_hairstyle",
+    "setting_premise",
+    "interaction_guide",
+  ],
 };
 
 /**

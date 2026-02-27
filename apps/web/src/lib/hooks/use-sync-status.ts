@@ -5,7 +5,7 @@ import { useState, useCallback } from "react";
 export type SyncStatus = "saved" | "pending" | "error";
 
 /**
- * Tracks whether in-memory edits have been persisted to localStorage.
+ * Tracks whether in-memory edits have been persisted to backend storage.
  *
  * - `saved`  — last auto-save completed, no edits since (green dot)
  * - `pending` — edits made since last save, waiting for debounce (yellow dot)
@@ -24,7 +24,7 @@ export function useSyncStatus() {
   }, []);
 
   const markStoryStateSaved = useCallback(() => {
-    setStoryStateSync(prev => prev === "error" ? "error" : "saved");
+    setStoryStateSync((prev) => (prev === "error" ? "error" : "saved"));
   }, []);
 
   const markSystemPromptPending = useCallback(() => {
@@ -36,13 +36,13 @@ export function useSyncStatus() {
   }, []);
 
   const markSystemPromptSaved = useCallback(() => {
-    setSystemPromptSync(prev => prev === "error" ? "error" : "saved");
+    setSystemPromptSync((prev) => (prev === "error" ? "error" : "saved"));
   }, []);
 
   // Called by auto-save after successful persist
   const markAllSaved = useCallback(() => {
-    setStoryStateSync(prev => prev === "error" ? "error" : "saved");
-    setSystemPromptSync(prev => prev === "error" ? "error" : "saved");
+    setStoryStateSync((prev) => (prev === "error" ? "error" : "saved"));
+    setSystemPromptSync((prev) => (prev === "error" ? "error" : "saved"));
   }, []);
 
   return {

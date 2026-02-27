@@ -11,6 +11,7 @@ import { parseMarkdownToStructured, structuredToMarkdown, reconcileEntities, rem
 /** Story-state-specific handlers (extracted to keep main hook under line limit). */
 function useStoryStateHandlers() {
   const [storyState, setStoryState] = useState("");
+  const [storyStateTouched, setStoryStateTouched] = useState(false);
   const [storyStateBaseline, setStoryStateBaseline] = useState<string | null>(null);
   const [storyStateLastUpdated, setStoryStateLastUpdated] = useState<string | null>(null);
   const [previousStoryState, setPreviousStoryState] = useState<string | null>(null);
@@ -18,6 +19,7 @@ function useStoryStateHandlers() {
 
   const handleStoryStateChange = useCallback((value: string) => {
     setStoryState(value);
+    setStoryStateTouched(true);
     setStructuredState(null);
   }, []);
 
@@ -26,6 +28,7 @@ function useStoryStateHandlers() {
     setStructuredState(structured);
     setStoryState(structuredToMarkdown(structured));
     setStoryStateBaseline(content);
+    setStoryStateTouched(true);
   }, []);
 
   const handleStoryStateReset = useCallback(() => {
@@ -64,6 +67,7 @@ function useStoryStateHandlers() {
 
   return {
     storyState, setStoryState,
+    storyStateTouched, setStoryStateTouched,
     storyStateBaseline, setStoryStateBaseline,
     storyStateLastUpdated, setStoryStateLastUpdated,
     previousStoryState, setPreviousStoryState,
@@ -75,6 +79,7 @@ function useStoryStateHandlers() {
 
 export function useFieldSetters() {
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [systemPromptTouched, setSystemPromptTouched] = useState(false);
   const [systemPromptBaseline, setSystemPromptBaseline] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [lastIncludedAt, setLastIncludedAt] = useState<Record<string, number>>({});
@@ -86,6 +91,7 @@ export function useFieldSetters() {
 
   const handleSystemPromptChange = useCallback((value: string) => {
     setSystemPrompt(value);
+    setSystemPromptTouched(true);
   }, []);
 
   const handleSystemPromptImport = useCallback((content: string) => {
@@ -93,7 +99,13 @@ export function useFieldSetters() {
     setCustomSegments(segments);
     setSystemPrompt(segmentsToMarkdown(segments));
     setSystemPromptBaseline(content);
+    setSystemPromptTouched(true);
   }, []);
+
+  const resetInputTouchFlags = useCallback(() => {
+    story.setStoryStateTouched(false);
+    setSystemPromptTouched(false);
+  }, [story]);
 
   const handleSystemPromptReset = useCallback(() => {
     if (systemPromptBaseline !== null) {
@@ -121,6 +133,7 @@ export function useFieldSetters() {
   return {
     ...story,
     systemPrompt, setSystemPrompt,
+    systemPromptTouched, setSystemPromptTouched,
     systemPromptBaseline, setSystemPromptBaseline,
     settings, setSettings,
     lastIncludedAt, setLastIncludedAt,
@@ -132,5 +145,6 @@ export function useFieldSetters() {
     handleSystemPromptReset,
     handleSegmentUpdate,
     handleSettingsChange,
+    resetInputTouchFlags,
   };
 }

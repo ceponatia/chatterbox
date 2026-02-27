@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "lint:workspace",
+      "type": "shell",
+      "command": "pnpm -w -s lint -- -f stylish",
+      "problemMatcher": ["$eslint-stylish"],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}

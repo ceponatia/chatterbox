@@ -50,10 +50,14 @@ export interface DemeanorEntry {
 
 export interface StoryThread {
   description: string;
+  /** ISO date string when this thread was added */
+  createdAt?: string;
 }
 
 export interface HardFact {
   fact: string;
+  /** ISO date string when this fact was added */
+  createdAt?: string;
 }
 
 export interface CustomSection {
@@ -87,13 +91,33 @@ function generateEntityId(): string {
 
 /** Resolve an entity name from an ID. Returns the ID itself as fallback. */
 export function resolveEntityName(entities: Entity[], id: string): string {
-  return entities.find(e => e.id === id)?.name ?? id;
+  return entities.find((e) => e.id === id)?.name ?? id;
 }
 
-/** Find an entity by case-insensitive name match. */
-export function findEntityByName(entities: Entity[], name: string): Entity | undefined {
+/**
+ * Find an entity by name. Tries exact match first, then partial match
+ * (query is a word-boundary substring of an entity name, or vice versa).
+ * Partial match only returns a result if exactly one entity matches
+ * (avoids ambiguity when multiple entities share a first name).
+ */
+export function findEntityByName(
+  entities: Entity[],
+  name: string,
+): Entity | undefined {
   const lower = name.toLowerCase().trim();
-  return entities.find(e => e.name.toLowerCase().trim() === lower);
+  // 1. Exact match
+  const exact = entities.find((e) => e.name.toLowerCase().trim() === lower);
+  if (exact) return exact;
+  // 2. Partial: query is a token-subset of entity name or vice versa
+  const queryTokens = lower.split(/\s+/);
+  const partials = entities.filter((e) => {
+    const entTokens = e.name.toLowerCase().trim().split(/\s+/);
+    return (
+      queryTokens.every((qt) => entTokens.some((et) => et === qt)) ||
+      entTokens.every((et) => queryTokens.some((qt) => qt === et))
+    );
+  });
+  return partials.length === 1 ? partials[0] : undefined;
 }
 
 /**
@@ -134,7 +158,11 @@ export function reconcileEntities(
   for (const inc of incoming) {
     const match = findEntityByName(existing, inc.name);
     if (match) {
-      result.push({ ...match, description: inc.description, isPlayerCharacter: inc.isPlayerCharacter });
+      result.push({
+        ...match,
+        description: inc.description,
+        isPlayerCharacter: inc.isPlayerCharacter,
+      });
       matched.add(match.id);
       if (inc.id !== match.id) idRemap[inc.id] = match.id;
     } else {
@@ -161,12 +189,20 @@ export function remapEntityIds(
   const r = (id: string) => idRemap[id] ?? id;
   return {
     ...state,
-    relationships: state.relationships.map(rel => ({
-      ...rel, fromEntityId: r(rel.fromEntityId), toEntityId: r(rel.toEntityId),
+    relationships: state.relationships.map((rel) => ({
+      ...rel,
+      fromEntityId: r(rel.fromEntityId),
+      toEntityId: r(rel.toEntityId),
     })),
-    appearance: state.appearance.map(a => ({ ...a, entityId: r(a.entityId) })),
-    scene: { ...state.scene, presentEntityIds: state.scene.presentEntityIds.map(r) },
-    demeanor: state.demeanor.map(d => ({ ...d, entityId: r(d.entityId) })),
+    appearance: state.appearance.map((a) => ({
+      ...a,
+      entityId: r(a.entityId),
+    })),
+    scene: {
+      ...state.scene,
+      presentEntityIds: state.scene.presentEntityIds.map(r),
+    },
+    demeanor: state.demeanor.map((d) => ({ ...d, entityId: r(d.entityId) })),
   };
 }
 
@@ -193,44 +229,74 @@ export function emptyStructuredState(): StructuredStoryState {
 // ---------------------------------------------------------------------------
 
 /** Heading name → known section key mapping (case-insensitive) */
-const SECTION_MAP: Record<string, keyof Omit<StructuredStoryState, "custom">> = {
-  cast: "entities",
-  relationships: "relationships",
-  appearance: "appearance",
-  scene: "scene",
-  "current demeanor": "demeanor",
-  demeanor: "demeanor",
-  "open threads": "openThreads",
-  threads: "openThreads",
-  "hard facts": "hardFacts",
-  facts: "hardFacts",
-  style: "style",
-};
+const SECTION_MAP: Record<string, keyof Omit<StructuredStoryState, "custom">> =
+  {
+    cast: "entities",
+    relationships: "relationships",
+    appearance: "appearance",
+    characters: "appearance",
+    scene: "scene",
+    "current demeanor": "demeanor",
+    demeanor: "demeanor",
+    "open threads": "openThreads",
+    threads: "openThreads",
+    "hard facts": "hardFacts",
+    facts: "hardFacts",
+    style: "style",
+  };
 
-function resolveSection(heading: string): keyof Omit<StructuredStoryState, "custom"> | null {
-  return SECTION_MAP[heading.toLowerCase().trim()] ?? null;
+function resolveSection(
+  heading: string,
+): keyof Omit<StructuredStoryState, "custom"> | null {
+  const normalized = heading
+    .toLowerCase()
+    .replace(/\s*\(.*\)$/, "")
+    .trim();
+  return SECTION_MAP[normalized] ?? null;
 }
 
 // --- Intermediate raw-parse types (names, not IDs yet) ---
 
-interface RawCastEntry { name: string; description: string; isPlayer: boolean }
-interface RawRelEntry { from: string; to: string; description: string; details: string[] }
-interface RawAppEntry { character: string; attribute: string; description: string }
-interface RawDemEntry { character: string; mood: string; energy: string }
+interface RawCastEntry {
+  name: string;
+  description: string;
+  isPlayer: boolean;
+}
+interface RawRelEntry {
+  from: string;
+  to: string;
+  description: string;
+  details: string[];
+}
+interface RawAppEntry {
+  character: string;
+  attribute: string;
+  description: string;
+}
+interface RawDemEntry {
+  character: string;
+  mood: string;
+  energy: string;
+}
 
 // --- Per-section sub-parsers (return raw name-based data) ---
 
 function parseCastRaw(content: string): RawCastEntry[] {
   const members: RawCastEntry[] = [];
   const lines = content.split("\n");
-  let current: { name: string; descParts: string[]; isPlayer: boolean } | null = null;
+  let current: { name: string; descParts: string[]; isPlayer: boolean } | null =
+    null;
 
   for (const line of lines) {
     const trimmed = line.trim();
     const entryMatch = trimmed.match(/^-\s+\*\*(.+?)\*\*\s*[—:\-–]\s*(.*)$/);
     if (entryMatch) {
       if (current) {
-        members.push({ name: current.name, description: current.descParts.join("\n").trim(), isPlayer: current.isPlayer });
+        members.push({
+          name: current.name,
+          description: current.descParts.join("\n").trim(),
+          isPlayer: current.isPlayer,
+        });
       }
       const name = entryMatch[1]!.trim();
       const desc = entryMatch[2]!.trim();
@@ -241,7 +307,11 @@ function parseCastRaw(content: string): RawCastEntry[] {
     }
   }
   if (current) {
-    members.push({ name: current.name, description: current.descParts.join("\n").trim(), isPlayer: current.isPlayer });
+    members.push({
+      name: current.name,
+      description: current.descParts.join("\n").trim(),
+      isPlayer: current.isPlayer,
+    });
   }
   return members;
 }
@@ -249,14 +319,26 @@ function parseCastRaw(content: string): RawCastEntry[] {
 function parseRelationshipsRaw(content: string): RawRelEntry[] {
   const rels: RawRelEntry[] = [];
   const lines = content.split("\n");
-  let current: { from: string; to: string; desc: string; details: string[] } | null = null;
+  let current: {
+    from: string;
+    to: string;
+    desc: string;
+    details: string[];
+  } | null = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    const entryMatch = trimmed.match(/^-\s+\*\*(.+?)\s*[→>]\s*(.+?)\*\*\s*:\s*(.*)$/);
+    const entryMatch = trimmed.match(
+      /^-\s+\*\*(.+?)\s*[→>]\s*(.+?)\*\*\s*:\s*(.*)$/,
+    );
     if (entryMatch) {
       if (current) {
-        rels.push({ from: current.from, to: current.to, description: current.desc, details: current.details });
+        rels.push({
+          from: current.from,
+          to: current.to,
+          description: current.desc,
+          details: current.details,
+        });
       }
       current = {
         from: entryMatch[1]!.trim(),
@@ -271,22 +353,38 @@ function parseRelationshipsRaw(content: string): RawRelEntry[] {
     }
   }
   if (current) {
-    rels.push({ from: current.from, to: current.to, description: current.desc, details: current.details });
+    rels.push({
+      from: current.from,
+      to: current.to,
+      description: current.desc,
+      details: current.details,
+    });
   }
   return rels;
 }
 
+/** Parse flat appearance format: - **Name — attr**: val */
 function parseAppearanceRaw(content: string): RawAppEntry[] {
   const entries: RawAppEntry[] = [];
   const lines = content.split("\n");
-  let current: { character: string; attribute: string; descParts: string[] } | null = null;
+  let current: {
+    character: string;
+    attribute: string;
+    descParts: string[];
+  } | null = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    const entryMatch = trimmed.match(/^-\s+\*\*(.+?)\s*[—\-–]\s*(.+?)\*\*\s*:\s*(.*)$/);
+    const entryMatch = trimmed.match(
+      /^-\s+\*\*(.+?)\s*[—\-–]\s*(.+?)\*\*\s*:\s*(.*)$/,
+    );
     if (entryMatch) {
       if (current) {
-        entries.push({ character: current.character, attribute: current.attribute, description: current.descParts.join(" ").trim() });
+        entries.push({
+          character: current.character,
+          attribute: current.attribute,
+          description: current.descParts.join(" ").trim(),
+        });
       }
       current = {
         character: entryMatch[1]!.trim(),
@@ -298,20 +396,135 @@ function parseAppearanceRaw(content: string): RawAppEntry[] {
     }
   }
   if (current) {
-    entries.push({ character: current.character, attribute: current.attribute, description: current.descParts.join(" ").trim() });
+    entries.push({
+      character: current.character,
+      attribute: current.attribute,
+      description: current.descParts.join(" ").trim(),
+    });
   }
   return entries;
 }
 
-function classifySceneKey(key: string): "location" | "present" | "atmosphere" | null {
+/**
+ * Classify a single line inside a ## Characters block.
+ * Returns a discriminated union so the caller stays under complexity limits.
+ */
+function classifyCharacterLine(
+  trimmed: string,
+):
+  | { kind: "h3"; name: string }
+  | { kind: "h4"; name: string }
+  | { kind: "kv"; attribute: string; value: string }
+  | { kind: "flat"; character: string; attribute: string; value: string }
+  | { kind: "text" } {
+  const h3 = trimmed.match(/^###\s+(.+)$/);
+  if (h3) return { kind: "h3", name: h3[1]!.trim() };
+
+  const h4 = trimmed.match(/^####\s+(.+)$/);
+  if (h4) return { kind: "h4", name: h4[1]!.trim() };
+
+  const kv = trimmed.match(/^-\s+\*\*(.+?)\*\*\s*:\s*(.*)$/);
+  if (kv) return { kind: "kv", attribute: kv[1]!.trim(), value: kv[2]!.trim() };
+
+  const flat = trimmed.match(
+    /^-\s+\*\*(.+?)\s*[—\-–]\s*(.+?)\*\*\s*:\s*(.*)$/,
+  );
+  if (flat)
+    return {
+      kind: "flat",
+      character: flat[1]!.trim(),
+      attribute: flat[2]!.trim(),
+      value: flat[3]!.trim(),
+    };
+
+  return { kind: "text" };
+}
+
+/**
+ * Parse character-centric format:
+ * ### CharName
+ * #### Appearance
+ * - **attr**: val
+ * #### Personality
+ * - **attr**: val
+ */
+interface CharParseState {
+  entries: RawAppEntry[];
+  currentChar: string;
+  current: { attribute: string; descParts: string[] } | null;
+}
+
+function flushCharEntry(s: CharParseState): void {
+  if (s.current && s.currentChar) {
+    s.entries.push({
+      character: s.currentChar,
+      attribute: s.current.attribute,
+      description: s.current.descParts.join(" ").trim(),
+    });
+    s.current = null;
+  }
+}
+
+function processCharacterLine(
+  s: CharParseState,
+  cl: ReturnType<typeof classifyCharacterLine>,
+  rawLine: string,
+): void {
+  switch (cl.kind) {
+    case "h3":
+      flushCharEntry(s);
+      s.currentChar = cl.name;
+      break;
+    case "h4":
+      flushCharEntry(s);
+      break;
+    case "kv":
+      if (!s.currentChar) break;
+      flushCharEntry(s);
+      s.current = { attribute: cl.attribute, descParts: [cl.value] };
+      break;
+    case "flat":
+      flushCharEntry(s);
+      s.entries.push({ character: cl.character, attribute: cl.attribute, description: cl.value });
+      break;
+    case "text":
+      if (s.current && rawLine.trim()) s.current.descParts.push(rawLine.trim());
+      break;
+  }
+}
+
+function parseCharactersRaw(content: string): RawAppEntry[] {
+  const s: CharParseState = { entries: [], currentChar: "", current: null };
+
+  for (const line of content.split("\n")) {
+    processCharacterLine(s, classifyCharacterLine(line.trim()), line);
+  }
+  flushCharEntry(s);
+
+  // If no ### headings were found, fall back to flat appearance parsing
+  if (s.entries.length === 0 && content.trim()) {
+    return parseAppearanceRaw(content);
+  }
+  return s.entries;
+}
+
+function classifySceneKey(
+  key: string,
+): "location" | "present" | "atmosphere" | null {
   const k = key.toLowerCase();
-  if (k.includes("where") || k.includes("when") || k.includes("location")) return "location";
+  if (k.includes("where") || k.includes("when") || k.includes("location"))
+    return "location";
   if (k.includes("present") || k.includes("who")) return "present";
-  if (k.includes("atmosphere") || k.includes("mood") || k.includes("vibe")) return "atmosphere";
+  if (k.includes("atmosphere") || k.includes("mood") || k.includes("vibe"))
+    return "atmosphere";
   return null;
 }
 
-function parseSceneRaw(content: string): { location: string; presentNames: string[]; atmosphere: string } {
+function parseSceneRaw(content: string): {
+  location: string;
+  presentNames: string[];
+  atmosphere: string;
+} {
   const scene = { location: "", presentNames: [] as string[], atmosphere: "" };
   const lines = content.split("\n");
 
@@ -323,7 +536,11 @@ function parseSceneRaw(content: string): { location: string; presentNames: strin
     const kind = classifySceneKey(kvMatch[1]!);
 
     if (kind === "location") scene.location = val;
-    else if (kind === "present") scene.presentNames = val.split(",").map(s => s.trim()).filter(Boolean);
+    else if (kind === "present")
+      scene.presentNames = val
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
     else if (kind === "atmosphere") scene.atmosphere = val;
   }
   return scene;
@@ -345,7 +562,9 @@ function parseDemeanorRaw(content: string): RawDemEntry[] {
       globalEnergy = val;
     } else if (/mood/i.test(key)) {
       const charMatch = key.match(/^(.+?)(?:'s|'s)\s+mood/i);
-      const character = charMatch ? charMatch[1]!.trim() : key.replace(/\s*mood\s*/i, "").trim();
+      const character = charMatch
+        ? charMatch[1]!.trim()
+        : key.replace(/\s*mood\s*/i, "").trim();
       entries.push({ character, mood: val, energy: "" });
     }
   }
@@ -363,9 +582,25 @@ function parseDemeanorRaw(content: string): RawDemEntry[] {
 function parseBulletList(content: string): string[] {
   return content
     .split("\n")
-    .map(l => l.trim())
-    .filter(l => l.startsWith("- "))
-    .map(l => l.replace(/^-\s+/, ""));
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("- "))
+    .map((l) => l.replace(/^-\s+/, ""));
+}
+
+/** Strip `(added: YYYY-MM-DD)` suffix and return the text + date. */
+function parseTimestampedItem(text: string): {
+  text: string;
+  createdAt?: string;
+} {
+  const match = text.match(/^(.+?)\s*\(added:\s*(\d{4}-\d{2}-\d{2})\)\s*$/);
+  if (match) return { text: match[1]!.trim(), createdAt: match[2]! };
+  return { text };
+}
+
+function parseTimestampedBulletList(
+  content: string,
+): { text: string; createdAt?: string }[] {
+  return parseBulletList(content).map(parseTimestampedItem);
 }
 
 // --- Intermediate raw section store ---
@@ -376,16 +611,21 @@ interface RawSections {
   appearance: RawAppEntry[];
   scene: { location: string; presentNames: string[]; atmosphere: string };
   demeanor: RawDemEntry[];
-  openThreads: string[];
-  hardFacts: string[];
+  openThreads: { text: string; createdAt?: string }[];
+  hardFacts: { text: string; createdAt?: string }[];
   style: string[];
 }
 
 function emptyRawSections(): RawSections {
   return {
-    cast: [], relationships: [], appearance: [],
+    cast: [],
+    relationships: [],
+    appearance: [],
     scene: { location: "", presentNames: [], atmosphere: "" },
-    demeanor: [], openThreads: [], hardFacts: [], style: [],
+    demeanor: [],
+    openThreads: [],
+    hardFacts: [],
+    style: [],
   };
 }
 
@@ -395,14 +635,32 @@ function parseRawSection(
   content: string,
 ): void {
   switch (section) {
-    case "entities": raw.cast = parseCastRaw(content); break;
-    case "relationships": raw.relationships = parseRelationshipsRaw(content); break;
-    case "appearance": raw.appearance = parseAppearanceRaw(content); break;
-    case "scene": raw.scene = parseSceneRaw(content); break;
-    case "demeanor": raw.demeanor = parseDemeanorRaw(content); break;
-    case "openThreads": raw.openThreads = parseBulletList(content); break;
-    case "hardFacts": raw.hardFacts = parseBulletList(content); break;
-    case "style": raw.style = parseBulletList(content); break;
+    case "entities":
+      raw.cast = parseCastRaw(content);
+      break;
+    case "relationships":
+      raw.relationships = parseRelationshipsRaw(content);
+      break;
+    case "appearance":
+      raw.appearance = /^###\s/m.test(content)
+        ? parseCharactersRaw(content)
+        : parseAppearanceRaw(content);
+      break;
+    case "scene":
+      raw.scene = parseSceneRaw(content);
+      break;
+    case "demeanor":
+      raw.demeanor = parseDemeanorRaw(content);
+      break;
+    case "openThreads":
+      raw.openThreads = parseTimestampedBulletList(content);
+      break;
+    case "hardFacts":
+      raw.hardFacts = parseTimestampedBulletList(content);
+      break;
+    case "style":
+      raw.style = parseBulletList(content);
+      break;
   }
 }
 
@@ -435,32 +693,46 @@ function buildEntityRegistry(raw: RawSections): Entity[] {
   return entities;
 }
 
-function resolveRawToState(raw: RawSections, entities: Entity[], custom: CustomSection[]): StructuredStoryState {
+function resolveRawToState(
+  raw: RawSections,
+  entities: Entity[],
+  custom: CustomSection[],
+): StructuredStoryState {
   return {
     entities,
-    relationships: raw.relationships.map(r => ({
+    relationships: raw.relationships.map((r) => ({
       fromEntityId: findEntityByName(entities, r.from)!.id,
       toEntityId: findEntityByName(entities, r.to)!.id,
       description: r.description,
       details: r.details,
     })),
-    appearance: raw.appearance.map(a => ({
+    appearance: raw.appearance.map((a) => ({
       entityId: findEntityByName(entities, a.character)!.id,
       attribute: a.attribute,
       description: a.description,
     })),
     scene: {
       location: raw.scene.location,
-      presentEntityIds: raw.scene.presentNames.map(n => findEntityByName(entities, n)!.id),
+      presentEntityIds: raw.scene.presentNames.map(
+        (n) => findEntityByName(entities, n)!.id,
+      ),
       atmosphere: raw.scene.atmosphere,
     },
-    demeanor: raw.demeanor.map(d => ({
-      entityId: d.character ? findEntityByName(entities, d.character)!.id : (entities[0]?.id ?? ""),
+    demeanor: raw.demeanor.map((d) => ({
+      entityId: d.character
+        ? findEntityByName(entities, d.character)!.id
+        : (entities[0]?.id ?? ""),
       mood: d.mood,
       energy: d.energy,
     })),
-    openThreads: raw.openThreads.map(d => ({ description: d })),
-    hardFacts: raw.hardFacts.map(f => ({ fact: f })),
+    openThreads: raw.openThreads.map((d) => ({
+      description: d.text,
+      createdAt: d.createdAt,
+    })),
+    hardFacts: raw.hardFacts.map((f) => ({
+      fact: f.text,
+      createdAt: f.createdAt,
+    })),
     style: raw.style,
     custom,
   };
@@ -468,7 +740,9 @@ function resolveRawToState(raw: RawSections, entities: Entity[], custom: CustomS
 
 // --- Main parser ---
 
-export function parseMarkdownToStructured(markdown: string): StructuredStoryState {
+export function parseMarkdownToStructured(
+  markdown: string,
+): StructuredStoryState {
   if (!markdown.trim()) return emptyStructuredState();
 
   const parts = markdown.split(/^## /m);
@@ -478,7 +752,8 @@ export function parseMarkdownToStructured(markdown: string): StructuredStoryStat
   for (let i = 1; i < parts.length; i++) {
     const part = parts[i]!;
     const newlineIdx = part.indexOf("\n");
-    const heading = newlineIdx === -1 ? part.trim() : part.slice(0, newlineIdx).trim();
+    const heading =
+      newlineIdx === -1 ? part.trim() : part.slice(0, newlineIdx).trim();
     const content = newlineIdx === -1 ? "" : part.slice(newlineIdx + 1).trim();
 
     const section = resolveSection(heading);
@@ -498,43 +773,68 @@ export function parseMarkdownToStructured(markdown: string): StructuredStoryStat
 // ---------------------------------------------------------------------------
 
 function serializeEntities(entities: Entity[]): string {
-  return entities
-    .map(e => `- **${e.name}** — ${e.description}`)
-    .join("\n");
+  return entities.map((e) => `- **${e.name}** — ${e.description}`).join("\n");
 }
 
-function serializeRelationships(rels: Relationship[], entities: Entity[]): string {
+function serializeRelationships(
+  rels: Relationship[],
+  entities: Entity[],
+): string {
   return rels
-    .map(r => {
+    .map((r) => {
       const from = resolveEntityName(entities, r.fromEntityId);
       const to = resolveEntityName(entities, r.toEntityId);
       let line = `- **${from} → ${to}**: ${r.description}`;
       if (r.details.length > 0) {
-        line += "\n" + r.details.map(d => `  - ${d}`).join("\n");
+        line += "\n" + r.details.map((d) => `  - ${d}`).join("\n");
       }
       return line;
     })
     .join("\n");
 }
 
-function serializeAppearance(entries: AppearanceEntry[], entities: Entity[]): string {
-  return entries
-    .map(e => `- **${resolveEntityName(entities, e.entityId)} — ${e.attribute}**: ${e.description}`)
-    .join("\n");
+function serializeCharacters(
+  entries: AppearanceEntry[],
+  entities: Entity[],
+): string {
+  // Group entries by entityId, preserving order
+  const grouped = new Map<string, AppearanceEntry[]>();
+  for (const e of entries) {
+    const group = grouped.get(e.entityId) ?? [];
+    group.push(e);
+    grouped.set(e.entityId, group);
+  }
+
+  const blocks: string[] = [];
+  for (const [entityId, items] of grouped) {
+    const name = resolveEntityName(entities, entityId);
+    const lines = items.map((e) => `- **${e.attribute}**: ${e.description}`);
+    blocks.push(`### ${name}\n\n#### Appearance\n\n${lines.join("\n")}`);
+  }
+  return blocks.join("\n\n");
 }
 
 function serializeScene(scene: SceneInfo, entities: Entity[]): string {
   const lines: string[] = [];
-  lines.push(`- **Where/When**: ${scene.location || "[to be filled during play]"}`);
-  const present = scene.presentEntityIds.map(id => resolveEntityName(entities, id));
-  lines.push(`- **Who is present**: ${present.length > 0 ? present.join(", ") : "[to be filled during play]"}`);
+  lines.push(
+    `- **Where/When**: ${scene.location || "[to be filled during play]"}`,
+  );
+  const present = scene.presentEntityIds.map((id) =>
+    resolveEntityName(entities, id),
+  );
+  lines.push(
+    `- **Who is present**: ${present.length > 0 ? present.join(", ") : "[to be filled during play]"}`,
+  );
   if (scene.atmosphere) {
     lines.push(`- **Atmosphere**: ${scene.atmosphere}`);
   }
   return lines.join("\n");
 }
 
-function serializeDemeanor(entries: DemeanorEntry[], entities: Entity[]): string {
+function serializeDemeanor(
+  entries: DemeanorEntry[],
+  entities: Entity[],
+): string {
   const lines: string[] = [];
   for (const e of entries) {
     const name = resolveEntityName(entities, e.entityId);
@@ -542,7 +842,7 @@ function serializeDemeanor(entries: DemeanorEntry[], entities: Entity[]): string
       lines.push(`- **${name ? `${name}'s mood` : "Mood"}**: ${e.mood}`);
     }
   }
-  const energy = entries.find(e => e.energy)?.energy;
+  const energy = entries.find((e) => e.energy)?.energy;
   if (energy) {
     lines.push(`- **Energy between them**: ${energy}`);
   }
@@ -550,7 +850,32 @@ function serializeDemeanor(entries: DemeanorEntry[], entities: Entity[]): string
 }
 
 function serializeBulletList(items: string[]): string {
-  return items.map(item => `- ${item}`).join("\n");
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+/** Format a date as YYYY-MM-DD for serialization. */
+function toDateStr(iso?: string): string {
+  if (!iso) return new Date().toISOString().slice(0, 10);
+  // Handle both full ISO and YYYY-MM-DD
+  return iso.slice(0, 10);
+}
+
+/** Sort comparator for createdAt fields (oldest first, undefined = oldest). */
+function byCreatedAt(a?: string, b?: string): number {
+  const da = a ?? "";
+  const db = b ?? "";
+  return da.localeCompare(db);
+}
+
+function serializeTimestampedList(
+  items: { text: string; createdAt?: string }[],
+): string {
+  const sorted = [...items].sort((a, b) =>
+    byCreatedAt(a.createdAt, b.createdAt),
+  );
+  return sorted
+    .map((item) => `- ${item.text} (added: ${toDateStr(item.createdAt)})`)
+    .join("\n");
 }
 
 export function structuredToMarkdown(state: StructuredStoryState): string {
@@ -561,20 +886,38 @@ export function structuredToMarkdown(state: StructuredStoryState): string {
     sections.push(`## Cast\n\n${serializeEntities(entities)}`);
   }
   if (state.relationships.length > 0) {
-    sections.push(`## Relationships\n\n${serializeRelationships(state.relationships, entities)}`);
+    sections.push(
+      `## Relationships\n\n${serializeRelationships(state.relationships, entities)}`,
+    );
   }
   if (state.appearance.length > 0) {
-    sections.push(`## Appearance\n\n${serializeAppearance(state.appearance, entities)}`);
+    sections.push(
+      `## Characters\n\n${serializeCharacters(state.appearance, entities)}`,
+    );
   }
   sections.push(`## Scene\n\n${serializeScene(state.scene, entities)}`);
   if (state.demeanor.length > 0) {
-    sections.push(`## Current Demeanor\n\n${serializeDemeanor(state.demeanor, entities)}`);
+    sections.push(
+      `## Current Demeanor\n\n${serializeDemeanor(state.demeanor, entities)}`,
+    );
   }
   if (state.openThreads.length > 0) {
-    sections.push(`## Open Threads\n\n${serializeBulletList(state.openThreads.map(t => t.description))}`);
+    const threadItems = state.openThreads.map((t) => ({
+      text: t.description,
+      createdAt: t.createdAt,
+    }));
+    sections.push(
+      `## Open Threads\n\n${serializeTimestampedList(threadItems)}`,
+    );
   }
   if (state.hardFacts.length > 0) {
-    sections.push(`## Hard Facts\n\n${serializeBulletList(state.hardFacts.map(f => f.fact))}`);
+    const factItems = state.hardFacts.map((f) => ({
+      text: f.fact,
+      createdAt: f.createdAt,
+    }));
+    sections.push(
+      `## Hard Facts (do not contradict these)\n\n${serializeTimestampedList(factItems)}`,
+    );
   }
   if (state.style.length > 0) {
     sections.push(`## Style\n\n${serializeBulletList(state.style)}`);

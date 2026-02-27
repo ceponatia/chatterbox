@@ -34,7 +34,7 @@ interface Params {
 }
 
 /** Returns true if the result was applied. */
-function applyPipelineResult(
+async function applyPipelineResult(
   data: StateUpdateResponse,
   currentState: string,
   conversationId: string,
@@ -42,7 +42,7 @@ function applyPipelineResult(
   turnNumber: number,
   onStateUpdate: (s: string) => void,
   onCascadeResets?: (ids: string[]) => void,
-): boolean {
+): Promise<boolean> {
   if (data.newState === currentState || !data.newState.trim()) return false;
 
   const disposition =
@@ -52,16 +52,20 @@ function applyPipelineResult(
     onStateUpdate(data.newState);
   }
 
-  appendStateHistoryEntry(conversationId, {
-    id: generateId(),
-    timestamp: new Date().toISOString(),
-    turnRange: [lastTurn + 1, turnNumber],
-    previousState: currentState,
-    newState: data.newState,
-    extractedFacts: data.extractedFacts,
-    validation: data.validation,
-    disposition,
-  });
+  try {
+    await appendStateHistoryEntry(conversationId, {
+      id: generateId(),
+      timestamp: new Date().toISOString(),
+      turnRange: [lastTurn + 1, turnNumber],
+      previousState: currentState,
+      newState: data.newState,
+      extractedFacts: data.extractedFacts,
+      validation: data.validation,
+      disposition,
+    });
+  } catch (err) {
+    console.warn("⚠ state-pipeline: failed to persist history entry:", err);
+  }
 
   // Apply cascade resets so triggered segments re-inject next turn
   if (data.cascadeResets?.length && onCascadeResets) {
@@ -115,6 +119,7 @@ export function useStatePipeline({
             messages,
             currentStoryState: storyStateRef.current,
             turnNumber,
+            lastPipelineTurn: lastPipelineTurnRef.current,
           }),
         });
 
@@ -129,7 +134,7 @@ export function useStatePipeline({
           return;
         }
 
-        const applied = applyPipelineResult(
+        const applied = await applyPipelineResult(
           data,
           storyStateRef.current,
           conversationId,
@@ -154,7 +159,13 @@ export function useStatePipeline({
         inflightRef.current = false;
       }
     },
-    [messages, conversationId, onStateUpdate, onCascadeResets, setLastPipelineTurn],
+    [
+      messages,
+      conversationId,
+      onStateUpdate,
+      onCascadeResets,
+      setLastPipelineTurn,
+    ],
   );
 
   // Trigger after assistant response completes (isLoading transitions false)

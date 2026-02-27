@@ -6,10 +6,8 @@ import {
   listConversations,
   loadConversation,
   saveConversation,
-  createConversation,
+  createConversationDraft,
   deleteConversation,
-  getActiveConversationId,
-  setActiveConversationId,
   type Conversation,
   type ConversationMeta,
 } from "@/lib/storage";
@@ -40,6 +38,7 @@ export function useConversationManager({
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [convDrawerOpen, setConvDrawerOpen] = useState(false);
   const activeConvRef = useRef<Conversation | null>(null);
+  const activeConvPersistedRef = useRef(false);
 
   const fields = useFieldSetters();
   const syncStatus = useSyncStatus();
@@ -55,36 +54,39 @@ export function useConversationManager({
   }, [fields]);
 
   const hydrateConversation = useCallback(
-    (conv: Conversation) => {
+    (conv: Conversation, persisted: boolean) => {
       activeConvRef.current = conv;
+      activeConvPersistedRef.current = persisted;
       setActiveConvId(conv.id);
-      setActiveConversationId(conv.id);
       setMessages(conv.messages);
-      fields.setSystemPrompt(conv.systemPrompt);
-      fields.setStoryState(conv.storyState);
-      fields.setPreviousStoryState(conv.previousStoryState);
-      fields.setStoryStateLastUpdated(conv.storyStateLastUpdated);
-      fields.setSettings(conv.settings);
-      fields.setSystemPromptBaseline(conv.systemPromptBaseline);
-      fields.setStoryStateBaseline(conv.storyStateBaseline);
-      fields.setLastIncludedAt(conv.lastIncludedAt ?? {});
-      fields.setCustomSegments(conv.customSegments ?? null);
-      fields.setStructuredState(conv.structuredState ?? null);
-      fields.setLastSummarizedTurn(conv.lastSummarizedTurn ?? 0);
-      fields.setLastPipelineTurn(conv.lastPipelineTurn ?? 0);
-      onConfigSync({
+      const f = fieldsRef.current;
+      f.resetInputTouchFlags();
+      f.setSystemPrompt(conv.systemPrompt);
+      f.setStoryState(conv.storyState);
+      f.setPreviousStoryState(conv.previousStoryState);
+      f.setStoryStateLastUpdated(conv.storyStateLastUpdated);
+      f.setSettings(conv.settings);
+      f.setSystemPromptBaseline(conv.systemPromptBaseline);
+      f.setStoryStateBaseline(conv.storyStateBaseline);
+      f.setLastIncludedAt(conv.lastIncludedAt ?? {});
+      f.setCustomSegments(conv.customSegments ?? null);
+      f.setStructuredState(conv.structuredState ?? null);
+      f.setLastSummarizedTurn(conv.lastSummarizedTurn ?? 0);
+      f.setLastPipelineTurn(conv.lastPipelineTurn ?? 0);
+      syncRef.current({
         systemPrompt: conv.systemPrompt,
         storyState: conv.storyState,
         settings: conv.settings,
         customSegments: conv.customSegments,
       });
     },
-    [setMessages, fields, onConfigSync],
+    [setMessages],
   );
 
   useHydrateOnMount(hydrateConversation, setConversations);
   useAutoSave(
     activeConvRef,
+    activeConvPersistedRef,
     activeConvId,
     messages,
     fields,
@@ -143,7 +145,7 @@ export function useConversationManager({
         const conv = await loadConversation(id);
         if (!conv) return;
         onConversationSwitch?.();
-        hydrateConversation(conv);
+        hydrateConversation(conv, true);
         setConvDrawerOpen(false);
       })();
     },
@@ -151,13 +153,10 @@ export function useConversationManager({
   );
 
   const handleNewConversation = useCallback(() => {
-    void (async () => {
-      onConversationSwitch?.();
-      const conv = await createConversation();
-      hydrateConversation(conv);
-      setConversations(await listConversations());
-      setConvDrawerOpen(false);
-    })();
+    onConversationSwitch?.();
+    const conv = createConversationDraft();
+    hydrateConversation(conv, false);
+    setConvDrawerOpen(false);
   }, [hydrateConversation, onConversationSwitch]);
 
   const handleDeleteConversation = useCallback(
@@ -167,11 +166,8 @@ export function useConversationManager({
         const remaining = await listConversations();
         setConversations(remaining);
         if (id !== activeConvId) return;
-        const first = remaining[0];
-        const next = first ? await loadConversation(first.id) : null;
-        const fallback = next ?? (await createConversation());
-        hydrateConversation(fallback);
-        if (!next) setConversations(await listConversations());
+        const fallback = createConversationDraft();
+        hydrateConversation(fallback, false);
       })();
     },
     [activeConvId, hydrateConversation],
@@ -197,35 +193,31 @@ export function useConversationManager({
 // ---------------------------------------------------------------------------
 
 function useHydrateOnMount(
-  hydrateConversation: (conv: Conversation) => void,
+  hydrateConversation: (conv: Conversation, persisted: boolean) => void,
   setConversations: (c: ConversationMeta[]) => void,
 ) {
   useEffect(() => {
     let active = true;
     const init = async () => {
+      // Landing guard: always boot into a fresh empty conversation.
+      // Do not auto-load any existing conversation on startup.
       const index = await listConversations();
       if (!active) return;
       setConversations(index);
-      const savedId = getActiveConversationId();
-      let conv: Conversation | null = null;
-      if (savedId) conv = await loadConversation(savedId);
-      const firstIdx = index[0];
-      if (!conv && firstIdx) conv = await loadConversation(firstIdx.id);
-      if (!conv) conv = await createConversation();
+      const conv = createConversationDraft();
       if (!active) return;
-      hydrateConversation(conv);
-      setConversations(await listConversations());
+      hydrateConversation(conv, false);
     };
     void init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => {
       active = false;
     };
-  }, []);
+  }, [hydrateConversation, setConversations]);
 }
 
 function useAutoSave(
   activeConvRef: React.RefObject<Conversation | null>,
+  activeConvPersistedRef: React.RefObject<boolean>,
   activeConvId: string | null,
   messages: UIMessage[],
   fields: ReturnType<typeof useFieldSetters>,
@@ -248,6 +240,8 @@ function useAutoSave(
     structuredState,
     lastSummarizedTurn,
     lastPipelineTurn,
+    storyStateTouched,
+    systemPromptTouched,
   } = fields;
 
   // Track previous values to detect which field actually changed
@@ -272,12 +266,21 @@ function useAutoSave(
       return;
     }
 
+    const hasUserMessage = messages.some((m) => m.role === "user");
+    const shouldPersistDraft =
+      storyStateTouched || systemPromptTouched || hasUserMessage;
+
+    if (!activeConvPersistedRef.current && !shouldPersistDraft) {
+      return;
+    }
+
     // Mark the specific field(s) that changed as pending
     if (storyState !== prevStoryRef.current) onStoryPending();
     if (systemPrompt !== prevPromptRef.current) onPromptPending();
     prevStoryRef.current = storyState;
     prevPromptRef.current = systemPrompt;
 
+    const saveDelayMs = activeConvPersistedRef.current ? 500 : 0;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       void (async () => {
@@ -299,10 +302,11 @@ function useAutoSave(
           lastPipelineTurn,
         });
         await saveConversation(conv);
+        activeConvPersistedRef.current = true;
         setConversations(await listConversations());
         onSaved();
       })();
-    }, 500);
+    }, saveDelayMs);
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
@@ -322,10 +326,13 @@ function useAutoSave(
     lastPipelineTurn,
     activeConvId,
     activeConvRef,
+    activeConvPersistedRef,
     setConversations,
     onSaved,
     onStoryPending,
     onPromptPending,
+    storyStateTouched,
+    systemPromptTouched,
   ]);
 }
 

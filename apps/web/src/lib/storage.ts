@@ -49,43 +49,6 @@ export interface Conversation extends ConversationMeta {
   lastPipelineTurn: number;
 }
 
-// ---------------------------------------------------------------------------
-// Keys
-// ---------------------------------------------------------------------------
-
-const INDEX_KEY = "chatterbox-conversations";
-const ACTIVE_KEY = "chatterbox-active-conversation";
-const convKey = (id: string) => `chatterbox-conv-${id}`;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function isBrowser(): boolean {
-  return typeof window !== "undefined";
-}
-
-const useRemoteStorage =
-  process.env.NEXT_PUBLIC_LOCAL_STORAGE_DISABLED === "true";
-
-const memoryStore = new Map<string, string>();
-let localStorageAvailable: boolean | null = null;
-
-function hasLocalStorage(): boolean {
-  if (!isBrowser()) return false;
-  if (useRemoteStorage) return false;
-  if (localStorageAvailable !== null) return localStorageAvailable;
-  try {
-    const probeKey = "__chatterbox_storage_probe__";
-    localStorage.setItem(probeKey, "1");
-    localStorage.removeItem(probeKey);
-    localStorageAvailable = true;
-  } catch {
-    localStorageAvailable = false;
-  }
-  return localStorageAvailable;
-}
-
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...options,
@@ -99,44 +62,6 @@ async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
-
-/** Safe storage wrapper — falls back to in-memory if localStorage is blocked. */
-export const safeStorage = {
-  getItem(key: string): string | null {
-    if (hasLocalStorage()) {
-      try {
-        return localStorage.getItem(key);
-      } catch {
-        localStorageAvailable = false;
-      }
-    }
-    return memoryStore.get(key) ?? null;
-  },
-  setItem(key: string, value: string): boolean {
-    if (hasLocalStorage()) {
-      try {
-        localStorage.setItem(key, value);
-        return true;
-      } catch {
-        localStorageAvailable = false;
-      }
-    }
-    memoryStore.set(key, value);
-    return true;
-  },
-  removeItem(key: string): boolean {
-    if (hasLocalStorage()) {
-      try {
-        localStorage.removeItem(key);
-        return true;
-      } catch {
-        localStorageAvailable = false;
-      }
-    }
-    memoryStore.delete(key);
-    return true;
-  },
-};
 
 export function generateId(): string {
   if (
@@ -153,51 +78,18 @@ export function generateId(): string {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Index (lightweight list of ConversationMeta)
-// ---------------------------------------------------------------------------
-
-function listConversationsLocal(): ConversationMeta[] {
-  if (!isBrowser()) return [];
-  const raw = safeStorage.getItem(INDEX_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as ConversationMeta[];
-  } catch {
-    return [];
-  }
-}
-
-function saveIndex(index: ConversationMeta[]) {
-  safeStorage.setItem(INDEX_KEY, JSON.stringify(index));
-}
-
 export async function listConversations(): Promise<ConversationMeta[]> {
-  if (!useRemoteStorage) return listConversationsLocal();
   return requestJson<ConversationMeta[]>("/api/conversations");
-}
-
-// ---------------------------------------------------------------------------
-// Active conversation ID
-// ---------------------------------------------------------------------------
-
-export function getActiveConversationId(): string | null {
-  if (!isBrowser()) return null;
-  return safeStorage.getItem(ACTIVE_KEY);
-}
-
-export function setActiveConversationId(id: string) {
-  safeStorage.setItem(ACTIVE_KEY, id);
 }
 
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
-function createConversationLocal(title = "New Chat"): Conversation {
+function createConversationSnapshot(title = "New Chat"): Conversation {
   const now = new Date().toISOString();
   const segments = parseSystemPromptToSegments(DEFAULT_SYSTEM_PROMPT);
-  const conv: Conversation = {
+  return {
     id: generateId(),
     title,
     createdAt: now,
@@ -216,58 +108,28 @@ function createConversationLocal(title = "New Chat"): Conversation {
     lastSummarizedTurn: 0,
     lastPipelineTurn: 0,
   };
-  // Persist full blob
-  safeStorage.setItem(convKey(conv.id), JSON.stringify(conv));
-  // Update index
-  const index = listConversationsLocal();
-  index.unshift({
-    id: conv.id,
-    title: conv.title,
-    createdAt: conv.createdAt,
-    updatedAt: conv.updatedAt,
-  });
-  saveIndex(index);
-  // Set as active
-  setActiveConversationId(conv.id);
-  return conv;
+}
+
+export function createConversationDraft(title = "New Chat"): Conversation {
+  return createConversationSnapshot(title);
 }
 
 export async function createConversation(
   title = "New Chat",
 ): Promise<Conversation> {
-  if (!useRemoteStorage) return createConversationLocal(title);
-  const now = new Date().toISOString();
-  const segments = parseSystemPromptToSegments(DEFAULT_SYSTEM_PROMPT);
-  const conv: Conversation = {
-    id: generateId(),
-    title,
-    createdAt: now,
-    updatedAt: now,
-    messages: [],
-    systemPrompt: segmentsToMarkdown(segments),
-    storyState: "",
-    previousStoryState: null,
-    storyStateLastUpdated: null,
-    settings: { ...DEFAULT_SETTINGS },
-    systemPromptBaseline: DEFAULT_SYSTEM_PROMPT,
-    storyStateBaseline: null,
-    lastIncludedAt: {},
-    customSegments: segments,
-    structuredState: emptyStructuredState(),
-    lastSummarizedTurn: 0,
-    lastPipelineTurn: 0,
-  };
+  const conv = createConversationSnapshot(title);
   await requestJson(`/api/conversations/${conv.id}`, {
     method: "PUT",
     body: JSON.stringify(conv),
   });
-  setActiveConversationId(conv.id);
   return conv;
 }
 
 /** Fill in turn-tracking fields that may be absent on older conversations. */
 function applyTurnDefaults(conv: Conversation): void {
-  const raw = conv as Partial<Pick<Conversation, "lastSummarizedTurn" | "lastPipelineTurn">>;
+  const raw = conv as Partial<
+    Pick<Conversation, "lastSummarizedTurn" | "lastPipelineTurn">
+  >;
   if (raw.lastSummarizedTurn === undefined) conv.lastSummarizedTurn = 0;
   if (raw.lastPipelineTurn === undefined) conv.lastPipelineTurn = 0;
 }
@@ -294,21 +156,9 @@ function migrateConversation(conv: Conversation): Conversation {
   return conv;
 }
 
-function loadConversationLocal(id: string): Conversation | null {
-  if (!isBrowser()) return null;
-  const raw = safeStorage.getItem(convKey(id));
-  if (!raw) return null;
-  try {
-    return migrateConversation(JSON.parse(raw) as Conversation);
-  } catch {
-    return null;
-  }
-}
-
 export async function loadConversation(
   id: string,
 ): Promise<Conversation | null> {
-  if (!useRemoteStorage) return loadConversationLocal(id);
   try {
     const conv = await requestJson<Conversation>(`/api/conversations/${id}`);
     return migrateConversation(conv);
@@ -317,57 +167,16 @@ export async function loadConversation(
   }
 }
 
-function saveConversationLocal(conv: Conversation) {
-  conv.updatedAt = new Date().toISOString();
-  safeStorage.setItem(convKey(conv.id), JSON.stringify(conv));
-  // Keep index in sync
-  const index = listConversationsLocal();
-  const idx = index.findIndex((c) => c.id === conv.id);
-  const meta: ConversationMeta = {
-    id: conv.id,
-    title: conv.title,
-    createdAt: conv.createdAt,
-    updatedAt: conv.updatedAt,
-  };
-  if (idx >= 0) {
-    index[idx] = meta;
-  } else {
-    index.unshift(meta);
-  }
-  saveIndex(index);
-}
-
 export async function saveConversation(conv: Conversation) {
   conv.updatedAt = new Date().toISOString();
-  if (!useRemoteStorage) {
-    saveConversationLocal(conv);
-    return;
-  }
   await requestJson(`/api/conversations/${conv.id}`, {
     method: "PUT",
     body: JSON.stringify(conv),
   });
 }
 
-function deleteConversationLocal(id: string) {
-  safeStorage.removeItem(convKey(id));
-  const index = listConversationsLocal().filter((c) => c.id !== id);
-  saveIndex(index);
-  // If deleted was active, clear active
-  if (getActiveConversationId() === id) {
-    safeStorage.removeItem(ACTIVE_KEY);
-  }
-}
-
 export async function deleteConversation(id: string) {
-  if (!useRemoteStorage) {
-    deleteConversationLocal(id);
-    return;
-  }
   await requestJson(`/api/conversations/${id}`, { method: "DELETE" });
-  if (getActiveConversationId() === id) {
-    safeStorage.removeItem(ACTIVE_KEY);
-  }
 }
 
 export async function renameConversation(id: string, title: string) {

@@ -7,18 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { RotateCcw, Clock, Upload } from "lucide-react";
-import { StoryStateReview, type StoryStateReviewProps } from "./story-state-review";
+
 import { StateHistory } from "./state-history";
 import type { StateHistoryEntry } from "@/lib/state-history";
 import type { StructuredStoryState } from "@/lib/story-state-model";
 import {
-  EntitiesSection, RelationshipsSection, AppearanceSection,
-  SceneSection, DemeanorSection, BulletListSection, CustomSectionEditor,
+  EntitiesSection,
+  RelationshipsSection,
+  CharactersSection,
+  SceneSection,
+  DemeanorSection,
+  BulletListSection,
+  TimestampedBulletListSection,
+  CustomSectionEditor,
 } from "./story-state-sections";
-
-export interface PendingReview extends StoryStateReviewProps {
-  active: boolean;
-}
 
 interface StoryStateEditorProps {
   value: string;
@@ -27,8 +29,6 @@ interface StoryStateEditorProps {
   onReset: () => void;
   baseline: string | null;
   lastUpdated: string | null;
-  review: PendingReview;
-  reviewMode: boolean;
   recentlyUpdated: boolean;
   stateHistory: StateHistoryEntry[];
   structuredState: StructuredStoryState | null;
@@ -42,7 +42,11 @@ interface StoryStateEditorProps {
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   return date.toLocaleString(undefined, {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -51,7 +55,12 @@ function formatTimestamp(iso: string): string {
 // ---------------------------------------------------------------------------
 
 function StoryStateHeader({
-  onImport, onReset, baseline, lastUpdated, recentlyUpdated, isStructured,
+  onImport,
+  onReset,
+  baseline,
+  lastUpdated,
+  recentlyUpdated,
+  isStructured,
 }: {
   onImport: (content: string) => void;
   onReset: () => void;
@@ -80,10 +89,15 @@ function StoryStateHeader({
           <Label className="text-sm font-semibold">Story State</Label>
           <div className="flex items-center gap-1.5">
             {recentlyUpdated && (
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" title="State recently updated" />
+              <span
+                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-500"
+                title="State recently updated"
+              />
             )}
             {isStructured && (
-              <Badge variant="secondary" className="text-[9px] px-1 py-0">Structured</Badge>
+              <Badge variant="secondary" className="text-[9px] px-1 py-0">
+                Structured
+              </Badge>
             )}
             {lastUpdated && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -94,12 +108,32 @@ function StoryStateHeader({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <input ref={fileInputRef} type="file" accept=".json,.md" className="hidden" onChange={handleFileChange} />
-          <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} title="Import from .json or .md file">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.md"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            title="Import from .json or .md file"
+          >
             <Upload className="mr-1 h-3 w-3" /> Import
           </Button>
-          <Button variant="ghost" size="sm" onClick={onReset} disabled={baseline === null}
-            title={baseline !== null ? "Reset to imported baseline" : "Import a file first"}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReset}
+            disabled={baseline === null}
+            title={
+              baseline !== null
+                ? "Reset to imported baseline"
+                : "Import a file first"
+            }
+          >
             <RotateCcw className="mr-1 h-3 w-3" /> Reset
           </Button>
         </div>
@@ -117,13 +151,18 @@ function StoryStateHeader({
 // Structured editor body (renders all typed sections)
 // ---------------------------------------------------------------------------
 
-function StructuredEditorBody({ state, onUpdate }: {
+function StructuredEditorBody({
+  state,
+  onUpdate,
+}: {
   state: StructuredStoryState;
   onUpdate: (state: StructuredStoryState) => void;
 }) {
   const patch = useCallback(
-    <K extends keyof StructuredStoryState>(key: K, value: StructuredStoryState[K]) =>
-      onUpdate({ ...state, [key]: value }),
+    <K extends keyof StructuredStoryState>(
+      key: K,
+      value: StructuredStoryState[K],
+    ) => onUpdate({ ...state, [key]: value }),
     [state, onUpdate],
   );
 
@@ -131,33 +170,69 @@ function StructuredEditorBody({ state, onUpdate }: {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <EntitiesSection entities={entities} onUpdate={(v) => patch("entities", v)} />
+      <EntitiesSection
+        entities={entities}
+        onUpdate={(v) => patch("entities", v)}
+      />
       <RelationshipsSection
-        relationships={state.relationships} entities={entities}
+        relationships={state.relationships}
+        entities={entities}
         onUpdate={(v) => patch("relationships", v)}
         onEntitiesUpdate={(v) => patch("entities", v)}
       />
-      <AppearanceSection
-        entries={state.appearance} entities={entities}
+      <CharactersSection
+        entries={state.appearance}
+        entities={entities}
         onUpdate={(v) => patch("appearance", v)}
         onEntitiesUpdate={(v) => patch("entities", v)}
       />
-      <SceneSection scene={state.scene} entities={entities} onUpdate={(v) => patch("scene", v)} />
-      <DemeanorSection entries={state.demeanor} entities={entities} onUpdate={(v) => patch("demeanor", v)} onEntitiesUpdate={(v) => patch("entities", v)} />
-      <BulletListSection
-        title="Open Threads" items={state.openThreads.map(t => t.description)}
-        onUpdate={(items) => patch("openThreads", items.map(d => ({ description: d })))}
-        placeholder="Thread description..." addLabel="Add thread"
+      <SceneSection
+        scene={state.scene}
+        entities={entities}
+        onUpdate={(v) => patch("scene", v)}
+      />
+      <DemeanorSection
+        entries={state.demeanor}
+        entities={entities}
+        onUpdate={(v) => patch("demeanor", v)}
+        onEntitiesUpdate={(v) => patch("entities", v)}
+      />
+      <TimestampedBulletListSection
+        title="Open Threads"
+        items={state.openThreads.map((t) => ({
+          text: t.description,
+          createdAt: t.createdAt,
+        }))}
+        onUpdate={(items) =>
+          patch(
+            "openThreads",
+            items.map((d) => ({ description: d.text, createdAt: d.createdAt })),
+          )
+        }
+        placeholder="Thread description..."
+        addLabel="Add thread"
+      />
+      <TimestampedBulletListSection
+        title="Hard Facts"
+        items={state.hardFacts.map((f) => ({
+          text: f.fact,
+          createdAt: f.createdAt,
+        }))}
+        onUpdate={(items) =>
+          patch(
+            "hardFacts",
+            items.map((f) => ({ fact: f.text, createdAt: f.createdAt })),
+          )
+        }
+        placeholder="Hard fact..."
+        addLabel="Add fact"
       />
       <BulletListSection
-        title="Hard Facts" items={state.hardFacts.map(f => f.fact)}
-        onUpdate={(items) => patch("hardFacts", items.map(f => ({ fact: f })))}
-        placeholder="Hard fact..." addLabel="Add fact"
-      />
-      <BulletListSection
-        title="Style" items={state.style}
+        title="Style"
+        items={state.style}
         onUpdate={(items) => patch("style", items)}
-        placeholder="Style rule..." addLabel="Add rule"
+        placeholder="Style rule..."
+        addLabel="Add rule"
       />
       {state.custom.map((c, i) => (
         <CustomSectionEditor
@@ -179,35 +254,35 @@ function StructuredEditorBody({ state, onUpdate }: {
 // ---------------------------------------------------------------------------
 
 export function StoryStateEditor({
-  value, onChange, onImport, onReset, baseline, lastUpdated,
-  review, reviewMode, recentlyUpdated, stateHistory,
-  structuredState, onStructuredStateUpdate,
+  value,
+  onChange,
+  onImport,
+  onReset,
+  baseline,
+  lastUpdated,
+  recentlyUpdated,
+  stateHistory,
+  structuredState,
+  onStructuredStateUpdate,
 }: StoryStateEditorProps) {
   const isStructured = structuredState !== null;
 
   return (
     <div className="flex flex-col gap-3">
       <StoryStateHeader
-        onImport={onImport} onReset={onReset} baseline={baseline}
-        lastUpdated={lastUpdated} recentlyUpdated={recentlyUpdated}
+        onImport={onImport}
+        onReset={onReset}
+        baseline={baseline}
+        lastUpdated={lastUpdated}
+        recentlyUpdated={recentlyUpdated}
         isStructured={isStructured}
       />
 
-      {reviewMode && review.active && (
-        <>
-          <StoryStateReview
-            proposedStoryState={review.proposedStoryState}
-            currentStoryState={review.currentStoryState}
-            isGenerating={review.isGenerating}
-            onAccept={review.onAccept}
-            onReject={review.onReject}
-          />
-          <Separator />
-        </>
-      )}
-
       {isStructured ? (
-        <StructuredEditorBody state={structuredState} onUpdate={onStructuredStateUpdate} />
+        <StructuredEditorBody
+          state={structuredState}
+          onUpdate={onStructuredStateUpdate}
+        />
       ) : (
         <Textarea
           value={value}
