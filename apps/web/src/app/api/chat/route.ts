@@ -1,6 +1,7 @@
 import {
   streamText,
   UIMessage,
+  type ModelMessage,
   convertToModelMessages,
   tool,
   jsonSchema,
@@ -90,27 +91,51 @@ function buildRuntimePlayerBoundary(primaryUserAlias: string | null): string {
   ].join("\n");
 }
 
+type SystemPromptMessage = {
+  role: "system";
+  content: string;
+  providerOptions?: Record<string, Record<string, unknown>>;
+};
+
+function createSystemMessage(
+  content: string,
+  withCacheControl: boolean,
+): SystemPromptMessage {
+  if (!withCacheControl) {
+    return { role: "system", content };
+  }
+
+  return {
+    role: "system",
+    content,
+    providerOptions: {
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    },
+  };
+}
+
 function buildSystemPrompt(
   assemblyPrompt: string,
   storyState: string,
   runtimeBoundary: string,
-): { role: "system"; content: string }[] {
-  const messages: { role: "system"; content: string }[] = [
-    { role: "system", content: `${assemblyPrompt}\n\n${TOOLS_INSTRUCTION}` },
+): SystemPromptMessage[] {
+  const messages: SystemPromptMessage[] = [
+    createSystemMessage(`${assemblyPrompt}\n\n${TOOLS_INSTRUCTION}`, true),
   ];
 
   if (storyState) {
-    messages.push({
-      role: "system",
-      content:
+    messages.push(
+      createSystemMessage(
         "## Current Story State\n\n" +
-        "The following is the current canon of this roleplay. All facts listed are established truth - do not contradict them, especially Hard Facts.\n\n" +
-        storyState,
-    });
+          "The following is the current canon of this roleplay. All facts listed are established truth - do not contradict them, especially Hard Facts.\n\n" +
+          storyState,
+        true,
+      ),
+    );
   }
 
-  messages.push({ role: "system", content: runtimeBoundary });
-  messages.push({ role: "system", content: NPC_ONLY_GUARDRAIL });
+  messages.push(createSystemMessage(runtimeBoundary, false));
+  messages.push(createSystemMessage(NPC_ONLY_GUARDRAIL, false));
   return messages;
 }
 
@@ -145,6 +170,7 @@ const INTERACTION_GUIDE_SEGMENT_ID = "interaction_guide";
 const TOOLS_INSTRUCTION = [
   "## Tool Usage",
   "- Use tools only when specific missing detail is needed for this turn.",
+  "- If the user asks about relationships, hard facts, or unresolved threads, call get_story_context before answering.",
   "- Prefer at most 1 tool call per turn; use a 2nd call only if strictly necessary.",
   "- Prefer compact retrieval first; request broader detail only when needed.",
   "- If details are not needed for the current turn, respond without calling tools.",
@@ -208,7 +234,7 @@ function stripMarkdown(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/~~([^~]+)~~/g, "$1")
-    .replace(/\[[^\]]+\]\([^\)]+\)/g, " ")
+    .replace(/\[[^\]]+\]\([^)]+\)/g, " ")
     .replace(/^>\s+/gm, "")
     .replace(/^[-*]\s+/gm, "")
     .replace(/\s+/g, " ")
@@ -881,6 +907,27 @@ interface ToolTelemetryMeta {
   route: string;
   modelId: string;
   turnNumber: number;
+  compression: {
+    windowedMessages: number;
+    windowedChars: number;
+    verbatimMessages: number;
+    verbatimChars: number;
+    summaryMessages: number;
+    digestMessages: number;
+    promotedToVerbatim: number;
+    promotedToSummary: number;
+    hasHistorySummary: boolean;
+    historySummaryChars: number;
+    effectiveContextChars: number;
+    compressionRatio: number;
+  };
+}
+
+function estimateMessagesChars(messages: readonly UIMessage[]): number {
+  return messages.reduce(
+    (sum, message) => sum + getMessageText(message).length,
+    0,
+  );
 }
 
 function collectToolTelemetry(telemetry: ToolTelemetry, stepResult: unknown) {
@@ -976,6 +1023,7 @@ function streamCallbacks(elapsed: () => number, meta: ToolTelemetryMeta) {
           outputBytesApprox: telemetry.outputBytes,
           usedTools: telemetry.toolCallCount > 0,
           perTool,
+          compression: meta.compression,
         }),
         "info",
       );
@@ -1047,17 +1095,45 @@ export async function POST(req: Request) {
 
     const compressed = buildCompressedHistory(windowed);
     logCompression(compressed.stats);
+    const windowedChars = estimateMessagesChars(windowed);
+    const verbatimChars = estimateMessagesChars(compressed.verbatimMessages);
+    const historySummaryChars = compressed.historySummary?.length ?? 0;
+    const effectiveContextChars = verbatimChars + historySummaryChars;
+    const compressionRatio =
+      windowedChars > 0
+        ? Number((effectiveContextChars / windowedChars).toFixed(4))
+        : 1;
     const modelMessages = await convertToModelMessages(
       compressed.verbatimMessages,
     );
     const historySummaryMessage = compressed.historySummary
       ? [{ role: "system" as const, content: compressed.historySummary }]
       : [];
+    const mustUseStoryContext =
+      /\b(relationship|relationships|thread|threads|hard fact|hard facts|recall|remember)\b/i.test(
+        ctx.currentUserMessage,
+      );
+    const requestMessages = [
+      ...systemMessages,
+      ...historySummaryMessage,
+      ...modelMessages,
+    ] as unknown as ModelMessage[];
     const result = streamText({
       model: openrouter(modelId),
-      messages: [...systemMessages, ...historySummaryMessage, ...modelMessages],
+      messages: requestMessages,
       tools,
-      stopWhen: stepCountIs(2),
+      stopWhen: stepCountIs(3),
+      prepareStep: ({ stepNumber }) => {
+        if (mustUseStoryContext && stepNumber === 0) {
+          return {
+            toolChoice: {
+              type: "tool" as const,
+              toolName: "get_story_context",
+            },
+          };
+        }
+        return {};
+      },
       ...resolveSettings(settings),
       providerOptions: {
         openrouter: {
@@ -1071,6 +1147,20 @@ export async function POST(req: Request) {
         route: "/api/chat",
         modelId,
         turnNumber: ctx.turnNumber,
+        compression: {
+          windowedMessages: windowed.length,
+          windowedChars,
+          verbatimMessages: compressed.stats.verbatim,
+          verbatimChars,
+          summaryMessages: compressed.stats.summary,
+          digestMessages: compressed.stats.digest,
+          promotedToVerbatim: compressed.stats.promotedToVerbatim,
+          promotedToSummary: compressed.stats.promotedToSummary,
+          hasHistorySummary: Boolean(compressed.historySummary),
+          historySummaryChars,
+          effectiveContextChars,
+          compressionRatio,
+        },
       }),
     });
     logStreamStart("/api/chat");

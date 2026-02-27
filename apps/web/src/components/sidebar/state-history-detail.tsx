@@ -50,7 +50,7 @@ export function StateHistoryDetail({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3 overflow-hidden">
+      <DialogContent className="flex max-h-[85vh] w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] flex-col gap-3 overflow-hidden sm:max-w-[92vw] xl:max-w-350">
         <DialogHeader>
           <DialogTitle className="text-sm">
             State Update — turns {entry.turnRange[0]}–{entry.turnRange[1]}

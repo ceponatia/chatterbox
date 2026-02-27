@@ -9,6 +9,7 @@ import { useFieldSetters } from "./use-field-setters";
 import { useSyncStatus } from "./use-sync-status";
 import {
   hydrateFields,
+  persistActiveConvId,
   useHydrateOnMount,
   useAutoSave,
   useAutoTitle,
@@ -50,6 +51,7 @@ export function useConversationManager({
       activeConvRef.current = conv;
       activeConvPersistedRef.current = persisted;
       setActiveConvId(conv.id);
+      persistActiveConvId(conv.id);
       setMessages(conv.messages);
       hydrateFields(fieldsRef.current, conv);
       syncRef.current({

@@ -91,6 +91,10 @@ export interface StoryThread {
   description: string;
   hook?: string;
   resolutionHint: string;
+  /** Why this thread was resolved/stale -- required when status is resolved or stale */
+  closureRationale?: string;
+  /** Lifecycle validator rejected a proposed closure -- reason stored for debugging */
+  lifecycleRejection?: string;
   lastReferencedAt?: string;
   status: "active" | "evolved" | "resolved" | "stale";
   evolvedInto?: string;
@@ -106,6 +110,8 @@ export interface HardFact {
   lastConfirmedAt?: string;
   superseded: boolean;
   supersededBy?: string;
+  /** Lifecycle validator rejected a proposed supersession -- reason stored for debugging */
+  lifecycleRejection?: string;
   /** ISO date string when this fact was added */
   createdAt?: string;
 }
@@ -114,6 +120,34 @@ export interface CustomSection {
   heading: string;
   content: string;
 }
+
+export interface SectionMeta {
+  lastUpdatedAt: number;
+  updateCount: number;
+}
+
+export type SectionMetaKey =
+  | "cast"
+  | "relationships"
+  | "characters"
+  | "scene"
+  | "demeanor"
+  | "openThreads"
+  | "hardFacts"
+  | "style"
+  | "custom";
+
+const SECTION_META_KEYS: readonly SectionMetaKey[] = [
+  "cast",
+  "relationships",
+  "characters",
+  "scene",
+  "demeanor",
+  "openThreads",
+  "hardFacts",
+  "style",
+  "custom",
+];
 
 // --- Top-level model ---
 
@@ -128,6 +162,98 @@ export interface StructuredStoryState {
   style: string[];
   /** Catch-all for sections we don't have typed models for */
   custom: CustomSection[];
+  /** Freshness metadata by section, updated by the state pipeline application layer. */
+  sectionMeta: Record<string, SectionMeta>;
+}
+
+function emptySectionMeta(): Record<string, SectionMeta> {
+  return Object.fromEntries(
+    SECTION_META_KEYS.map((key) => [
+      key,
+      {
+        lastUpdatedAt: 0,
+        updateCount: 0,
+      },
+    ]),
+  );
+}
+
+function normalizeSectionMeta(
+  sectionMeta: Record<string, SectionMeta> | undefined,
+): Record<string, SectionMeta> {
+  const base = emptySectionMeta();
+  if (!sectionMeta) return base;
+  const merged = { ...base, ...sectionMeta };
+  for (const [key, value] of Object.entries(merged)) {
+    merged[key] = {
+      lastUpdatedAt:
+        Number.isFinite(value?.lastUpdatedAt) && value.lastUpdatedAt > 0
+          ? Math.floor(value.lastUpdatedAt)
+          : 0,
+      updateCount:
+        Number.isFinite(value?.updateCount) && value.updateCount > 0
+          ? Math.floor(value.updateCount)
+          : 0,
+    };
+  }
+  return merged;
+}
+
+type SectionSnapshot = Record<SectionMetaKey, string>;
+
+function sectionSnapshots(state: StructuredStoryState): SectionSnapshot {
+  return {
+    cast: JSON.stringify(state.entities),
+    relationships: JSON.stringify(state.relationships),
+    characters: JSON.stringify(state.appearance),
+    scene: JSON.stringify(state.scene),
+    demeanor: JSON.stringify(state.demeanor),
+    openThreads: JSON.stringify(state.openThreads),
+    hardFacts: JSON.stringify(state.hardFacts),
+    style: JSON.stringify(state.style),
+    custom: JSON.stringify(state.custom),
+  };
+}
+
+function bumpSectionMeta(
+  previousMeta: Record<string, SectionMeta>,
+  key: SectionMetaKey,
+  turnNumber: number,
+): SectionMeta {
+  const previous = previousMeta[key] ?? { lastUpdatedAt: 0, updateCount: 0 };
+  const turn = turnNumber > 0 ? turnNumber : previous.lastUpdatedAt;
+  return {
+    lastUpdatedAt: turn,
+    updateCount: previous.updateCount + 1,
+  };
+}
+
+export function applySectionMetaTransition(
+  previous: StructuredStoryState | null,
+  incoming: StructuredStoryState,
+  turnNumber: number,
+): StructuredStoryState {
+  const previousMeta = normalizeSectionMeta(previous?.sectionMeta);
+  if (!previous) {
+    return {
+      ...incoming,
+      sectionMeta: normalizeSectionMeta(incoming.sectionMeta),
+    };
+  }
+
+  const before = sectionSnapshots(previous);
+  const after = sectionSnapshots(incoming);
+  const nextMeta = normalizeSectionMeta(previousMeta);
+
+  for (const key of SECTION_META_KEYS) {
+    if (before[key] === after[key]) continue;
+    nextMeta[key] = bumpSectionMeta(previousMeta, key, turnNumber);
+  }
+
+  return {
+    ...incoming,
+    sectionMeta: nextMeta,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +573,8 @@ export function reconcileLifecycleState(
       ...t,
       id: match?.id ?? t.id ?? generateStoryItemId("thread", t.description),
       hook: t.hook ?? match?.hook ?? deriveThreadHook(t.description),
-      resolutionHint: match?.resolutionHint ?? t.resolutionHint ?? "",
+      resolutionHint: t.resolutionHint || match?.resolutionHint || "",
+      closureRationale: t.closureRationale ?? match?.closureRationale,
       lastReferencedAt:
         match?.lastReferencedAt ?? t.lastReferencedAt ?? t.createdAt ?? now,
       status: t.status ?? match?.status ?? "active",
@@ -463,12 +590,15 @@ export function reconcileLifecycleState(
       ...t,
       status:
         t.status === "resolved" || t.status === "stale" ? t.status : "resolved",
+      closureRationale:
+        t.closureRationale ?? `Removed during state update on ${now}`,
     }));
 
   return {
     ...incoming,
     hardFacts: [...nextFacts, ...archivedFacts],
     openThreads: [...nextThreads, ...archivedThreads],
+    sectionMeta: normalizeSectionMeta(previous.sectionMeta),
   };
 }
 
@@ -493,6 +623,7 @@ export function ensureLifecycleDefaults(
       description: thread.description,
       hook: thread.hook ?? deriveThreadHook(thread.description),
       resolutionHint: thread.resolutionHint ?? "",
+      closureRationale: thread.closureRationale,
       lastReferencedAt: thread.lastReferencedAt ?? thread.createdAt ?? today,
       status: thread.status ?? "active",
       evolvedInto: thread.evolvedInto,
@@ -508,6 +639,7 @@ export function ensureLifecycleDefaults(
       superseded: fact.superseded ?? false,
       supersededBy: fact.supersededBy,
     })),
+    sectionMeta: normalizeSectionMeta(state.sectionMeta),
   };
 }
 
@@ -526,6 +658,7 @@ export function emptyStructuredState(): StructuredStoryState {
     hardFacts: [],
     style: [],
     custom: [],
+    sectionMeta: emptySectionMeta(),
   };
 }
 
@@ -894,19 +1027,34 @@ function parseBulletList(content: string): string[] {
     .map((l) => l.replace(/^-\s+/, ""));
 }
 
-/** Strip `(added: YYYY-MM-DD)` suffix and return the text + date. */
+/** Strip `(resolves when: ...)` and `(added: YYYY-MM-DD)` suffixes. */
 function parseTimestampedItem(text: string): {
   text: string;
   createdAt?: string;
+  resolutionHint?: string;
 } {
-  const match = text.match(/^(.+?)\s*\(added:\s*(\d{4}-\d{2}-\d{2})\)\s*$/);
-  if (match) return { text: match[1]!.trim(), createdAt: match[2]! };
-  return { text };
+  let remaining = text;
+  let createdAt: string | undefined;
+  let resolutionHint: string | undefined;
+
+  const dateMatch = remaining.match(/\(added:\s*(\d{4}-\d{2}-\d{2})\)\s*$/);
+  if (dateMatch) {
+    createdAt = dateMatch[1]!;
+    remaining = remaining.slice(0, dateMatch.index).trim();
+  }
+
+  const hintMatch = remaining.match(/\(resolves when:\s*(.+?)\)\s*$/);
+  if (hintMatch) {
+    resolutionHint = hintMatch[1]!.trim();
+    remaining = remaining.slice(0, hintMatch.index).trim();
+  }
+
+  return { text: remaining, createdAt, resolutionHint };
 }
 
 function parseTimestampedBulletList(
   content: string,
-): { text: string; createdAt?: string }[] {
+): { text: string; createdAt?: string; resolutionHint?: string }[] {
   return parseBulletList(content).map(parseTimestampedItem);
 }
 
@@ -918,7 +1066,7 @@ interface RawSections {
   appearance: RawAppEntry[];
   scene: { location: string; presentNames: string[]; atmosphere: string };
   demeanor: RawDemEntry[];
-  openThreads: { text: string; createdAt?: string }[];
+  openThreads: { text: string; createdAt?: string; resolutionHint?: string }[];
   hardFacts: { text: string; createdAt?: string }[];
   style: string[];
 }
@@ -1049,7 +1197,7 @@ function resolveRawToState(
       id: generateStoryItemId("thread", d.text),
       description: d.text,
       hook: deriveThreadHook(d.text),
-      resolutionHint: "",
+      resolutionHint: d.resolutionHint ?? "",
       lastReferencedAt: d.createdAt,
       status: "active",
       evolvedInto: undefined,
@@ -1067,6 +1215,7 @@ function resolveRawToState(
     })),
     style: raw.style,
     custom,
+    sectionMeta: emptySectionMeta(),
   };
 }
 
@@ -1239,7 +1388,9 @@ export function structuredToMarkdown(state: StructuredStoryState): string {
     const threadItems = state.openThreads
       .filter((t) => t.status === "active" || t.status === "evolved")
       .map((t) => ({
-        text: t.description,
+        text: t.resolutionHint
+          ? `${t.description} (resolves when: ${t.resolutionHint})`
+          : t.description,
         createdAt: t.createdAt,
       }));
     if (threadItems.length > 0) {

@@ -11,6 +11,21 @@ import { generateId } from "@/lib/storage";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
 import { buildCharacterSegmentLookup } from "@/lib/prompt-segment-utils";
+import type { StructuredStoryState } from "@/lib/story-state-model";
+
+const SECTION_STALE_TURNS = 30;
+
+const SECTION_LABELS: Record<string, string> = {
+  cast: "Cast",
+  relationships: "Relationships",
+  characters: "Characters",
+  scene: "Scene",
+  demeanor: "Current Demeanor",
+  openThreads: "Open Threads",
+  hardFacts: "Hard Facts",
+  style: "Style",
+  custom: "Custom Sections",
+};
 
 interface StateUpdateResponse {
   newState: string;
@@ -26,9 +41,10 @@ interface Params {
   messages: UIMessage[];
   isLoading: boolean;
   storyState: string;
+  structuredState: StructuredStoryState | null;
   model: string;
   conversationId: string | null;
-  onStateUpdate: (newState: string) => void;
+  onStateUpdate: (newState: string, turnNumber?: number) => void;
   /** The existing summarization interval — pipeline uses its own trigger logic */
   autoSummarizeInterval: number;
   /** Callback to reset lastIncludedAt entries for cascade triggers */
@@ -38,6 +54,22 @@ interface Params {
   setLastPipelineTurn: (turn: number) => void;
 }
 
+function computeStaleSections(
+  structuredState: StructuredStoryState | null,
+  turnNumber: number,
+): string[] {
+  if (!structuredState?.sectionMeta) return [];
+  return Object.entries(structuredState.sectionMeta)
+    .filter(([, meta]) => {
+      if (!Number.isFinite(meta.lastUpdatedAt) || meta.lastUpdatedAt <= 0) {
+        return false;
+      }
+      return turnNumber - meta.lastUpdatedAt >= SECTION_STALE_TURNS;
+    })
+    .map(([key]) => SECTION_LABELS[key] ?? key)
+    .slice(0, 4);
+}
+
 /** Returns true if the result was applied. */
 async function applyPipelineResult(
   data: StateUpdateResponse,
@@ -45,7 +77,7 @@ async function applyPipelineResult(
   conversationId: string,
   lastTurn: number,
   turnNumber: number,
-  onStateUpdate: (s: string) => void,
+  onStateUpdate: (s: string, turnNumber?: number) => void,
   onCascadeResets?: (ids: string[]) => void,
   customSegments?: SerializedSegment[] | null,
 ): Promise<boolean> {
@@ -55,7 +87,7 @@ async function applyPipelineResult(
     data.disposition === "retried" ? ("flagged" as const) : data.disposition;
 
   if (disposition === "auto_accepted" || disposition === "flagged") {
-    onStateUpdate(data.newState);
+    onStateUpdate(data.newState, data.turnNumber);
   }
 
   try {
@@ -104,6 +136,7 @@ export function useStatePipeline({
   messages,
   isLoading,
   storyState,
+  structuredState,
   model,
   conversationId,
   onStateUpdate,
@@ -133,12 +166,14 @@ export function useStatePipeline({
         const res = await fetch("/api/state-update", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Stale-section hint asks the LLM to re-review long-unupdated sections.
           body: JSON.stringify({
             messages,
             currentStoryState: storyStateRef.current,
             turnNumber,
             lastPipelineTurn: lastPipelineTurnRef.current,
             model: modelRef.current,
+            staleSections: computeStaleSections(structuredState, turnNumber),
           }),
         });
 
@@ -181,6 +216,7 @@ export function useStatePipeline({
     },
     [
       messages,
+      structuredState,
       conversationId,
       onStateUpdate,
       onCascadeResets,

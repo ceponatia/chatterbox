@@ -17,8 +17,8 @@ import type { ExtractedFact } from "@/lib/state-history";
 const TRIGGER_MAP: Record<string, readonly string[]> = {
   scene_change: ["appearance_visual", "outfit_hairstyle", "setting_premise"],
   appearance_change: ["appearance_visual", "outfit_hairstyle"],
-  cast_change: ["relationship_status", "interaction_guide"],
-  relationship_shift: ["relationship_status", "backstory"],
+  cast_change: ["relationship_status", "interaction_guide", "backstory"],
+  relationship_shift: ["relationship_status", "backstory", "interaction_guide"],
   hard_fact_superseded: ["relationship_status"],
   scene_reverted: ["appearance_visual", "outfit_hairstyle", "setting_premise"],
   appearance_reverted: ["appearance_visual", "outfit_hairstyle"],

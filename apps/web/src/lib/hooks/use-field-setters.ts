@@ -15,6 +15,7 @@ import {
   reconcileEntities,
   reconcileLifecycleState,
   remapEntityIds,
+  applySectionMetaTransition,
 } from "@/lib/story-state-model";
 
 /** Story-state-specific handlers (extracted to keep main hook under line limit). */
@@ -69,7 +70,7 @@ function useStoryStateHandlers() {
   );
 
   const updateStoryStateFromSummary = useCallback(
-    (newState: string) => {
+    (newState: string, turnNumber?: number) => {
       setPreviousStoryState(storyState);
       const incoming = parseMarkdownToStructured(newState);
       setStructuredState((prev) => {
@@ -80,8 +81,13 @@ function useStoryStateHandlers() {
         );
         const remapped = remapEntityIds({ ...incoming, entities }, idRemap);
         const reconciled = reconcileLifecycleState(prev, remapped);
-        setStoryState(structuredToMarkdown(reconciled));
-        return reconciled;
+        const withSectionMeta = applySectionMetaTransition(
+          prev,
+          reconciled,
+          turnNumber ?? 0,
+        );
+        setStoryState(structuredToMarkdown(withSectionMeta));
+        return withSectionMeta;
       });
       setStoryStateLastUpdated(new Date().toISOString());
     },

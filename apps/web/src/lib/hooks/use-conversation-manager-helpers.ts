@@ -69,6 +69,25 @@ function withDefault<T>(value: T | null | undefined, fallback: T): T {
   return value == null ? fallback : value;
 }
 
+const ACTIVE_CONV_KEY = "chatterbox_active_conv_id";
+
+export function persistActiveConvId(id: string | null) {
+  try {
+    if (id) sessionStorage.setItem(ACTIVE_CONV_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_CONV_KEY);
+  } catch {
+    // SSR or private browsing — ignore
+  }
+}
+
+function readPersistedConvId(): string | null {
+  try {
+    return sessionStorage.getItem(ACTIVE_CONV_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function useHydrateOnMount(
   hydrateConversation: (conv: Conversation, persisted: boolean) => void,
   setConversations: (c: ConversationMeta[]) => void,
@@ -80,6 +99,16 @@ export function useHydrateOnMount(
         const index = await listConversations();
         if (!active) return;
         setConversations(index);
+
+        const savedId = readPersistedConvId();
+        if (savedId) {
+          const saved = await loadConversation(savedId);
+          if (saved && active) {
+            hydrateConversation(saved, true);
+            return;
+          }
+        }
+
         const conv = createConversationDraft();
         if (!active) return;
         hydrateConversation(conv, false);

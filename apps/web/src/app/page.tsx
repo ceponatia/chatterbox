@@ -144,6 +144,7 @@ function useHomeState() {
     messages,
     isLoading,
     storyState: conv.storyState,
+    structuredState: conv.structuredState,
     model: conv.settings.model,
     conversationId: conv.activeConvId,
     onStateUpdate: conv.updateStoryStateFromSummary,

@@ -149,8 +149,10 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 5. Assigning default policies, priorities, and categories based on the heading mapping
 6. Capturing unknown sections as generic `custom_N` segments with `always` policy
 
-Additional heading mapping:
+Additional heading mappings:
 - `Narration Guidelines` headings map to the `narration_guidelines` segment (`every_n(3)`, `normal`, `rules` category).
+- `NPC framing` headings map to the `npc_framing` segment (`always`, `high`, `character` category).
+- `Background and scenario` headings match the same `backstory` segment as `Background and relationship` (`on_topic`, `normal`, `world` category).
 
 `segmentsToMarkdown(segments)` converts segments back to flat markdown (non-mutating — copies before sorting).
 

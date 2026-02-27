@@ -29,7 +29,7 @@ interface Params {
   activeConvId: string | null;
   model: string;
   setLastPipelineTurn: (turn: number) => void;
-  updateStoryStateFromSummary: (newState: string) => void;
+  updateStoryStateFromSummary: (newState: string, turnNumber?: number) => void;
   onCascadeResets: (ids: string[]) => void;
   customSegments?: SerializedSegment[] | null;
 }
@@ -121,7 +121,7 @@ export function useDeleteAfterRollback(params: Params) {
         const data = await requestRollback(context, storyState, model);
         if (!data || !activeConvId) return;
 
-        updateStoryStateFromSummary(data.newState);
+        updateStoryStateFromSummary(data.newState, data.turnNumber);
         await appendStateHistoryEntry(activeConvId, {
           id: generateId(),
           timestamp: new Date().toISOString(),

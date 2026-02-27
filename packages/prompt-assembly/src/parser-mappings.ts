@@ -87,9 +87,19 @@ export const HEADING_MAPPINGS: readonly HeadingMapping[] = [
     includeHeading: true,
   },
   {
-    pattern: /^background\s+and\s+relationship/i,
+    pattern: /^npc\s+framing/i,
+    id: "npc_framing",
+    label: "NPC Framing",
+    policy: { type: "always" },
+    priority: "high",
+    order: 35,
+    category: "character",
+    includeHeading: true,
+  },
+  {
+    pattern: /^background\s+and\s+(relationship|scenario)/i,
     id: "backstory",
-    label: "Background & Relationship to Player",
+    label: "Background & Scenario",
     policy: {
       type: "on_topic",
       keywords: [

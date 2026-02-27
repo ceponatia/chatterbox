@@ -157,6 +157,21 @@ describe("computeCascadeResets", () => {
     ]);
     expect(resets).toContain("relationship_status");
     expect(resets).toContain("backstory");
+    expect(resets).toContain("interaction_guide");
+  });
+
+  it("includes relationship and cast guidance on cast_change", () => {
+    const resets = computeCascadeResets([
+      {
+        type: "cast_change",
+        detail: "new character joined",
+        sourceTurn: 3,
+        confidence: 0.9,
+      },
+    ]);
+    expect(resets).toContain("relationship_status");
+    expect(resets).toContain("interaction_guide");
+    expect(resets).toContain("backstory");
   });
 
   it("deduplicates segments triggered by multiple facts", () => {

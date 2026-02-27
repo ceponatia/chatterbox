@@ -54,6 +54,15 @@ export function MessageBubble({
         (p): p is Extract<typeof p, { type: "reasoning" }> =>
           p.type === "reasoning",
       );
+  const mergedReasoning =
+    reasoningParts.length > 0
+      ? {
+          text: reasoningParts.map((p) => p.text).join("\n\n"),
+          state: reasoningParts.every((p) => p.state === "done")
+            ? ("done" as const)
+            : ("streaming" as const),
+        }
+      : null;
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(text);
 
@@ -88,11 +97,9 @@ export function MessageBubble({
             onDeleteAfter={onDeleteAfter}
           />
         )}
-        {reasoningParts.length > 0 && (
+        {mergedReasoning && (
           <div className="mb-1">
-            {reasoningParts.map((part, i) => (
-              <ReasoningBlock key={i} text={part.text} state={part.state} />
-            ))}
+            <ReasoningBlock text={mergedReasoning.text} state={mergedReasoning.state} />
           </div>
         )}
         {editing ? (

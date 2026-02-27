@@ -51,6 +51,7 @@ export async function POST(req: Request) {
       turnNumber: number;
       lastPipelineTurn?: number;
       model?: string;
+      staleSections?: string[];
     };
     const lastPipelineTurn = body.lastPipelineTurn ?? 0;
 
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
       turnNumber: body.turnNumber,
       lastPipelineTurn,
       model: body.model,
+      staleSections: body.staleSections,
     } as AppStatePipelineRequest);
 
     // Map `changes` → `extractedFacts` for backward-compatible client API

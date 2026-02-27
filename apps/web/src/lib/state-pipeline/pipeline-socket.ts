@@ -32,6 +32,12 @@ import {
   structuredToMarkdown,
   reconcileLifecycleState,
 } from "@/lib/story-state-model";
+import {
+  extractLifecycleActions,
+  validateLifecycleActions,
+  applyLifecycleVerdicts,
+  type LifecycleRejection,
+} from "./lifecycle-validation";
 
 // ---------------------------------------------------------------------------
 // Message windowing
@@ -110,9 +116,12 @@ Review EVERY section of the current story state against what is happening in the
 - REMOVE threads that have been resolved or are no longer relevant
 - UPDATE threads whose nature has evolved
 - ADD new unresolved plot hooks or tensions
-- For each thread, use a concise resolution hint internally (what outcome would resolve it)
+- Every thread MUST have a resolution hint in parentheses before the date tag: (resolves when: concise condition) (added: YYYY-MM-DD)
+- For NEW threads, think about what narrative outcome would close this thread and write that as the resolution hint
+- For EXISTING threads missing a resolution hint, add one based on the thread's context
 - Aim for 3-8 active threads maximum
-- Each thread must end with (added: YYYY-MM-DD) — preserve original dates for kept items, use today's date for new ones
+- Preserve original dates for kept items, use today's date for new ones
+- When REMOVING a resolved/stale thread, you MUST include a "thread_resolved" change entry with a specific rationale explaining what happened in the story to close it (e.g., "Amanda confessed her feelings in turn 12, resolving the romantic tension thread"). Generic rationales like "no longer relevant" are not acceptable.
 
 ### Hard Facts
 - CRITICALLY review every existing fact for current relevance
@@ -123,6 +132,7 @@ Review EVERY section of the current story state against what is happening in the
 - Relationship-status and situational facts MUST be updated or removed as the situation evolves
 - Each fact must end with (added: YYYY-MM-DD)
 - Aim for 10-20 hard facts maximum — prune aggressively
+- When REMOVING a superseded fact, you MUST include a "hard_fact_superseded" change entry with a specific rationale explaining what new information replaced it (e.g., "Brian revealed he owns a tech company, superseding the assumption about his wealth"). Generic rationales like "Superseded during state update" are not acceptable.
 
 ## Rules
 - ALWAYS use full character names exactly as they appear in the Cast section (e.g., "Kaho Higashi" not "Kaho", "Nagato Jiro" not "Jiro"). This applies to ALL sections — Cast, Relationships, Characters, Demeanor, etc.
@@ -171,6 +181,7 @@ function applyLifecycleStage(
   candidateState: string,
   changes: ExtractedFact[],
   windowedMessages: readonly SocketMessage[],
+  rejections?: readonly LifecycleRejection[],
 ): string {
   const previous = parseMarkdownToStructured(previousState);
   const parsed = parseMarkdownToStructured(candidateState);
@@ -181,6 +192,10 @@ function applyLifecycleStage(
     .map((m) => m.content.toLowerCase())
     .join("\n");
   const recentFacts = changes.slice(-HARD_FACT_REVIEW_WINDOW);
+
+  const supersededChanges = changes.filter(
+    (c) => c.type === "hard_fact_superseded",
+  );
 
   state.hardFacts = state.hardFacts.map((fact) => {
     const confirmed =
@@ -195,12 +210,20 @@ function applyLifecycleStage(
         superseded: false,
       };
     }
+    if (fact.superseded) {
+      const matchingChange = supersededChanges.find((c) =>
+        includesSnippet(c.detail.toLowerCase(), fact.fact),
+      );
+      if (matchingChange) {
+        return { ...fact, supersededBy: matchingChange.detail };
+      }
+    }
     return fact;
   });
 
   state.openThreads = state.openThreads.map((thread) => {
     const referenced = includesSnippet(recentText, thread.description);
-    const resolved = changes.some(
+    const resolvedChange = changes.find(
       (c) =>
         c.type === "thread_resolved" &&
         includesSnippet(c.detail.toLowerCase(), thread.description),
@@ -212,7 +235,7 @@ function applyLifecycleStage(
     );
     const stale =
       !referenced &&
-      !resolved &&
+      !resolvedChange &&
       !evolved &&
       Date.now() - toDay(thread.lastReferencedAt ?? thread.createdAt) >
         THREAD_STALE_DAYS * 24 * 60 * 60 * 1000;
@@ -220,19 +243,51 @@ function applyLifecycleStage(
     return {
       ...thread,
       lastReferencedAt: referenced ? today : thread.lastReferencedAt,
-      status: resolved
+      status: resolvedChange
         ? "resolved"
         : evolved
           ? "evolved"
           : stale
             ? "stale"
             : thread.status,
+      closureRationale: resolvedChange
+        ? resolvedChange.detail
+        : stale
+          ? `Thread stale -- not referenced in ${THREAD_STALE_DAYS}+ days`
+          : thread.closureRationale,
       evolvedInto:
         evolved?.detail && evolved.detail.includes("->")
           ? evolved.detail.split("->")[1]?.trim() || thread.evolvedInto
           : thread.evolvedInto,
     };
   });
+
+  // Stamp lifecycle rejection reasons onto threads/facts that were kept active
+  if (rejections && rejections.length > 0) {
+    for (const r of rejections) {
+      if (r.kind === "thread_resolved") {
+        const idx = state.openThreads.findIndex((t) =>
+          includesSnippet(r.detail.toLowerCase(), t.description),
+        );
+        if (idx >= 0) {
+          state.openThreads[idx] = {
+            ...state.openThreads[idx]!,
+            lifecycleRejection: r.reason,
+          };
+        }
+      } else {
+        const idx = state.hardFacts.findIndex((f) =>
+          includesSnippet(r.detail.toLowerCase(), f.fact),
+        );
+        if (idx >= 0) {
+          state.hardFacts[idx] = {
+            ...state.hardFacts[idx]!,
+            lifecycleRejection: r.reason,
+          };
+        }
+      }
+    }
+  }
 
   return structuredToMarkdown(state);
 }
@@ -248,6 +303,7 @@ interface LLMResult {
 
 interface AppPipelineRequest extends StatePipelineRequest {
   model?: string;
+  staleSections?: readonly string[];
 }
 
 async function runLLMUpdate(
@@ -255,6 +311,7 @@ async function runLLMUpdate(
   providerOrder: readonly string[],
   messages: readonly SocketMessage[],
   currentState: string,
+  staleSections?: readonly string[],
   retryFeedback?: string,
 ): Promise<LLMResult> {
   const elapsed = startTimer();
@@ -278,7 +335,7 @@ async function runLLMUpdate(
         content: [
           {
             type: "text" as const,
-            text: `${STATE_UPDATE_INSTRUCTION}${retryFeedback ?? ""}`,
+            text: `${STATE_UPDATE_INSTRUCTION}${buildFreshnessReviewHint(staleSections)}${retryFeedback ?? ""}`,
           },
         ],
       },
@@ -316,6 +373,13 @@ async function runLLMUpdate(
     }
     return { updatedState: "", changes: [] };
   }
+}
+
+function buildFreshnessReviewHint(staleSections?: readonly string[]): string {
+  if (!staleSections || staleSections.length === 0) return "";
+  return `\n\n## Section freshness review (required this pass)\nThese sections are stale and must be explicitly re-reviewed against recent turns:\n${staleSections
+    .map((section) => `- ${section}`)
+    .join("\n")}\nIf any listed section is outdated, update it now.`;
 }
 
 function buildRetryFeedback(validation: {
@@ -385,6 +449,7 @@ export const statePipelineAdapter: StatePipelineSocket = {
       providerOrder,
       windowed,
       request.currentStoryState,
+      appRequest.staleSections,
     );
 
     if (!updatedState) {
@@ -398,11 +463,28 @@ export const statePipelineAdapter: StatePipelineSocket = {
       };
     }
 
+    // Run lifecycle validation -- verify thread closures and fact
+    // supersessions are justified before applying the lifecycle stage.
+    let lifecycleRejections: LifecycleRejection[] = [];
+    const lifecycleActions = extractLifecycleActions(changes);
+    if (lifecycleActions.length > 0) {
+      const verdicts = await validateLifecycleActions(
+        lifecycleActions,
+        windowed,
+        request.currentStoryState,
+        model,
+      );
+      const result = applyLifecycleVerdicts(changes, verdicts);
+      changes = result.changes;
+      lifecycleRejections = result.rejections;
+    }
+
     updatedState = applyLifecycleStage(
       request.currentStoryState,
       updatedState,
       changes,
       windowed,
+      lifecycleRejections,
     );
 
     let validation = validateState(
@@ -422,6 +504,7 @@ export const statePipelineAdapter: StatePipelineSocket = {
         providerOrder,
         windowed,
         request.currentStoryState,
+        appRequest.staleSections,
         retryFeedback,
       );
       if (retry.updatedState) {

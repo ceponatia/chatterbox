@@ -4,7 +4,7 @@
     {
       "label": "lint:workspace",
       "type": "shell",
-      "command": "pnpm -w exec eslint -f stylish -- apps/ packages/",
+      "command": "pnpm --filter @chatterbox/sockets exec eslint -f stylish src/; pnpm --filter @chatterbox/prompt-assembly exec eslint -f stylish src/; pnpm --filter web exec eslint -f stylish .",
       "problemMatcher": ["$eslint-stylish"],
       "group": "build",
       "presentation": { "reveal": "always", "panel": "dedicated" }

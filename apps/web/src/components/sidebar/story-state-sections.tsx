@@ -24,6 +24,10 @@ import {
   keyedByBase,
   SectionShell,
 } from "./section-primitives";
+import {
+  ArchivedThreadsModal,
+  ArchivedFactsModal,
+} from "./archive-detail-modal";
 export {
   BulletListSection,
   TimestampedBulletListSection,
@@ -700,6 +704,7 @@ export function OpenThreadsSection({
   entries: StoryThread[];
   onUpdate: (entries: StoryThread[]) => void;
 }) {
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const active = entries.filter(
     (t) => t.status === "active" || t.status === "evolved",
   );
@@ -777,35 +782,23 @@ export function OpenThreadsSection({
               ref {thread.lastReferencedAt ?? "-"}
             </span>
           </div>
+          {thread.lifecycleRejection && (
+            <div className="rounded bg-yellow-500/10 px-2 py-1 text-[10px] text-yellow-400">
+              <span className="font-medium">Removal blocked: </span>
+              {thread.lifecycleRejection}
+            </div>
+          )}
         </EntityCard>
       ))}
       {archived.length > 0 && (
-        <div className="rounded border border-dashed p-2">
-          <div className="mb-1 text-[10px] font-medium text-muted-foreground">
-            Archived ({archived.length})
-          </div>
-          <div className="flex flex-col gap-1">
-            {archived.map((thread) => (
-              <div
-                key={thread.id}
-                className="flex items-center gap-2 text-[10px]"
-              >
-                <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                  {thread.status}
-                </Badge>
-                <span className="truncate">{thread.description}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto h-5 px-1 text-[9px]"
-                  onClick={() => updateById(thread.id, { status: "active" })}
-                >
-                  Restore
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 self-start text-[10px]"
+          onClick={() => setArchiveOpen(true)}
+        >
+          Archived ({archived.length})
+        </Button>
       )}
       <Button
         variant="ghost"
@@ -815,6 +808,12 @@ export function OpenThreadsSection({
       >
         <Plus className="mr-1 h-3 w-3" /> Add thread
       </Button>
+      <ArchivedThreadsModal
+        threads={archived}
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        onRestore={(id) => updateById(id, { status: "active" })}
+      />
     </SectionShell>
   );
 }
@@ -826,6 +825,7 @@ export function HardFactsSection({
   entries: HardFact[];
   onUpdate: (entries: HardFact[]) => void;
 }) {
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const active = entries.filter((f) => !f.superseded);
   const archived = entries.filter((f) => f.superseded);
 
@@ -846,6 +846,19 @@ export function HardFactsSection({
         superseded: false,
       },
     ]);
+
+  const restoreArchivedAt = (archivedIndex: number) => {
+    const fact = archived[archivedIndex];
+    if (!fact) return;
+    const globalIdx = entries.indexOf(fact);
+    if (globalIdx >= 0) {
+      updateAt(globalIdx, {
+        superseded: false,
+        lastConfirmedAt: todayIso(),
+        supersededBy: undefined,
+      });
+    }
+  };
 
   return (
     <SectionShell title="Hard Facts" badge={`${active.length}`}>
@@ -892,6 +905,12 @@ export function HardFactsSection({
               placeholder="Superseded by (optional rationale)"
               className="h-7 text-[11px]"
             />
+            {fact.lifecycleRejection && (
+              <div className="rounded bg-yellow-500/10 px-2 py-1 text-[10px] text-yellow-400">
+                <span className="font-medium">Removal blocked: </span>
+                {fact.lifecycleRejection}
+              </div>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -910,43 +929,14 @@ export function HardFactsSection({
         );
       })}
       {archived.length > 0 && (
-        <div className="rounded border border-dashed p-2">
-          <div className="mb-1 text-[10px] font-medium text-muted-foreground">
-            Superseded Archive ({archived.length})
-          </div>
-          <div className="flex flex-col gap-1">
-            {archived.map((fact) => {
-              const idx = entries.indexOf(fact);
-              return (
-                <div
-                  key={`${fact.fact}-${idx}`}
-                  className="flex items-center gap-2 text-[10px]"
-                >
-                  <span className="truncate">{fact.fact}</span>
-                  {fact.supersededBy && (
-                    <span className="truncate text-muted-foreground">
-                      ({fact.supersededBy})
-                    </span>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto h-5 px-1 text-[9px]"
-                    onClick={() =>
-                      updateAt(idx, {
-                        superseded: false,
-                        lastConfirmedAt: todayIso(),
-                        supersededBy: undefined,
-                      })
-                    }
-                  >
-                    Restore
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 self-start text-[10px]"
+          onClick={() => setArchiveOpen(true)}
+        >
+          Superseded Archive ({archived.length})
+        </Button>
       )}
       <Button
         variant="ghost"
@@ -956,6 +946,12 @@ export function HardFactsSection({
       >
         <Plus className="mr-1 h-3 w-3" /> Add fact
       </Button>
+      <ArchivedFactsModal
+        facts={archived}
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        onRestore={restoreArchivedAt}
+      />
     </SectionShell>
   );
 }
