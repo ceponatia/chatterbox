@@ -9,6 +9,7 @@ interface StateUpdateResponse {
   extractedFacts: ExtractedFact[];
   validation: ValidationReport;
   disposition: "auto_accepted" | "flagged" | "retried";
+  cascadeResets?: string[];
   turnNumber: number;
   error?: string;
 }
@@ -21,6 +22,8 @@ interface Params {
   onStateUpdate: (newState: string) => void;
   /** The existing summarization interval — pipeline uses its own trigger logic */
   autoSummarizeInterval: number;
+  /** Callback to reset lastIncludedAt entries for cascade triggers */
+  onCascadeResets?: (segmentIds: string[]) => void;
 }
 
 /** Returns true if the result was applied. */
@@ -31,6 +34,7 @@ function applyPipelineResult(
   lastTurn: number,
   turnNumber: number,
   onStateUpdate: (s: string) => void,
+  onCascadeResets?: (ids: string[]) => void,
 ): boolean {
   if (data.newState === currentState || !data.newState.trim()) return false;
 
@@ -50,6 +54,11 @@ function applyPipelineResult(
     validation: data.validation,
     disposition,
   });
+
+  // Apply cascade resets so triggered segments re-inject next turn
+  if (data.cascadeResets?.length && onCascadeResets) {
+    onCascadeResets(data.cascadeResets);
+  }
 
   console.log(
     `🔄 state-pipeline: ${disposition}, ${data.extractedFacts.length} facts, ` +
@@ -72,6 +81,7 @@ export function useStatePipeline({
   conversationId,
   onStateUpdate,
   autoSummarizeInterval,
+  onCascadeResets,
 }: Params) {
   const lastPipelineTurnRef = useRef(0);
   const inflightRef = useRef(false);
@@ -109,7 +119,7 @@ export function useStatePipeline({
 
       const applied = applyPipelineResult(
         data, storyStateRef.current, conversationId,
-        lastPipelineTurnRef.current, turnNumber, onStateUpdate,
+        lastPipelineTurnRef.current, turnNumber, onStateUpdate, onCascadeResets,
       );
       if (applied) {
         setHistoryVersion(v => v + 1);
@@ -123,7 +133,7 @@ export function useStatePipeline({
     } finally {
       inflightRef.current = false;
     }
-  }, [messages, conversationId, onStateUpdate]);
+  }, [messages, conversationId, onStateUpdate, onCascadeResets]);
 
   // Trigger after assistant response completes (isLoading transitions false)
   const wasLoadingRef = useRef(false);

@@ -35,6 +35,14 @@ export interface AssemblyContext {
 
   /** Total token budget for the system prompt area */
   readonly tokenBudget: number;
+
+  /**
+   * Pre-computed semantic similarity scores per segment ID.
+   * Values are 0.0–1.0 cosine similarity between the user message
+   * and the segment's topic description. Used by on_topic policies
+   * as a fallback when keyword matching misses.
+   */
+  readonly topicScores?: Readonly<Record<string, number>>;
 }
 
 // ---------------------------------------------------------------------------

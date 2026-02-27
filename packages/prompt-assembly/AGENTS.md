@@ -81,13 +81,12 @@ A `PromptSegment` is a self-contained piece of context with:
 5. Critical segments are always included (budget overflow allowed)
 6. Generate an "omitted context" note grouped by category listing what was skipped
 
-### Topic detection (Phase 4)
+### Topic detection
 
-`src/topic-detector.ts` provides word-boundary-aware keyword matching with basic suffix stripping:
-- Tokenizes the user message into words, stems each word
-- Matches against keyword stems (handles plurals, verb forms: "singing" → "sing")
-- Multi-word phrases use substring matching (e.g. "middle school")
-- Used by `on_topic` policy on: `voice_sound`, `appearance_visual`, `outfit_hairstyle`, `backstory`
+Two-tier detection for `on_topic` segments:
+
+1. **Keyword matching** (`src/topic-detector.ts`): word-boundary-aware matching with basic suffix stripping. Tokenizes the user message, stems each word, matches against keyword stems (handles plurals, verb forms). Multi-word phrases use substring matching.
+2. **Semantic fallback** (`evaluateOnTopic` in `src/assembler.ts`): if keyword matching misses, checks `AssemblyContext.topicScores[segmentId]` — a pre-computed cosine similarity score (0.0–1.0) between the user message and the segment's topic description. Threshold: 0.5. Scores are computed server-side (in `apps/web`) via embedding model and passed through the context. The assembler itself makes no API calls.
 
 ### Segment policy assignments
 

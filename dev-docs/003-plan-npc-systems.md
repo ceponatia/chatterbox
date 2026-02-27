@@ -1,6 +1,12 @@
+---
+Status: Planning
+Last Updated: 2026-02-14 13:45
+---
 # Plan: NPC Systems & Chat Resilience (TBD Items 1–4)
 
 This plan addresses the four features from `tbd.md` items 1–4. Each section covers the motivation, design, and implementation steps.
+
+**Update**: This plan may need to be re-evaluated after 001-prompt-assembly-and-state-building.md has been completed as that plan touches many of these systems.
 
 ---
 

@@ -27,21 +27,26 @@ The monolithic `buildSystem()` has been replaced by the segmented prompt assembl
 - `src/lib/hooks/use-conversation-manager.ts` — hydration, auto-save, auto-title, conversation switching
 - `src/lib/hooks/use-summarization.ts` — triggers `/api/summarize` for manual story state updates
 
-### State pipeline (Phase 2)
+### State pipeline
 
 A multi-stage background pipeline that automatically updates story state after assistant responses:
 
-1. **Fact extraction** (LLM) — extracts structured facts from recent messages with source-turn attribution
-2. **State merge** (LLM) — patches existing state with extracted facts (constrained input, not full conversation)
-3. **Validation** (deterministic) — schema, hard fact preservation, novelty, completeness checks
-4. **Auto-accept** (deterministic) — disposition scoring: auto_accepted / flagged / retried
+1. **Fact extraction** (LLM) — extracts structured facts from recent messages with source-turn attribution and confidence scores
+2. **Fact processing** (deterministic) — confidence filtering (threshold 0.6) + deduplication against current state
+3. **State merge** (LLM) — per-section specialized merge with section-specific instructions (Scene, Appearance, Demeanor, Relationships, Cast, Open Threads, Hard Facts)
+4. **Validation** (deterministic) — schema, hard fact preservation, novelty, completeness checks
+5. **Auto-accept** (deterministic) — disposition scoring: auto_accepted / flagged / retried
+6. **Cascade triggers** — fact types (e.g. `scene_change`) reset `lastIncludedAt` for related segments so they re-inject next turn
 
 Key files:
 - `src/app/api/state-update/route.ts` — server-side pipeline endpoint
+- `src/lib/state-pipeline/fact-processing.ts` — confidence filter + deduplication
+- `src/lib/state-pipeline/cascade-triggers.ts` — fact type → segment reset mapping
+- `src/lib/state-pipeline/section-merge.ts` — per-section merge instructions and prompt builder
 - `src/lib/state-pipeline/validation.ts` — deterministic validation checks
 - `src/lib/state-pipeline/auto-accept.ts` — disposition logic
 - `src/lib/state-history.ts` — `StateHistoryEntry` type + localStorage persistence
-- `src/lib/hooks/use-state-pipeline.ts` — fire-and-forget client trigger after assistant responses
+- `src/lib/hooks/use-state-pipeline.ts` — fire-and-forget client trigger, applies cascade resets via `onCascadeResets` callback
 
 The pipeline runs on the same interval as auto-summarize. Updates are applied silently and recorded in state history.
 
@@ -59,11 +64,15 @@ Key files:
 - `src/lib/hooks/use-state-history.ts` — `useStateHistoryEntries` hook using `useSyncExternalStore` to read localStorage
 - `src/lib/hooks/use-state-pipeline.ts` — returns `historyVersion` counter and `recentlyUpdated` flag
 
+### Topic embeddings
+
+`src/lib/topic-embeddings.ts` computes cosine similarity between the user message and each `on_topic` segment's topic description using `text-embedding-3-small` via OpenRouter. Segment embeddings are cached in-memory. Scores are passed to the assembler via `AssemblyContext.topicScores` as a semantic fallback when keyword matching misses (threshold 0.5). Fails gracefully — returns empty scores on error.
+
 ### API routes
 
-- `/api/chat` — streaming chat via OpenRouter, uses segmented prompt assembler
+- `/api/chat` — streaming chat via OpenRouter, uses segmented prompt assembler with semantic topic scores
 - `/api/summarize` — manual story state update with truncation detection, retry escalation, and structural completeness checks
-- `/api/state-update` — multi-stage state pipeline (fact extraction → merge → validate → auto-accept)
+- `/api/state-update` — multi-stage state pipeline (extract → filter/dedup → section merge → validate → auto-accept → cascade resets)
 
 ## Import rules
 

@@ -35,19 +35,13 @@ const liveConfig = {
 };
 
 export default function Home() {
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/chat",
-        body: () => ({
-          systemPrompt: liveConfig.systemPrompt,
-          storyState: liveConfig.storyState,
-          settings: liveConfig.settings,
-          lastIncludedAt: liveConfig.lastIncludedAt,
-        }),
-      }),
-    []
-  );
+  const transport = useMemo(() => new DefaultChatTransport({
+    api: "/api/chat",
+    body: () => ({
+      systemPrompt: liveConfig.systemPrompt, storyState: liveConfig.storyState,
+      settings: liveConfig.settings, lastIncludedAt: liveConfig.lastIncludedAt,
+    }),
+  }), []);
 
   const { messages, sendMessage, stop, status, setMessages } = useChat({ transport });
   const isLoading = status === "submitted" || status === "streaming";
@@ -81,9 +75,14 @@ export default function Home() {
     setLastIncludedAt: conv.setLastIncludedAt,
   });
 
+  const handleCascadeResets = useCallback(
+    (ids: string[]) => conv.setLastIncludedAt(p => { const n = { ...p }; for (const id of ids) n[id] = 0; return n; }),
+    [conv],
+  );
   const pipeline = useStatePipeline({
     messages, isLoading, storyState: conv.storyState, conversationId: conv.activeConvId,
     onStateUpdate: conv.updateStoryStateFromSummary, autoSummarizeInterval: conv.settings.autoSummarizeInterval,
+    onCascadeResets: handleCascadeResets,
   });
   const stateHistory = useStateHistoryEntries(conv.activeConvId, pipeline.historyVersion);
   const msgActions = useMessageActions({ messages, setMessages, sendMessage });

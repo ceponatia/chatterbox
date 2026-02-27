@@ -12,6 +12,9 @@ import { generateText, UIMessage, convertToModelMessages } from "ai";
 import { logRequest, startTimer, logResponse, logReasoning } from "@/lib/api-logger";
 import { validateState } from "@/lib/state-pipeline/validation";
 import { determineDisposition } from "@/lib/state-pipeline/auto-accept";
+import { processFacts } from "@/lib/state-pipeline/fact-processing";
+import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
+import { buildSectionMergeGroups, buildSectionMergePrompt } from "@/lib/state-pipeline/section-merge";
 import type { ExtractedFact } from "@/lib/state-history";
 
 const openrouter = createOpenRouter({
@@ -89,21 +92,6 @@ async function extractFacts(
 // Stage 2: State Merge
 // ---------------------------------------------------------------------------
 
-const MERGE_INSTRUCTION = `You are a story state editor. Merge the extracted facts into the existing story state.
-
-Rules:
-- Preserve ALL existing content unless a fact explicitly supersedes it.
-- Scene changes overwrite the Scene section.
-- New characters are appended to Cast.
-- New hard facts are appended to Hard Facts.
-- Appearance changes update the Appearance section.
-- Relationship shifts update the Relationships section.
-- Mood changes update Current Demeanor.
-- New threads are added to Open Threads. Resolved threads are removed.
-- Do NOT invent any information beyond what the facts provide.
-- Do NOT remove any hard facts unless explicitly contradicted.
-- Output ONLY the complete updated Story State block with all 7 sections.
-- Keep it under 1200 tokens.`;
 
 async function mergeState(
   model: string,
@@ -113,9 +101,8 @@ async function mergeState(
   if (facts.length === 0) return currentState;
 
   const elapsed = startTimer();
-  const factsText = facts
-    .map(f => `- [${f.type}] ${f.detail} (turn ${f.sourceTurn}, confidence ${f.confidence})`)
-    .join("\n");
+  const groups = buildSectionMergeGroups(facts);
+  const mergePrompt = buildSectionMergePrompt(groups);
 
   const result = await generateText({
     model: openrouter(model),
@@ -123,10 +110,7 @@ async function mergeState(
     messages: [
       {
         role: "user" as const,
-        content: [{
-          type: "text" as const,
-          text: `${MERGE_INSTRUCTION}\n\n## Extracted Facts\n${factsText}`,
-        }],
+        content: [{ type: "text" as const, text: mergePrompt }],
       },
     ],
     temperature: 0.3,
@@ -156,13 +140,20 @@ export async function POST(req: Request) {
     const model = process.env.OPENROUTER_MODEL || "z-ai/glm-5";
 
     // Stage 1: Extract facts
-    const facts = await extractFacts(model, messages, currentStoryState);
-    console.log(`  \x1b[2m📋 extracted ${facts.length} facts\x1b[0m`);
+    const rawFacts = await extractFacts(model, messages, currentStoryState);
+
+    // Stage 1.5: Confidence filter + deduplication
+    const processed = processFacts(rawFacts, currentStoryState);
+    const facts = processed.accepted;
+    console.log(
+      `  \x1b[2m📋 facts: ${rawFacts.length} extracted, ${facts.length} accepted, ` +
+      `${processed.lowConfidence.length} low-conf, ${processed.duplicates.length} dupes\x1b[0m`,
+    );
 
     if (facts.length === 0) {
       return Response.json({
         newState: currentStoryState,
-        extractedFacts: [],
+        extractedFacts: rawFacts,
         validation: {
           schemaValid: true,
           allHardFactsPreserved: true,
@@ -171,11 +162,12 @@ export async function POST(req: Request) {
           diffPercentage: 0,
         },
         disposition: "auto_accepted",
+        cascadeResets: computeCascadeResets(rawFacts),
         turnNumber,
       });
     }
 
-    // Stage 2: Merge facts into state
+    // Stage 2: Merge facts into state (per-section specialized)
     let candidateState = await mergeState(model, currentStoryState, facts);
 
     // Stage 3: Validate
@@ -194,13 +186,20 @@ export async function POST(req: Request) {
       if (disposition === "retried") disposition = "flagged";
     }
 
-    console.log(`  \x1b[2m✅ state-update: ${disposition}, diff ${validation.diffPercentage}%, ${facts.length} facts\x1b[0m`);
+    const cascadeResets = computeCascadeResets(facts);
+    console.log(
+      `  \x1b[2m✅ state-update: ${disposition}, diff ${validation.diffPercentage}%, ` +
+      `${facts.length} facts` +
+      (cascadeResets.length > 0 ? `, cascade: ${cascadeResets.join(", ")}` : "") +
+      `\x1b[0m`,
+    );
 
     return Response.json({
       newState: candidateState,
-      extractedFacts: facts,
+      extractedFacts: rawFacts,
       validation,
       disposition,
+      cascadeResets,
       turnNumber,
     });
   } catch (error) {

@@ -1,6 +1,6 @@
 ---
-Status: In Progress — Phase 5 next
-Last Updated: 2026-02-13 15:15
+Status: ✅ Completed
+Last Updated: 2026-02-14 13:35
 ---
 
 # Track B: Prompt & State Optimization — Implementation Plan
@@ -747,13 +747,13 @@ This is an advanced version of the multi-stage pipeline that fully decomposes th
 4. ✅ Omitted context note improved — grouped by category in `assembler.ts buildResult()`
 5. ✅ Segment effectiveness logging — `logAssembly()` in chat route: turn number, included/omitted counts, token usage %, omit reasons
 
-### Phase 5: Pipeline sophistication (ongoing)
+### Phase 5: Pipeline sophistication ✅ DONE
 
-1. Add confidence scoring to fact extraction
-2. Add cascade triggers (scene change → appearance refresh)
-3. Add fact deduplication
-4. Add per-section specialized summarizers
-5. Embedding-based topic detection for `on_topic` policy
+1. ✅ Confidence scoring — `fact-processing.ts` filters facts below 0.6 threshold, holds low-confidence facts in buffer
+2. ✅ Cascade triggers — `cascade-triggers.ts` maps fact types to segment resets (e.g. `scene_change` → appearance/outfit/setting), wired through `useStatePipeline` → `page.tsx` → `lastIncludedAt`
+3. ✅ Fact deduplication — `fact-processing.ts` normalized substring matching against current state
+4. ✅ Per-section specialized summarizers — `section-merge.ts` routes facts to section-specific merge instructions (Scene, Appearance, Demeanor, Relationships, Cast, Open Threads, Hard Facts)
+5. ✅ Embedding-based topic detection — `topic-embeddings.ts` computes cosine similarity via `text-embedding-3-small`, scores passed through `AssemblyContext.topicScores`, assembler uses as semantic fallback when keyword matching misses (threshold 0.5)
 
 ---
 

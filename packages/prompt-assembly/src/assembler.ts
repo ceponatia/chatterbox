@@ -25,6 +25,17 @@ const PRIORITY_RANK: Record<string, number> = {
 // Policy evaluation
 // ---------------------------------------------------------------------------
 
+const SEMANTIC_THRESHOLD = 0.5;
+
+/** Check on_topic via keyword match, then semantic fallback. */
+function evaluateOnTopic(
+  keywords: readonly string[], segmentId: string, ctx: AssemblyContext,
+): boolean {
+  if (matchesTopicKeywords(ctx.currentUserMessage, keywords)) return true;
+  const score = ctx.topicScores?.[segmentId];
+  return score !== undefined && score >= SEMANTIC_THRESHOLD;
+}
+
 function evaluatePolicy(
   policy: InjectionPolicy,
   segment: PromptSegment,
@@ -41,7 +52,7 @@ function evaluatePolicy(
     }
 
     case "on_topic":
-      return matchesTopicKeywords(ctx.currentUserMessage, policy.keywords);
+      return evaluateOnTopic(policy.keywords, segment.id, ctx);
 
     case "on_state_field": {
       const value = ctx.stateFields[policy.field];

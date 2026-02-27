@@ -3,6 +3,7 @@ import { streamText, UIMessage, convertToModelMessages } from "ai";
 import { logRequest, startTimer, logStreamStart, logStreamEnd, logReasoning } from "@/lib/api-logger";
 import { createDefaultAssembler } from "@chatterbox/prompt-assembly";
 import type { AssemblyContext, AssemblyResult } from "@chatterbox/prompt-assembly";
+import { computeTopicScores } from "@/lib/topic-embeddings";
 
 interface ChatSettings {
   temperature?: number;
@@ -55,19 +56,21 @@ function resolveSettings(s: ChatSettings) {
   };
 }
 
-function buildAssemblyContext(
+async function buildAssemblyContext(
   messages: UIMessage[], storyState: string, settings: ChatSettings, lastIncludedAt?: Record<string, number>,
-): AssemblyContext {
+): Promise<AssemblyContext> {
   const turnNumber = messages.filter(m => m.role === "user").length;
   const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
   const userText = lastUserMsg?.parts?.find(p => p.type === "text");
   const currentUserMessage = userText && userText.type === "text" ? userText.text : "";
+  const topicScores = await computeTopicScores(currentUserMessage);
   return {
     turnNumber,
     lastIncludedAt: lastIncludedAt ?? {},
     currentUserMessage,
     stateFields: parseStateFields(storyState),
     tokenBudget: settings.tokenBudget ?? 2500,
+    topicScores,
   };
 }
 
@@ -106,7 +109,7 @@ export async function POST(req: Request) {
 
   const windowed = windowMessages(messages);
   const elapsed = startTimer();
-  const ctx = buildAssemblyContext(messages, storyState, settings, lastIncludedAt);
+  const ctx = await buildAssemblyContext(messages, storyState, settings, lastIncludedAt);
   const assembly = assembler.assemble(ctx);
   const system = storyState
     ? `${assembly.systemPrompt}\n\n## Current Story State\n${storyState}`
