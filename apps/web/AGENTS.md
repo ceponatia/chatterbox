@@ -67,14 +67,22 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 ### Model and routing notes
 
 - `src/lib/model-registry.ts` defines allowed model IDs and provider ordering.
+- Current registry includes `z-ai/glm-5`, `aion-labs/aion-2.0`, `google/gemini-3.1-pro-preview`, `qwen/qwen3.5-plus-02-15`, `deepseek/deepseek-v3.2`, `x-ai/grok-4.1-fast`, and `openai/gpt-oss-120b`.
 - OpenRouter client config lives in `src/lib/openrouter.ts` (`extraBody.zdr = true`).
 - `/api/chat` uses `stepCountIs(3)` to preserve multi-character tool-call headroom.
+- `/api/chat` bypasses tool use only when model is `aion-labs/aion-2.0` because that model does not support tool calls. The bypass skips `TOOLS_INSTRUCTION` from the system prompt and injects a "Reference Context" system note containing omitted tool-accessible segments (character details, backstory, interaction guidelines) plus compact structured excerpts (facts, relationships, threads) so Aion has equivalent context inline.
 - Message-pair embedding/retrieval lives in `src/lib/message-embeddings.ts` and uses `openai/text-embedding-3-small`.
 
 ## Key files
 
 - `src/app/page.tsx` - chat shell, sidebar orchestration, `liveConfig`
-- `src/app/api/chat/route.ts` - chat transport and prompt assembly integration
+- `src/app/api/chat/route.ts` - POST handler, prompt preparation, assembly context
+- `src/app/api/chat/chat-tools.ts` - LLM tool definitions (get_character_details, get_story_context, etc.) and segment helpers
+- `src/app/api/chat/history-compression.ts` - message windowing, scoring, tier assignment, summarization, digest fact extraction, RAG formatting
+- `src/app/api/chat/depth-note.ts` - depth-2 scene grounding note builder
+- `src/app/api/chat/tool-bypass.ts` - Aion inline context injection and message sanitization for plain-text-only providers
+- `src/app/api/chat/system-prompt.ts` - system prompt construction, player control boundary, NPC guardrail
+- `src/app/api/chat/stream-telemetry.ts` - tool call telemetry collection and stream callbacks
 - `src/app/api/state-update/route.ts` - automatic state update pipeline
 - `src/app/api/state-rollback/route.ts` - rollback after message truncation
 - `src/lib/story-state-model.ts` - canonical state types, parser, serializer, reconciliation

@@ -25,6 +25,11 @@ export const MODEL_REGISTRY: ModelEntry[] = [
     ],
   },
   {
+    id: "aion-labs/aion-2.0",
+    label: "Aion 2.0",
+    providers: ["AionLabs"],
+  },
+  {
     id: "google/gemini-3.1-pro-preview",
     label: "Gemini 3.1 Pro",
     providers: ["Google", "Google AI Studio"],

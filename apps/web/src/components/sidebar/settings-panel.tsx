@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Info } from "lucide-react";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/defaults";
 import { MODEL_REGISTRY } from "@/lib/model-registry";
 
@@ -91,6 +91,12 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
             ))}
           </SelectContent>
         </Select>
+        {settings.model === "aion-labs/aion-2.0" && (
+          <p className="flex items-center gap-1 text-[10px] text-amber-400">
+            <Info className="h-3 w-3 shrink-0" />
+            Tools disabled — context provided inline
+          </p>
+        )}
       </div>
 
       <SliderField
@@ -166,8 +172,11 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
           type="number"
           value={settings.tokenBudget}
           onChange={(e) =>
+            update({ tokenBudget: parseInt(e.target.value) || 0 })
+          }
+          onBlur={() =>
             update({
-              tokenBudget: Math.max(500, parseInt(e.target.value) || 2500),
+              tokenBudget: Math.min(10000, Math.max(500, settings.tokenBudget)),
             })
           }
           min={500}
