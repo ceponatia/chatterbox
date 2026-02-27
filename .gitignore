@@ -25,7 +25,6 @@ dist/
 .DS_Store
 *.pem
 prompts/
-dev-docs/
 
 # debug
 npm-debug.log*
