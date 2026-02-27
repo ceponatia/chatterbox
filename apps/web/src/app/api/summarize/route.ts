@@ -1,4 +1,3 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, UIMessage, convertToModelMessages } from "ai";
 import {
   logRequest,
@@ -8,16 +7,8 @@ import {
   logWarn,
   logError,
 } from "@/lib/api-logger";
-import { env, getBaseUrl } from "@/lib/env";
+import { openrouter } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
-
-const openrouter = createOpenRouter({
-  apiKey: env.OPENROUTER_API_KEY,
-  headers: {
-    "HTTP-Referer": getBaseUrl(),
-    "X-Title": "Chatterbox",
-  },
-});
 
 const REQUIRED_SECTIONS = [
   "## Cast",

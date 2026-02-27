@@ -6,7 +6,6 @@
  * independently testable and swappable.
  */
 
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 import type {
   StatePipelineSocket,
@@ -25,21 +24,9 @@ import {
   log,
   startTimer,
 } from "@/lib/api-logger";
-import { env, getBaseUrl } from "@/lib/env";
+import { openrouter } from "@/lib/openrouter";
 import type { ExtractedFact } from "@/lib/state-history";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
-
-// ---------------------------------------------------------------------------
-// OpenRouter client
-// ---------------------------------------------------------------------------
-
-const openrouter = createOpenRouter({
-  apiKey: env.OPENROUTER_API_KEY,
-  headers: {
-    "HTTP-Referer": getBaseUrl(),
-    "X-Title": "Chatterbox",
-  },
-});
 
 // ---------------------------------------------------------------------------
 // Message windowing

@@ -1,0 +1,6 @@
+---
+engines:
+  lizard:
+    patterns:
+      Lizard_file-nloc-medium:
+        threshold: 100

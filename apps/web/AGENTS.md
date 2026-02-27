@@ -109,6 +109,7 @@ Chat controls on mobile:
 - `src/lib/model-registry.ts` defines the curated model list, display labels, and provider priority order per model.
 - `Settings.model` stores the selected OpenRouter model ID (default `z-ai/glm-5`) and is persisted in conversation settings JSON.
 - `page.tsx` sends selected settings through `liveConfig` to `/api/chat` and into `useStatePipeline` for `/api/state-update`.
+- OpenRouter client setup is centralized in `src/lib/openrouter.ts` with `extraBody.zdr = true` for all outbound OpenRouter requests.
 - `/api/chat`, `/api/state-update` (via `pipeline-socket.ts`), and legacy `/api/summarize` resolve provider order from `model-registry` and call `openrouter(modelId)` dynamically.
 
 ### API routes

@@ -12,6 +12,7 @@ Single-page "use client" SPA with API routes for backend. Dark-mode only. Target
 pnpm install                # install all dependencies
 pnpm infra:up               # start Postgres (Docker Compose)
 pnpm dev                    # Next.js dev with Turbopack (binds 0.0.0.0)
+pnpm start                  # runs production app (binds 0.0.0.0)
 ```
 
 Requires `apps/web/.env` with at minimum `OPENROUTER_API_KEY`. See `apps/web/src/lib/env.ts` for typed env vars and defaults.

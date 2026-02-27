@@ -1,4 +1,3 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText, UIMessage, convertToModelMessages } from "ai";
 import {
   logRequest,
@@ -21,7 +20,7 @@ import type {
 } from "@chatterbox/prompt-assembly";
 import { computeTopicScores } from "@/lib/topic-embeddings";
 import { parseStateFields } from "@/lib/state-utils";
-import { env, getBaseUrl } from "@/lib/env";
+import { openrouter } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 
 interface ChatSettings {
@@ -101,11 +100,6 @@ const NPC_ONLY_GUARDRAIL = [
 ].join("\n");
 
 const MAX_MESSAGES = 40;
-
-const openrouter = createOpenRouter({
-  apiKey: env.OPENROUTER_API_KEY,
-  headers: { "HTTP-Referer": getBaseUrl(), "X-Title": "Chatterbox" },
-});
 
 function windowMessages(messages: UIMessage[]): UIMessage[] {
   if (messages.length <= MAX_MESSAGES) return messages;

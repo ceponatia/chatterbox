@@ -9,14 +9,8 @@
  * Uses a lightweight embedding model via OpenRouter.
  */
 
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { embed, embedMany } from "ai";
-import { env, getBaseUrl } from "./env";
-
-const openrouter = createOpenRouter({
-  apiKey: env.OPENROUTER_API_KEY,
-  headers: { "HTTP-Referer": getBaseUrl(), "X-Title": "Chatterbox" },
-});
+import { openrouter } from "./openrouter";
 
 /** Segment topic descriptions for embedding comparison. */
 const SEGMENT_TOPICS: Record<string, string> = {
