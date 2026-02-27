@@ -9,32 +9,20 @@ import {
   Settings as SettingsIcon,
   BookOpen,
   ScrollText,
-  Trash2,
-  Sparkles,
-  PanelLeftOpen,
-  Plus,
-  SlidersHorizontal,
   ArrowLeft,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { useMobileSidebar } from "@/lib/hooks/use-mobile-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { MessageList } from "@/components/chat/message-list";
 import { ChatInput } from "@/components/chat/chat-input";
-import { TurnCounter } from "@/components/chat/turn-counter";
+import { ChatHeader } from "@/components/chat/chat-header";
 import { SystemPromptEditor } from "@/components/sidebar/system-prompt-editor";
 import { StoryStateEditor } from "@/components/sidebar/story-state-editor";
 import { SettingsPanel } from "@/components/sidebar/settings-panel";
-import { ConversationList } from "@/components/sidebar/conversation-list";
+import { SyncDot } from "@/components/sidebar/sync-dot";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import {
   DEFAULT_SYSTEM_PROMPT,
@@ -43,7 +31,6 @@ import {
 } from "@/lib/defaults";
 import type { Settings } from "@/lib/defaults";
 import { useConversationManager } from "@/lib/hooks/use-conversation-manager";
-import type { SyncStatus } from "@/lib/hooks/use-sync-status";
 import { useMessageActions } from "@/lib/hooks/use-message-actions";
 import { useDeleteAfterRollback } from "@/lib/hooks/use-delete-after-rollback";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
@@ -169,61 +156,12 @@ function useHomeState() {
       customSegments: conv.customSegments,
     });
 
-  const lastScannedAssistantIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (isLoading || !conv.structuredState) return;
-
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    if (
-      !lastAssistant ||
-      lastScannedAssistantIdRef.current === lastAssistant.id
-    )
-      return;
-    lastScannedAssistantIdRef.current = lastAssistant.id;
-
-    const assistantText = lastAssistant.parts
-      ?.filter(
-        (part): part is Extract<typeof part, { type: "text" }> =>
-          part.type === "text",
-      )
-      .map((part) => part.text)
-      .join("\n")
-      .trim();
-    if (!assistantText) return;
-
-    const scene = conv.structuredState.scene;
-    const { addEntityIds, removeEntityIds } = scanPresenceFromAssistantMessage({
-      assistantText,
-      entities: conv.structuredState.entities,
-      currentPresentEntityIds: scene.presentEntityIds,
-    });
-    if (addEntityIds.length === 0 && removeEntityIds.length === 0) return;
-
-    const nextPresent = scene.presentEntityIds.filter(
-      (entityId) => !removeEntityIds.includes(entityId),
-    );
-    for (const entityId of addEntityIds) {
-      if (!nextPresent.includes(entityId)) nextPresent.push(entityId);
-    }
-    if (
-      nextPresent.length === scene.presentEntityIds.length &&
-      nextPresent.every(
-        (entityId, index) => entityId === scene.presentEntityIds[index],
-      )
-    ) {
-      return;
-    }
-
-    conv.handleStructuredStateUpdate({
-      ...conv.structuredState,
-      scene: {
-        ...scene,
-        presentEntityIds: nextPresent,
-      },
-    });
-  }, [isLoading, messages, conv]);
+  useAssistantPresenceSync({
+    isLoading,
+    messages,
+    structuredState: conv.structuredState,
+    onStructuredStateUpdate: conv.handleStructuredStateUpdate,
+  });
 
   return {
     chat,
@@ -337,6 +275,7 @@ function MobileSidebarOverlay({
 
   useEffect(() => {
     if (!open || !containerRef.current) return;
+    const trigger = triggerRef.current;
 
     const container = containerRef.current;
     const selector =
@@ -360,7 +299,7 @@ function MobileSidebarOverlay({
     container.addEventListener("keydown", onKeyDown);
     return () => {
       container.removeEventListener("keydown", onKeyDown);
-      triggerRef.current?.focus();
+      trigger?.focus();
     };
   }, [open, onClose, triggerRef]);
 
@@ -392,28 +331,104 @@ function MobileSidebarOverlay({
   );
 }
 
-const SYNC_DOT_COLORS: Record<SyncStatus, string> = {
-  saved: "bg-green-500",
-  pending: "bg-yellow-500",
-  error: "bg-red-500",
-};
+function getLatestAssistantText(
+  messages: ReturnType<typeof useChat>["messages"],
+  lastScannedAssistantIdRef: React.MutableRefObject<string | null>,
+): string | null {
+  const lastAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  if (
+    !lastAssistant ||
+    lastScannedAssistantIdRef.current === lastAssistant.id
+  ) {
+    return null;
+  }
+  lastScannedAssistantIdRef.current = lastAssistant.id;
 
-const SYNC_DOT_TITLES: Record<SyncStatus, string> = {
-  saved: "Saved and up to date",
-  pending: "Saving…",
-  error: "Sync error — LLM may see stale data",
-};
+  const assistantText = lastAssistant.parts
+    ?.filter(
+      (part): part is Extract<typeof part, { type: "text" }> =>
+        part.type === "text",
+    )
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
 
-function SyncDot({ status, pulse }: { status: SyncStatus; pulse?: boolean }) {
-  return (
-    <>
-      <span
-        className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${SYNC_DOT_COLORS[status]} ${pulse ? "animate-pulse" : ""}`}
-        aria-hidden="true"
-      />
-      <span className="sr-only">{SYNC_DOT_TITLES[status]}</span>
-    </>
+  return assistantText || null;
+}
+
+function buildNextPresentEntityIds({
+  assistantText,
+  structuredState,
+}: {
+  assistantText: string;
+  structuredState: NonNullable<
+    ReturnType<typeof useConversationManager>["structuredState"]
+  >;
+}): string[] | null {
+  const scene = structuredState.scene;
+  const { addEntityIds, removeEntityIds } = scanPresenceFromAssistantMessage({
+    assistantText,
+    entities: structuredState.entities,
+    currentPresentEntityIds: scene.presentEntityIds,
+  });
+  if (addEntityIds.length === 0 && removeEntityIds.length === 0) return null;
+
+  const nextPresent = scene.presentEntityIds.filter(
+    (entityId) => !removeEntityIds.includes(entityId),
   );
+  for (const entityId of addEntityIds) {
+    if (!nextPresent.includes(entityId)) nextPresent.push(entityId);
+  }
+
+  const unchanged =
+    nextPresent.length === scene.presentEntityIds.length &&
+    nextPresent.every(
+      (entityId, index) => entityId === scene.presentEntityIds[index],
+    );
+
+  return unchanged ? null : nextPresent;
+}
+
+function useAssistantPresenceSync({
+  isLoading,
+  messages,
+  structuredState,
+  onStructuredStateUpdate,
+}: {
+  isLoading: boolean;
+  messages: ReturnType<typeof useChat>["messages"];
+  structuredState: ReturnType<typeof useConversationManager>["structuredState"];
+  onStructuredStateUpdate: ReturnType<
+    typeof useConversationManager
+  >["handleStructuredStateUpdate"];
+}) {
+  const lastScannedAssistantIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (isLoading || !structuredState) return;
+
+    const assistantText = getLatestAssistantText(
+      messages,
+      lastScannedAssistantIdRef,
+    );
+    if (!assistantText) return;
+
+    const nextPresentEntityIds = buildNextPresentEntityIds({
+      assistantText,
+      structuredState,
+    });
+    if (!nextPresentEntityIds) return;
+
+    onStructuredStateUpdate({
+      ...structuredState,
+      scene: {
+        ...structuredState.scene,
+        presentEntityIds: nextPresentEntityIds,
+      },
+    });
+  }, [isLoading, messages, structuredState, onStructuredStateUpdate]);
 }
 
 const SidebarContent = memo(function SidebarContent({
@@ -434,6 +449,7 @@ const SidebarContent = memo(function SidebarContent({
   const modelLabel =
     getModelEntry(conv.settings.model)?.label ?? conv.settings.model;
   const turnNumber = messages.filter((m) => m.role === "user").length;
+
   return (
     <>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -502,122 +518,3 @@ const SidebarContent = memo(function SidebarContent({
     </>
   );
 });
-
-function ConversationDrawer({
-  conv,
-}: {
-  conv: ReturnType<typeof useConversationManager>;
-}) {
-  return (
-    <Sheet open={conv.convDrawerOpen} onOpenChange={conv.setConvDrawerOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          title="Conversations"
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-0">
-        <SheetHeader className="sr-only">
-          <SheetTitle>Conversations</SheetTitle>
-        </SheetHeader>
-        <ConversationList
-          conversations={conv.conversations}
-          activeId={conv.activeConvId}
-          onSelect={conv.handleSelectConversation}
-          onDelete={conv.handleDeleteConversation}
-          onNew={conv.handleNewConversation}
-        />
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function ChatHeader({
-  conv,
-  messages,
-  isLoading,
-  onTriggerPipeline,
-  onOpenMobileSidebar,
-  mobileSidebarTriggerRef,
-  onClearChat,
-}: {
-  conv: ReturnType<typeof useConversationManager>;
-  messages: ReturnType<typeof useChat>["messages"];
-  isLoading: boolean;
-  onTriggerPipeline: () => void;
-  onOpenMobileSidebar: () => void;
-  mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
-  onClearChat: () => void;
-}) {
-  const modelLabel =
-    getModelEntry(conv.settings.model)?.label ?? conv.settings.model;
-  return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b px-3 lg:h-16 lg:px-4">
-      <div className="flex items-center gap-2 lg:gap-3">
-        <ConversationDrawer conv={conv} />
-        <h1 className="hidden text-base font-bold lg:inline lg:text-lg">
-          RP Sketcher
-        </h1>
-        <TurnCounter
-          messages={messages}
-          autoSummarizeInterval={conv.settings.autoSummarizeInterval}
-          lastPipelineTurn={conv.lastPipelineTurn}
-        />
-        <p className="hidden text-xs text-muted-foreground lg:block">
-          Model:{" "}
-          <code className="rounded bg-muted px-1 py-0.5">{modelLabel}</code>
-          <br />
-          Quick n&apos; dirty RP interface for model testing
-        </p>
-      </div>
-      <div className="flex items-center gap-1 lg:gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={conv.handleNewConversation}
-          title="New chat"
-          className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
-        >
-          <Plus className="h-4 w-4 lg:mr-1" />
-          <span className="hidden lg:inline">New</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onTriggerPipeline}
-          disabled={messages.length < 2 || isLoading}
-          title="Update Story State"
-          className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
-        >
-          <Sparkles className="h-4 w-4 lg:mr-1" />
-          <span className="hidden lg:inline">Update State</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClearChat}
-          disabled={messages.length === 0}
-          title="Clear chat"
-          className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
-        >
-          <Trash2 className="h-4 w-4 lg:mr-1" />
-          <span className="hidden lg:inline">Clear</span>
-        </Button>
-        <Button
-          ref={mobileSidebarTriggerRef}
-          variant="outline"
-          size="sm"
-          onClick={onOpenMobileSidebar}
-          title="Configure"
-          className="h-8 w-8 p-0 lg:hidden"
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-        </Button>
-      </div>
-    </header>
-  );
-}
