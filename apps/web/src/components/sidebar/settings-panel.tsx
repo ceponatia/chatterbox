@@ -3,9 +3,17 @@
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/defaults";
+import { MODEL_REGISTRY } from "@/lib/model-registry";
 
 interface SettingsPanelProps {
   settings: Settings;
@@ -64,6 +72,25 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
         >
           <RotateCcw className="mr-1 h-3 w-3" /> Reset
         </Button>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs">Model</Label>
+        <Select
+          value={settings.model}
+          onValueChange={(v) => update({ model: v })}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MODEL_REGISTRY.map((model) => (
+              <SelectItem key={model.id} value={model.id}>
+                {model.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <SliderField

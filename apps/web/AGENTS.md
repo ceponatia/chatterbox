@@ -42,6 +42,7 @@ A single-pass hybrid pipeline that automatically updates story state after assis
 5. **Cascade triggers** — fact types (e.g. `scene_change`, `hard_fact_superseded`) reset `lastIncludedAt` for related segments so they re-inject next turn.
 
 Key files:
+
 - `src/app/api/state-update/route.ts` — server-side pipeline endpoint (single-pass hybrid)
 - `src/lib/state-pipeline/cascade-triggers.ts` — fact type → segment reset mapping
 - `src/lib/state-pipeline/validation.ts` — deterministic validation checks
@@ -50,8 +51,13 @@ Key files:
 - `src/lib/hooks/use-state-pipeline.ts` — fire-and-forget client trigger, sends `lastPipelineTurn` for windowing, applies cascade resets via `onCascadeResets` callback. History append errors are caught so they don't block state updates.
 
 Dead code (kept for reference, no longer imported):
+
 - `src/lib/state-pipeline/fact-processing.ts` — was: confidence filter + deduplication (superseded by single-pass)
 - `src/lib/state-pipeline/section-merge.ts` — was: per-section merge instructions and prompt builder (superseded by single-pass)
+- `src/components/sidebar/story-state-review.tsx` — legacy manual review UI
+- `src/components/sidebar/diff-view.tsx` — legacy review diff renderer
+- `src/components/sidebar/review-actions.tsx` — legacy review action controls
+- `src/components/chat/summarize-review-dialog.tsx` — legacy summarize review modal wrapper
 
 The pipeline runs on the same interval as auto-summarize. Updates are applied silently and recorded in state history. The manual "Update State" button in the chat header triggers the pipeline on demand.
 
@@ -60,6 +66,7 @@ The pipeline runs on the same interval as auto-summarize. Updates are applied si
 All state updates from the pipeline are applied silently. There is no review mode or manual approval step. A green pulsing dot appears on the Story State tab for ~3s after each update. State change history is available in the State History section of the Story State tab.
 
 Key files:
+
 - `src/components/sidebar/state-history.tsx` — scrollable history of all state changes with expandable inline details (validation badges, extracted facts). Clicking an entry row opens a detail modal.
 - `src/components/sidebar/state-history-detail.tsx` — full-screen modal for a state history entry showing validation badges, extracted facts with type/confidence, and a line-level diff between previous and new state.
 - `src/components/sidebar/story-state-editor.tsx` — Orchestrator for story state UI: header, import/reset, and `StructuredEditorBody` which renders all typed sections. All sections are always visible with Add buttons (no empty-state hiding).
@@ -77,26 +84,37 @@ The layout is responsive with two distinct modes:
 - **Mobile (`< lg`)**: Full-screen swap — chat view is default, tapping the config button (sliders icon) replaces the entire screen with the sidebar. An arrow-left button returns to chat. Title "RP Sketcher" and model subtext are hidden on mobile to prevent header overflow.
 
 Key files:
+
 - `src/lib/hooks/use-mobile-sidebar.ts` — `useMobileSidebar()` hook managing `open` state with `toggle`/`close` callbacks
 - `MobileSidebarOverlay` component in `page.tsx` — fixed full-screen overlay (`z-50`, `lg:hidden`) with safe-area padding
 - `ChatHeader` — responsive: icon-only buttons on mobile, text+icon on desktop. Config button (`SlidersHorizontal`) visible only on mobile (`lg:hidden`).
 
 iOS Safari support:
+
 - `layout.tsx` exports `viewport` with `viewportFit: "cover"` for safe-area support
 - `globals.css` provides `safe-top`, `safe-bottom`, `safe-x`, `safe-y` utility classes using `env(safe-area-inset-*)`
 - `ChatInput` uses `safe-bottom` for home indicator clearance
 - Outer container uses `h-dvh` (dynamic viewport height) instead of `h-screen` to prevent overflow when the iOS address bar is visible
 
 Chat controls on mobile:
+
 - Message edit/regenerate/delete actions are rendered below each bubble on `lg`-and-down to avoid hover-only affordances.
 
 ### Topic embeddings
 
 `src/lib/topic-embeddings.ts` computes cosine similarity between the user message and each `on_topic` segment's topic description using `text-embedding-3-small` via OpenRouter. Segment embeddings are cached in-memory. Scores are passed to the assembler via `AssemblyContext.topicScores` as a semantic fallback when keyword matching misses (threshold 0.5). Fails gracefully — returns empty scores on error.
 
+### Model selection
+
+- `src/lib/model-registry.ts` defines the curated model list, display labels, and provider priority order per model.
+- `Settings.model` stores the selected OpenRouter model ID (default `z-ai/glm-5`) and is persisted in conversation settings JSON.
+- `page.tsx` sends selected settings through `liveConfig` to `/api/chat` and into `useStatePipeline` for `/api/state-update`.
+- `/api/chat`, `/api/state-update` (via `pipeline-socket.ts`), and legacy `/api/summarize` resolve provider order from `model-registry` and call `openrouter(modelId)` dynamically.
+
 ### API routes
 
 - `/api/chat` — streaming chat via OpenRouter, uses segmented prompt assembler with semantic topic scores. Accepts optional `customSegments` from client to override default segments. Appends a final hard guardrail reminding the model to never write for the user/player.
+- `/api/chat` — also appends a runtime **Player Control Boundary** that binds `{{ user }}` to the second member of the story state's `## Cast` list (canonical single player character). If this identity cannot be resolved, instructions force ambiguity-safe NPC/environment-only narration with clarification instead of writing for the player.
 - `/api/summarize` — (legacy) manual story state update with truncation detection, retry escalation, and structural completeness checks. No longer triggered from the UI.
 - `/api/state-update` — single-pass hybrid state pipeline (one LLM call → updated state + fact list → validate → auto-accept → cascade resets). Message windowing via `lastPipelineTurn`.
 - `/api/conversations` — list conversation metadata from Postgres

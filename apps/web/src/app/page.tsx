@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useMemo, useCallback, memo } from "react";
+import { useState, useMemo, useCallback, memo, useRef, useEffect } from "react";
 import type { StateHistoryEntry } from "@/lib/state-history";
 import { useStateHistoryEntries } from "@/lib/hooks/use-state-history";
 import {
@@ -48,6 +48,8 @@ import type { SyncStatus } from "@/lib/hooks/use-sync-status";
 import { useMessageActions } from "@/lib/hooks/use-message-actions";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
 import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
+import { getModelEntry } from "@/lib/model-registry";
+import { trapTabKey } from "@/lib/focus-trap";
 
 // Module-level config that the transport body function reads at request time.
 const liveConfig = {
@@ -59,6 +61,12 @@ const liveConfig = {
 };
 
 export default function Home() {
+  const state = useHomeState();
+  return <HomeLayout state={state} />;
+}
+
+// eslint-disable-next-line max-lines-per-function
+function useLiveChatState() {
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -74,10 +82,8 @@ export default function Home() {
     [],
   );
 
-  const { messages, sendMessage, stop, status, setMessages } = useChat({
-    transport,
-  });
-  const isLoading = status === "submitted" || status === "streaming";
+  const chat = useChat({ transport });
+  const isLoading = chat.status === "submitted" || chat.status === "streaming";
 
   const syncConfig = useCallback(
     (c: {
@@ -97,12 +103,18 @@ export default function Home() {
     [],
   );
 
+  return { chat, isLoading, syncConfig };
+}
+
+function useHomeState() {
+  const { chat, isLoading, syncConfig } = useLiveChatState();
+  const { messages, sendMessage, setMessages } = chat;
+
   const conv = useConversationManager({
     messages,
     setMessages,
     onConfigSync: syncConfig,
   });
-
   useAssemblyTracker({
     messages,
     storyState: conv.storyState,
@@ -111,7 +123,7 @@ export default function Home() {
     customSegments: conv.customSegments,
   });
 
-  const handleCascadeResets = useCallback(
+  const onCascadeResets = useCallback(
     (ids: string[]) =>
       conv.setLastIncludedAt((p) => {
         const n = { ...p };
@@ -120,24 +132,40 @@ export default function Home() {
       }),
     [conv.setLastIncludedAt],
   );
+
   const pipeline = useStatePipeline({
     messages,
     isLoading,
     storyState: conv.storyState,
+    model: conv.settings.model,
     conversationId: conv.activeConvId,
     onStateUpdate: conv.updateStoryStateFromSummary,
     autoSummarizeInterval: conv.settings.autoSummarizeInterval,
-    onCascadeResets: handleCascadeResets,
+    onCascadeResets,
     lastPipelineTurn: conv.lastPipelineTurn,
     setLastPipelineTurn: conv.setLastPipelineTurn,
   });
-  const stateHistory = useStateHistoryEntries(
-    conv.activeConvId,
-    pipeline.historyVersion,
-  );
-  const msgActions = useMessageActions({ messages, setMessages, sendMessage });
-  const [activeTab, setActiveTab] = useState("story-state");
-  const mobile = useMobileSidebar();
+
+  return {
+    chat,
+    conv,
+    pipeline,
+    isLoading,
+    stateHistory: useStateHistoryEntries(
+      conv.activeConvId,
+      pipeline.historyVersion,
+    ),
+    msgActions: useMessageActions({ messages, setMessages, sendMessage }),
+    mobile: useMobileSidebar(),
+    activeTabState: useState("story-state"),
+    mobileSidebarTriggerRef: useRef<HTMLButtonElement | null>(null),
+  };
+}
+
+function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
+  const { chat, conv, pipeline, stateHistory, mobile } = state;
+  const [activeTab, setActiveTab] = state.activeTabState;
+  const { mobileSidebarTriggerRef } = state;
   const sidebar = (
     <SidebarContent
       activeTab={activeTab}
@@ -145,51 +173,71 @@ export default function Home() {
       conv={conv}
       recentlyUpdated={pipeline.recentlyUpdated}
       stateHistory={stateHistory}
-      messages={messages}
+      messages={chat.messages}
     />
   );
 
   return (
     <div className="flex h-dvh overflow-hidden safe-top">
-      <MobileSidebarOverlay open={mobile.open} onClose={mobile.close}>
+      <MobileSidebarOverlay
+        open={mobile.open}
+        onClose={mobile.close}
+        triggerRef={mobileSidebarTriggerRef}
+      >
         {sidebar}
       </MobileSidebarOverlay>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <ChatHeader
-          conv={conv}
-          messages={messages}
-          isLoading={isLoading}
-          onTriggerPipeline={pipeline.triggerPipeline}
-          onOpenMobileSidebar={mobile.toggle}
-          onClearChat={msgActions.handleClearChat}
-        />
+      <ChatPane
+        state={state}
+        mobileSidebarTriggerRef={mobileSidebarTriggerRef}
+      />
 
-        <MessageList
-          messages={messages}
-          isLoading={isLoading}
-          onEdit={msgActions.handleEditMessage}
-          onDelete={msgActions.handleDeleteMessage}
-          onRetry={msgActions.handleRetryMessage}
-          onEditAndGenerate={msgActions.handleEditAndGenerate}
-        />
-
-        <ChatInput
-          input={msgActions.input}
-          onInputChange={msgActions.setInput}
-          onSubmit={msgActions.handleSend}
-          isLoading={isLoading}
-          onStop={stop}
-        />
-      </div>
-
-      {/* Persistent sidebar — desktop only */}
       <aside className="hidden w-125 shrink-0 border-l lg:flex lg:flex-col">
         <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
           <h2 className="text-sm font-semibold">Configuration</h2>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{sidebar}</div>
       </aside>
+    </div>
+  );
+}
+
+function ChatPane({
+  state,
+  mobileSidebarTriggerRef,
+}: {
+  state: ReturnType<typeof useHomeState>;
+  mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const { chat, conv, pipeline, isLoading, msgActions, mobile } = state;
+  const messages = chat.messages;
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <ChatHeader
+        conv={conv}
+        messages={messages}
+        isLoading={isLoading}
+        onTriggerPipeline={pipeline.triggerPipeline}
+        onOpenMobileSidebar={mobile.toggle}
+        mobileSidebarTriggerRef={mobileSidebarTriggerRef}
+        onClearChat={msgActions.handleClearChat}
+      />
+      <MessageList
+        messages={messages}
+        isLoading={isLoading}
+        onEdit={msgActions.handleEditMessage}
+        onDelete={msgActions.handleDeleteMessage}
+        onRetry={msgActions.handleRetryMessage}
+        onEditAndGenerate={msgActions.handleEditAndGenerate}
+      />
+      <ChatInput
+        input={msgActions.input}
+        onInputChange={msgActions.setInput}
+        onSubmit={msgActions.handleSend}
+        isLoading={isLoading}
+        onStop={chat.stop}
+      />
     </div>
   );
 }
@@ -201,15 +249,49 @@ export default function Home() {
 function MobileSidebarOverlay({
   open,
   onClose,
+  triggerRef,
   children,
 }: {
   open: boolean;
   onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
   children: ReactNode;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const selector =
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const focusable = [
+      ...container.querySelectorAll<HTMLElement>(selector),
+    ].filter((el) => !el.hasAttribute("disabled"));
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      trapTabKey(event, focusable, first, last);
+    };
+
+    container.addEventListener("keydown", onKeyDown);
+    return () => {
+      container.removeEventListener("keydown", onKeyDown);
+      triggerRef.current?.focus();
+    };
+  }, [open, onClose, triggerRef]);
+
   if (!open) return null;
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal={true}
       aria-label="Configuration"
@@ -273,6 +355,8 @@ const SidebarContent = memo(function SidebarContent({
   stateHistory: StateHistoryEntry[];
   messages: ReturnType<typeof useChat>["messages"];
 }) {
+  const modelLabel =
+    getModelEntry(conv.settings.model)?.label ?? conv.settings.model;
   const turnNumber = messages.filter((m) => m.role === "user").length;
   return (
     <>
@@ -334,9 +418,8 @@ const SidebarContent = memo(function SidebarContent({
       </Tabs>
       <Separator className="my-4" />
       <p className="text-xs text-muted-foreground">
-        Model: <code className="rounded bg-muted px-1 py-0.5">z-ai/glm-5</code>
-        <br />
-        Context: 202.8K tokens · Max output: 131.1K tokens
+        Model:{" "}
+        <code className="rounded bg-muted px-1 py-0.5">{modelLabel}</code>
       </p>
     </>
   );
@@ -381,6 +464,7 @@ function ChatHeader({
   isLoading,
   onTriggerPipeline,
   onOpenMobileSidebar,
+  mobileSidebarTriggerRef,
   onClearChat,
 }: {
   conv: ReturnType<typeof useConversationManager>;
@@ -388,8 +472,11 @@ function ChatHeader({
   isLoading: boolean;
   onTriggerPipeline: () => void;
   onOpenMobileSidebar: () => void;
+  mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
   onClearChat: () => void;
 }) {
+  const modelLabel =
+    getModelEntry(conv.settings.model)?.label ?? conv.settings.model;
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b px-3 lg:h-16 lg:px-4">
       <div className="flex items-center gap-2 lg:gap-3">
@@ -404,7 +491,7 @@ function ChatHeader({
         />
         <p className="hidden text-xs text-muted-foreground lg:block">
           Model:{" "}
-          <code className="rounded bg-muted px-1 py-0.5">z-ai/glm-5</code>
+          <code className="rounded bg-muted px-1 py-0.5">{modelLabel}</code>
           <br />
           Quick n&apos; dirty RP interface for model testing
         </p>
@@ -443,6 +530,7 @@ function ChatHeader({
           <span className="hidden lg:inline">Clear</span>
         </Button>
         <Button
+          ref={mobileSidebarTriggerRef}
           variant="outline"
           size="sm"
           onClick={onOpenMobileSidebar}

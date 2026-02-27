@@ -25,6 +25,7 @@ Requires `apps/web/.env` with at minimum `OPENROUTER_API_KEY`. See `apps/web/src
 | `pnpm typecheck` | all packages | `tsc --noEmit` recursively |
 | `pnpm lint` | all packages | ESLint recursively |
 | `pnpm infra:up` / `infra:down` | infra | Postgres via Docker Compose |
+| `pnpm fetch:providers` | root script | Refresh OpenRouter provider order snapshot for model registry |
 
 **No test framework exists.** Validation relies on `pnpm typecheck` + `pnpm lint` + `pnpm dev` starts successfully.
 

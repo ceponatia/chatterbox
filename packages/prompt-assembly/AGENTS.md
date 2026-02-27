@@ -88,6 +88,7 @@ This package depends on `@chatterbox/sockets` for the `AssemblyContext`, `Assemb
 ### Segments
 
 A `PromptSegment` is a self-contained piece of context with:
+
 - **content**: the actual text
 - **policy**: when to inject (`always`, `every_n`, `on_topic`, `on_state_field`, `custom`)
 - **priority**: `critical` (never dropped) > `high` > `normal` > `low`
@@ -127,6 +128,8 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 | `voice_sound` | `on_topic` (voice, sing, song, ...) | normal |
 | `backstory` | `on_topic` (remember, school, ...) | normal |
 | `relationship_status` | `on_state_field("relationships")` | normal |
+
+`core_rules` must preserve strict non-authorship constraints for `{{ user }}` and honor runtime-provided player aliases as equivalent to `{{ user }}`.
 
 ### Markdown parser (`src/parser.ts`)
 

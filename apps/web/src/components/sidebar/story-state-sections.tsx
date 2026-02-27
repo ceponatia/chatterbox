@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useId, useMemo } from "react";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight, Plus, Trash2, User } from "lucide-react";
@@ -12,97 +10,24 @@ import type {
   Relationship,
   AppearanceEntry,
   DemeanorEntry,
-  CustomSection,
 } from "@/lib/story-state-model";
 import {
   resolveEntityName,
   findOrCreateEntity,
   findEntityByName,
 } from "@/lib/story-state-model";
-
-// ---------------------------------------------------------------------------
-// Collapsible section wrapper (shared by all typed sections)
-// ---------------------------------------------------------------------------
-
-function SectionShell({
-  title,
-  badge,
-  children,
-  defaultExpanded = true,
-}: {
-  title: string;
-  badge?: string;
-  children: React.ReactNode;
-  defaultExpanded?: boolean;
-}) {
-  const uid = useId();
-  const sectionId = `section-${uid}`;
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  return (
-    <div className="rounded-md border bg-card">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={sectionId}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-        )}
-        <span className="flex-1 text-xs font-medium">{title}</span>
-        {badge && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {badge}
-          </Badge>
-        )}
-      </button>
-      {expanded && (
-        <div id={sectionId} className="border-t px-3 py-2 flex flex-col gap-2">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Entity card (individual cast member, relationship, appearance entry, etc.)
-// ---------------------------------------------------------------------------
-
-function EntityCard({
-  label,
-  badge,
-  onRemove,
-  children,
-}: {
-  label: string;
-  badge?: React.ReactNode;
-  onRemove?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded border bg-muted/30 px-2.5 py-2 flex flex-col gap-1.5">
-      <div className="flex items-center gap-1.5">
-        <span className="flex-1 text-[11px] font-medium truncate">{label}</span>
-        {badge}
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="relative text-muted-foreground hover:text-destructive before:absolute before:-inset-2 before:content-['']"
-            title="Remove"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-}
+import { DeferredInput, DeferredTextarea } from "./deferred-inputs";
+import {
+  EntityCard,
+  EntitySelect,
+  keyedByBase,
+  SectionShell,
+} from "./section-primitives";
+export {
+  BulletListSection,
+  TimestampedBulletListSection,
+  CustomSectionEditor,
+} from "./bullet-list-sections";
 
 // ---------------------------------------------------------------------------
 // Typed section editors
@@ -146,15 +71,15 @@ export function EntitiesSection({
           }
           onRemove={() => remove(i)}
         >
-          <Input
+          <DeferredInput
             value={e.name}
-            onChange={(ev) => update(i, { name: ev.target.value })}
+            onCommit={(val) => update(i, { name: val })}
             placeholder="Character name"
             className="h-7 text-[11px]"
           />
-          <Textarea
+          <DeferredTextarea
             value={e.description}
-            onChange={(ev) => update(i, { description: ev.target.value })}
+            onCommit={(val) => update(i, { description: val })}
             placeholder="Description..."
             className="min-h-12 font-mono text-[11px] leading-relaxed"
             rows={2}
@@ -170,45 +95,6 @@ export function EntitiesSection({
         <Plus className="mr-1 h-3 w-3" /> Add cast member
       </Button>
     </SectionShell>
-  );
-}
-
-function EntitySelect({
-  entityId,
-  entities,
-  onChange,
-  onCreateNew,
-  placeholder,
-}: {
-  entityId: string;
-  entities: Entity[];
-  onChange: (entityId: string) => void;
-  onCreateNew?: (name: string) => void;
-  placeholder: string;
-}) {
-  const name = resolveEntityName(entities, entityId);
-  return (
-    <Input
-      value={name}
-      onChange={(e) => {
-        const typed = e.target.value;
-        const match = findEntityByName(entities, typed);
-        if (match) {
-          onChange(match.id);
-        } else {
-          onChange(typed);
-        }
-      }}
-      onBlur={(e) => {
-        const typed = e.target.value.trim();
-        if (!typed) return;
-        const match = findEntityByName(entities, typed);
-        if (!match && onCreateNew) onCreateNew(typed);
-      }}
-      placeholder={placeholder}
-      className="h-7 text-[11px] flex-1"
-      list="entity-names"
-    />
   );
 }
 
@@ -235,6 +121,14 @@ export function RelationshipsSection({
     ]);
   const remove = (i: number) =>
     onUpdate(relationships.filter((_, idx) => idx !== i));
+  const relationshipKeys = keyedByBase(relationships, (rel) =>
+    [
+      rel.fromEntityId,
+      rel.toEntityId,
+      rel.description.trim(),
+      rel.details.join("|"),
+    ].join("::"),
+  );
 
   return (
     <SectionShell title="Relationships" badge={`${relationships.length}`}>
@@ -246,10 +140,7 @@ export function RelationshipsSection({
       {relationships.map((r, i) => {
         const fromName = resolveEntityName(entities, r.fromEntityId);
         const toName = resolveEntityName(entities, r.toEntityId);
-        const stableKey =
-          r.fromEntityId && r.toEntityId
-            ? `${r.fromEntityId}-${r.toEntityId}`
-            : String(i);
+        const stableKey = relationshipKeys[i] ?? `${fromName}-${toName}`;
         return (
           <EntityCard
             key={stableKey}
@@ -285,9 +176,9 @@ export function RelationshipsSection({
                 placeholder="To"
               />
             </div>
-            <Textarea
+            <DeferredTextarea
               value={r.description}
-              onChange={(e) => update(i, { description: e.target.value })}
+              onCommit={(val) => update(i, { description: val })}
               placeholder="Relationship description..."
               className="min-h-12 font-mono text-[11px] leading-relaxed"
               rows={2}
@@ -295,18 +186,15 @@ export function RelationshipsSection({
             {r.details.length > 0 && (
               <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
                 {r.details.map((d, di) => (
-                  <div
-                    key={d.slice(0, 20) + di}
-                    className="flex gap-1 items-start"
-                  >
+                  <div key={di} className="flex gap-1 items-start">
                     <span className="text-[10px] text-muted-foreground mt-1">
                       •
                     </span>
-                    <Textarea
+                    <DeferredTextarea
                       value={d}
-                      onChange={(e) => {
+                      onCommit={(val) => {
                         const newDetails = [...r.details];
-                        newDetails[di] = e.target.value;
+                        newDetails[di] = val;
                         update(i, { details: newDetails });
                       }}
                       className="min-h-8 font-mono text-[10px] leading-relaxed flex-1"
@@ -382,6 +270,9 @@ export function CharactersSection({
     <SectionShell title="Characters" badge={`${entries.length}`}>
       {[...grouped.entries()].map(([entityId, items]) => {
         const charName = resolveEntityName(entities, entityId);
+        const itemKeys = keyedByBase(items, ({ entry }) =>
+          [entry.attribute.trim(), entry.description.trim()].join("::"),
+        );
         return (
           <div key={entityId} className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 px-1">
@@ -395,7 +286,7 @@ export function CharactersSection({
               <Button
                 variant="ghost"
                 size="sm"
-                className="ml-auto h-5 px-1 text-[10px]"
+                className="relative ml-auto h-5 px-1 text-[10px] before:absolute before:-inset-2 before:content-['']"
                 onClick={() => addForEntity(entityId)}
               >
                 <Plus className="h-2.5 w-2.5" />
@@ -405,9 +296,9 @@ export function CharactersSection({
               Appearance
             </div>
             <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
-              {items.map(({ entry: e, origIdx }) => (
+              {items.map(({ entry: e, origIdx }, localIdx) => (
                 <AppearanceAttributeRow
-                  key={e.attribute + origIdx}
+                  key={itemKeys[localIdx] ?? `${e.attribute}-${e.description}`}
                   attribute={e.attribute}
                   description={e.description}
                   onAttributeChange={(val) =>
@@ -491,9 +382,9 @@ function AppearanceAttributeRow({
             <ChevronRight className="h-2.5 w-2.5" />
           )}
         </button>
-        <Input
+        <DeferredInput
           value={attribute}
-          onChange={(e) => onAttributeChange(e.target.value)}
+          onCommit={onAttributeChange}
           placeholder="Attribute (e.g. eyes, hair, outfit)"
           className="h-5 text-[11px] font-medium flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
         />
@@ -515,12 +406,10 @@ function AppearanceAttributeRow({
             {tagValues.map((tag, ti) => (
               <div key={ti} className="flex items-center gap-1">
                 <span className="text-[9px] text-muted-foreground">•</span>
-                <Input
+                <DeferredInput
                   value={tag}
-                  onChange={(e) =>
-                    onDescriptionChange(
-                      updateTagAtIndex(description, ti, e.target.value),
-                    )
+                  onCommit={(val) =>
+                    onDescriptionChange(updateTagAtIndex(description, ti, val))
                   }
                   className="h-5 text-[10px] flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                 />
@@ -539,7 +428,7 @@ function AppearanceAttributeRow({
             <Button
               variant="ghost"
               size="sm"
-              className="self-start h-5 px-1 text-[9px]"
+              className="relative self-start h-5 px-1 text-[9px] before:absolute before:-inset-2 before:content-['']"
               onClick={() => onDescriptionChange(addTag(description))}
             >
               <Plus className="h-2.5 w-2.5 mr-0.5" /> value
@@ -569,9 +458,9 @@ export function SceneSection({
         <label className="text-[10px] text-muted-foreground">
           Where / When
         </label>
-        <Input
+        <DeferredInput
           value={scene.location}
-          onChange={(e) => onUpdate({ ...scene, location: e.target.value })}
+          onCommit={(val) => onUpdate({ ...scene, location: val })}
           placeholder="Location and time..."
           className="h-7 text-[11px]"
         />
@@ -580,10 +469,10 @@ export function SceneSection({
         <label className="text-[10px] text-muted-foreground">
           Who is present
         </label>
-        <Input
+        <DeferredInput
           value={presentNames.join(", ")}
-          onChange={(e) => {
-            const names = e.target.value
+          onCommit={(val) => {
+            const names = val
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
@@ -599,9 +488,9 @@ export function SceneSection({
       </div>
       <div className="flex flex-col gap-1.5">
         <label className="text-[10px] text-muted-foreground">Atmosphere</label>
-        <Input
+        <DeferredInput
           value={scene.atmosphere}
-          onChange={(e) => onUpdate({ ...scene, atmosphere: e.target.value })}
+          onCommit={(val) => onUpdate({ ...scene, atmosphere: val })}
           placeholder="Atmosphere..."
           className="h-7 text-[11px]"
         />
@@ -630,12 +519,15 @@ export function DemeanorSection({
       { entityId: entities[0]?.id ?? "", mood: "", energy: "" },
     ]);
   const remove = (i: number) => onUpdate(entries.filter((_, idx) => idx !== i));
+  const demeanorKeys = keyedByBase(entries, (entry) =>
+    [entry.entityId, entry.mood.trim(), entry.energy.trim()].join("::"),
+  );
 
   return (
     <SectionShell title="Current Demeanor" badge={`${entries.length}`}>
       {entries.map((e, i) => (
         <EntityCard
-          key={e.entityId || String(i)}
+          key={demeanorKeys[i] ?? resolveEntityName(entities, e.entityId)}
           label={resolveEntityName(entities, e.entityId) || "General"}
           onRemove={() => remove(i)}
         >
@@ -654,9 +546,9 @@ export function DemeanorSection({
           <div className="flex gap-1.5">
             <div className="flex-1 flex flex-col gap-1">
               <label className="text-[10px] text-muted-foreground">Mood</label>
-              <Input
+              <DeferredInput
                 value={e.mood}
-                onChange={(ev) => update(i, { mood: ev.target.value })}
+                onCommit={(val) => update(i, { mood: val })}
                 className="h-7 text-[11px]"
               />
             </div>
@@ -664,9 +556,9 @@ export function DemeanorSection({
               <label className="text-[10px] text-muted-foreground">
                 Energy
               </label>
-              <Input
+              <DeferredInput
                 value={e.energy}
-                onChange={(ev) => update(i, { energy: ev.target.value })}
+                onCommit={(val) => update(i, { energy: val })}
                 className="h-7 text-[11px]"
               />
             </div>
@@ -681,169 +573,6 @@ export function DemeanorSection({
       >
         <Plus className="mr-1 h-3 w-3" /> Add demeanor
       </Button>
-    </SectionShell>
-  );
-}
-
-export function BulletListSection({
-  title,
-  items,
-  onUpdate,
-  placeholder,
-  addLabel,
-}: {
-  title: string;
-  items: string[];
-  onUpdate: (items: string[]) => void;
-  placeholder: string;
-  addLabel: string;
-}) {
-  const update = (i: number, val: string) =>
-    onUpdate(items.map((item, idx) => (idx === i ? val : item)));
-  const add = () => onUpdate([...items, ""]);
-  const remove = (i: number) => onUpdate(items.filter((_, idx) => idx !== i));
-
-  return (
-    <SectionShell title={title} badge={`${items.length}`}>
-      {items.map((item, i) => (
-        <div key={item.slice(0, 20) + i} className="flex gap-1.5 items-start">
-          <Textarea
-            value={item}
-            onChange={(e) => update(i, e.target.value)}
-            placeholder={placeholder}
-            className="min-h-8 font-mono text-[11px] leading-relaxed flex-1"
-            rows={1}
-          />
-          <button
-            type="button"
-            onClick={() => remove(i)}
-            className="mt-1 text-muted-foreground hover:text-destructive"
-            title="Remove"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-      ))}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-start text-xs"
-        onClick={add}
-      >
-        <Plus className="mr-1 h-3 w-3" /> {addLabel}
-      </Button>
-    </SectionShell>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Timestamped bullet list (Open Threads / Hard Facts) — sorted oldest-first
-// ---------------------------------------------------------------------------
-
-export interface TimestampedItem {
-  text: string;
-  createdAt?: string;
-}
-
-function formatDateBadge(iso?: string): string {
-  if (!iso) return "—";
-  return iso.slice(0, 10);
-}
-
-function byTimestamp(a: TimestampedItem, b: TimestampedItem): number {
-  const da = a.createdAt ?? "";
-  const db = b.createdAt ?? "";
-  return da.localeCompare(db);
-}
-
-export function TimestampedBulletListSection({
-  title,
-  items,
-  onUpdate,
-  placeholder,
-  addLabel,
-}: {
-  title: string;
-  items: TimestampedItem[];
-  onUpdate: (items: TimestampedItem[]) => void;
-  placeholder: string;
-  addLabel: string;
-}) {
-  // Display sorted but preserve original indices for editing
-  const indexed = items.map((item, i) => ({ item, origIdx: i }));
-  const sorted = [...indexed].sort((a, b) => byTimestamp(a.item, b.item));
-
-  const updateText = (origIdx: number, val: string) =>
-    onUpdate(
-      items.map((item, idx) =>
-        idx === origIdx ? { ...item, text: val } : item,
-      ),
-    );
-  const add = () =>
-    onUpdate([
-      ...items,
-      { text: "", createdAt: new Date().toISOString().slice(0, 10) },
-    ]);
-  const remove = (origIdx: number) =>
-    onUpdate(items.filter((_, idx) => idx !== origIdx));
-
-  return (
-    <SectionShell title={title} badge={`${items.length}`}>
-      {sorted.map(({ item, origIdx }) => (
-        <div
-          key={item.createdAt ?? item.text.slice(0, 20)}
-          className="flex flex-col gap-0.5"
-        >
-          <div className="flex gap-1.5 items-start">
-            <Textarea
-              value={item.text}
-              onChange={(e) => updateText(origIdx, e.target.value)}
-              placeholder={placeholder}
-              className="min-h-8 font-mono text-[11px] leading-relaxed flex-1"
-              rows={1}
-            />
-            <button
-              type="button"
-              onClick={() => remove(origIdx)}
-              className="mt-1 text-muted-foreground hover:text-destructive"
-              title="Remove"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </div>
-          <span className="text-[9px] text-muted-foreground pl-1">
-            added {formatDateBadge(item.createdAt)}
-          </span>
-        </div>
-      ))}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-start text-xs"
-        onClick={add}
-      >
-        <Plus className="mr-1 h-3 w-3" /> {addLabel}
-      </Button>
-    </SectionShell>
-  );
-}
-
-export function CustomSectionEditor({
-  section,
-  onUpdate,
-}: {
-  section: CustomSection;
-  onUpdate: (content: string) => void;
-}) {
-  const lineCount = section.content.split("\n").length;
-  return (
-    <SectionShell title={section.heading} badge={`${lineCount} lines`}>
-      <Textarea
-        value={section.content}
-        onChange={(e) => onUpdate(e.target.value)}
-        className="min-h-16 font-mono text-[11px] leading-relaxed"
-        rows={Math.min(lineCount + 1, 10)}
-      />
     </SectionShell>
   );
 }

@@ -9,6 +9,7 @@ import {
   logError,
 } from "@/lib/api-logger";
 import { env, getBaseUrl } from "@/lib/env";
+import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 
 const openrouter = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
@@ -78,22 +79,28 @@ Important rules:
 - Preserve existing details in every section unless they changed — do not drop information.
 - Output ONLY the updated Story State block, no commentary or preamble.`;
 
-const PROVIDER_OPTIONS = {
-  openrouter: {
-    reasoning: { effort: "medium" as const },
-    provider: {
-      order: ["SiliconFlow", "GMICloud", "Friendli", "Venice", "AtlasCloud"],
-    },
-  },
-};
-
 type GenerateResult = Awaited<ReturnType<typeof generateText>>;
 type ModelMessages = NonNullable<
   Parameters<typeof generateText>[0]["messages"]
 >;
 
+function resolveModelConfig(modelFromBody?: string): {
+  model: string;
+  providerOrder: string[];
+} {
+  const model = modelFromBody ?? DEFAULT_MODEL_ID;
+  return {
+    model,
+    providerOrder:
+      getModelEntry(model)?.providers ??
+      getModelEntry(DEFAULT_MODEL_ID)?.providers ??
+      [],
+  };
+}
+
 async function generateWithRetries(
   model: string,
+  providerOrder: readonly string[],
   system: string,
   modelMessages: ModelMessages,
   elapsed: () => number,
@@ -105,7 +112,14 @@ async function generateWithRetries(
       messages: modelMessages,
       temperature: 0.4,
       maxOutputTokens: maxTokens,
-      providerOptions: PROVIDER_OPTIONS,
+      providerOptions: {
+        openrouter: {
+          reasoning: { effort: "medium" as const },
+          ...(providerOrder.length > 0
+            ? { provider: { order: [...providerOrder] } }
+            : {}),
+        },
+      },
     });
 
   let result = await generate();
@@ -146,17 +160,22 @@ async function generateWithRetries(
 
 export async function POST(req: Request) {
   try {
-    const { messages, currentStoryState, systemPrompt } =
-      (await req.json()) as {
-        messages: UIMessage[];
-        currentStoryState: string;
-        systemPrompt: string;
-      };
+    const {
+      messages,
+      currentStoryState,
+      systemPrompt,
+      model: modelFromBody,
+    } = (await req.json()) as {
+      messages: UIMessage[];
+      currentStoryState: string;
+      systemPrompt: string;
+      model?: string;
+    };
 
     logRequest("/api/summarize", { messages, currentStoryState, systemPrompt });
     const elapsed = startTimer();
 
-    const model = env.OPENROUTER_MODEL;
+    const { model, providerOrder } = resolveModelConfig(modelFromBody);
 
     const system = `${systemPrompt}\n\n## Current Story State\n${currentStoryState}`;
 
@@ -173,6 +192,7 @@ export async function POST(req: Request) {
 
     const result = await generateWithRetries(
       model,
+      providerOrder,
       system,
       modelMessages,
       elapsed,

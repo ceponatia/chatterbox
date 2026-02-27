@@ -23,6 +23,7 @@ interface Params {
   messages: UIMessage[];
   isLoading: boolean;
   storyState: string;
+  model: string;
   conversationId: string | null;
   onStateUpdate: (newState: string) => void;
   /** The existing summarization interval — pipeline uses its own trigger logic */
@@ -90,6 +91,7 @@ export function useStatePipeline({
   messages,
   isLoading,
   storyState,
+  model,
   conversationId,
   onStateUpdate,
   autoSummarizeInterval,
@@ -102,6 +104,8 @@ export function useStatePipeline({
   const inflightRef = useRef(false);
   const storyStateRef = useRef(storyState);
   storyStateRef.current = storyState;
+  const modelRef = useRef(model);
+  modelRef.current = model;
   const [historyVersion, setHistoryVersion] = useState(0);
   const [recentlyUpdated, setRecentlyUpdated] = useState(false);
   const recentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +124,7 @@ export function useStatePipeline({
             currentStoryState: storyStateRef.current,
             turnNumber,
             lastPipelineTurn: lastPipelineTurnRef.current,
+            model: modelRef.current,
           }),
         });
 

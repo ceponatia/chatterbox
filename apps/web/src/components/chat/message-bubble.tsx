@@ -116,7 +116,7 @@ export function MessageBubble({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1 px-2 text-xs"
+              className="relative h-7 gap-1 px-2 text-xs before:absolute before:-inset-2 before:content-['']"
               onClick={() => {
                 setEditText(text);
                 setEditing(true);
@@ -129,7 +129,7 @@ export function MessageBubble({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs"
+                className="relative h-7 gap-1 px-2 text-xs before:absolute before:-inset-2 before:content-['']"
                 onClick={() => onRetry(message.id)}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -169,7 +169,7 @@ function ActionButtons({
       <Button
         variant="ghost"
         size="sm"
-        className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+        className="relative h-6 w-6 p-0 text-muted-foreground hover:text-foreground before:absolute before:-inset-2 before:content-['']"
         title="Edit"
         onClick={onEdit}
       >
@@ -179,7 +179,7 @@ function ActionButtons({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+          className="relative h-6 w-6 p-0 text-muted-foreground hover:text-foreground before:absolute before:-inset-2 before:content-['']"
           title="Retry"
           onClick={() => onRetry(messageId)}
         >
@@ -238,7 +238,7 @@ function EditForm({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs"
+          className="relative h-6 text-xs before:absolute before:-inset-2 before:content-['']"
           onClick={onCancel}
         >
           Cancel
@@ -246,12 +246,16 @@ function EditForm({
         <Button
           variant="outline"
           size="sm"
-          className="h-6 text-xs"
+          className="relative h-6 text-xs before:absolute before:-inset-2 before:content-['']"
           onClick={onSave}
         >
           Save
         </Button>
-        <Button size="sm" className="h-6 text-xs" onClick={onSaveAndGenerate}>
+        <Button
+          size="sm"
+          className="relative h-6 text-xs before:absolute before:-inset-2 before:content-['']"
+          onClick={onSaveAndGenerate}
+        >
           Save & Generate
         </Button>
       </div>

@@ -1,12 +1,12 @@
 "use client";
 
 import { useRef, useCallback } from "react";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { RotateCcw, Clock, Upload } from "lucide-react";
+import { DeferredTextarea } from "./deferred-inputs";
 
 import { StateHistory } from "./state-history";
 import type { StateHistoryEntry } from "@/lib/state-history";
@@ -286,9 +286,9 @@ export function StoryStateEditor({
           onUpdate={onStructuredStateUpdate}
         />
       ) : (
-        <Textarea
+        <DeferredTextarea
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onCommit={onChange}
           className="min-h-48 font-mono text-xs leading-relaxed"
           placeholder="Enter story state or import a .md file..."
         />

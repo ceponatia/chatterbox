@@ -5,12 +5,12 @@ import type {
   SerializedSegment,
   SerializedPolicy,
 } from "@chatterbox/prompt-assembly";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { RotateCcw, Upload, ChevronDown, ChevronRight } from "lucide-react";
+import { DeferredTextarea } from "./deferred-inputs";
 
 interface SystemPromptEditorProps {
   value: string;
@@ -124,9 +124,9 @@ function SegmentCard({
               </span>
             )}
           </div>
-          <Textarea
+          <DeferredTextarea
             value={segment.content}
-            onChange={(e) => onUpdate(e.target.value)}
+            onCommit={(content) => onUpdate(content)}
             className="min-h-24 font-mono text-[11px] leading-relaxed"
           />
         </div>
@@ -236,9 +236,9 @@ export function SystemPromptEditor({
           </p>
         </div>
       ) : (
-        <Textarea
+        <DeferredTextarea
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onCommit={onChange}
           className="min-h-64 font-mono text-xs leading-relaxed"
           placeholder="Enter your system prompt..."
         />
