@@ -58,13 +58,19 @@ export function windowSocketMessages(
   }
 
   let userCount = 0;
-  let windowStartIdx = 0;
+  let windowStartIdx = -1;
   for (let i = 0; i < messages.length; i++) {
     if (messages[i]!.role === "user") userCount++;
     if (userCount > lastPipelineTurn) {
       windowStartIdx = i;
       break;
     }
+  }
+
+  // No new messages beyond lastPipelineTurn (re-run or equal turn range) --
+  // fall back to a capped recent window instead of sending everything.
+  if (windowStartIdx < 0) {
+    return messages.slice(-40);
   }
 
   const startIdx = Math.max(0, windowStartIdx - OVERLAP_MESSAGES);
@@ -438,7 +444,19 @@ export const statePipelineAdapter: StatePipelineSocket = {
       "info",
     );
 
-    const model = appRequest.model ?? DEFAULT_MODEL_ID;
+    // Aion does not support tool calls or structured output; fall back to GLM
+    // for state updates so the pipeline always uses a capable model.
+    const requestedModel = appRequest.model ?? DEFAULT_MODEL_ID;
+    const model =
+      requestedModel === "aion-labs/aion-2.0"
+        ? DEFAULT_MODEL_ID
+        : requestedModel;
+    if (model !== requestedModel) {
+      log(
+        `  \x1b[2mstate-update: model fallback ${requestedModel} -> ${model}\x1b[0m`,
+        "info",
+      );
+    }
     const providerOrder =
       getModelEntry(model)?.providers ??
       getModelEntry(DEFAULT_MODEL_ID)?.providers ??

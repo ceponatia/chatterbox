@@ -42,16 +42,12 @@ import {
 } from "./history-compression";
 import { buildDepthNote } from "./depth-note";
 import {
-  buildToolBypassContext,
-  sanitizeMessagesForPlainText,
-} from "./tool-bypass";
-import {
   buildSystemPrompt,
-  createSystemMessage,
   extractPrimaryUserFromCast,
   buildRuntimePlayerBoundary,
 } from "./system-prompt";
 import { streamCallbacks } from "./stream-telemetry";
+import { generateGlmDraft, buildAionMessages } from "./aion-draft";
 
 // ---------------------------------------------------------------------------
 // Types & constants
@@ -334,20 +330,6 @@ async function preparePrompt(
     runtimeBoundary,
     toolUseEnabled,
   );
-  if (!toolUseEnabled) {
-    const bypassContext = buildToolBypassContext(
-      allSegments,
-      assembly,
-      storyState,
-    );
-    if (bypassContext) {
-      systemMessages.push(createSystemMessage(bypassContext, false));
-      log(
-        `  \x1b[2m\u{1f4cb} tool bypass: injected (${bypassContext.length} chars)\x1b[0m`,
-        "info",
-      );
-    }
-  }
 
   logAssembly(assembly, ctx);
   if (primaryUserAlias) {
@@ -429,12 +411,6 @@ export async function POST(req: Request) {
 
   try {
     const providerOrder = getProviderOrder(prompt.modelId);
-    if (!prompt.toolUseEnabled) {
-      log(
-        `  \x1b[2m\u{1f6d1} tool use bypass for model: ${prompt.modelId}\x1b[0m`,
-        "info",
-      );
-    }
 
     const convCtx = await buildConversationContext(
       windowed,
@@ -455,18 +431,86 @@ export async function POST(req: Request) {
       /\b(relationship|relationships|thread|threads|hard fact|hard facts|recall|remember)\b/i.test(
         prompt.ctx.currentUserMessage,
       );
+
+    const compressionMeta = {
+      windowedMessages: windowed.length,
+      windowedChars: convCtx.windowedChars,
+      verbatimMessages: convCtx.compressed.stats.verbatim,
+      verbatimChars: convCtx.verbatimChars,
+      summaryMessages: convCtx.compressed.stats.summary,
+      digestMessages: convCtx.compressed.stats.digest,
+      promotedToVerbatim: convCtx.compressed.stats.promotedToVerbatim,
+      promotedToSummary: convCtx.compressed.stats.promotedToSummary,
+      hasHistorySummary: Boolean(convCtx.compressed.historySummary),
+      historySummaryChars: convCtx.historySummaryChars,
+      depthNoteChars: convCtx.depthNoteChars,
+      effectiveContextChars: convCtx.effectiveContextChars,
+      compressionRatio: convCtx.compressionRatio,
+    };
+
+    // -----------------------------------------------------------------------
+    // Aion two-phase flow: GLM draft with tools -> Aion final response
+    // -----------------------------------------------------------------------
+    if (!prompt.toolUseEnabled) {
+      const draft = await generateGlmDraft(
+        prompt.systemMessages,
+        convCtx.modelMessages,
+        prompt.tools,
+        resolveSettings(settings),
+        mustUseStoryContext,
+      );
+
+      log(
+        `  \x1b[2m\u{1f501} Aion two-phase: draft=${draft.draftText.length} chars, ` +
+          `tools=${draft.toolCallCount}, steps=${draft.stepCount}, ` +
+          `${draft.elapsedMs}ms\x1b[0m`,
+        "info",
+      );
+
+      const aionMessages = buildAionMessages(
+        prompt.systemMessages,
+        convCtx.modelMessages,
+        convCtx.historySummaryMessage,
+        convCtx.ragSummaryMessage,
+        draft,
+      );
+
+      const aionResult = streamText({
+        model: openrouterPlainText(prompt.modelId),
+        messages: aionMessages,
+        ...resolveSettings(settings),
+        providerOptions: {
+          openrouter: {
+            reasoning: { effort: "high" },
+            ...(providerOrder.length > 0
+              ? { provider: { order: providerOrder } }
+              : {}),
+          },
+        },
+        ...streamCallbacks(elapsed, {
+          route: "/api/chat",
+          modelId: prompt.modelId,
+          turnNumber: prompt.ctx.turnNumber,
+          compression: compressionMeta,
+        }),
+      });
+
+      logStreamStart("/api/chat (Aion two-phase)");
+      return aionResult.toUIMessageStreamResponse();
+    }
+
+    // -----------------------------------------------------------------------
+    // Normal flow: direct tool-calling model
+    // -----------------------------------------------------------------------
     const requestMessages = [
       ...prompt.systemMessages,
       ...convCtx.historySummaryMessage,
       ...convCtx.ragSummaryMessage,
-      ...(prompt.toolUseEnabled
-        ? convCtx.modelMessages
-        : sanitizeMessagesForPlainText(convCtx.modelMessages)),
+      ...convCtx.modelMessages,
     ] as unknown as ModelMessage[];
 
-    const provider = prompt.toolUseEnabled ? openrouter : openrouterPlainText;
     const result = streamText({
-      model: provider(prompt.modelId),
+      model: openrouter(prompt.modelId),
       messages: requestMessages,
       ...buildToolConfig(
         prompt.toolUseEnabled,
@@ -486,21 +530,7 @@ export async function POST(req: Request) {
         route: "/api/chat",
         modelId: prompt.modelId,
         turnNumber: prompt.ctx.turnNumber,
-        compression: {
-          windowedMessages: windowed.length,
-          windowedChars: convCtx.windowedChars,
-          verbatimMessages: convCtx.compressed.stats.verbatim,
-          verbatimChars: convCtx.verbatimChars,
-          summaryMessages: convCtx.compressed.stats.summary,
-          digestMessages: convCtx.compressed.stats.digest,
-          promotedToVerbatim: convCtx.compressed.stats.promotedToVerbatim,
-          promotedToSummary: convCtx.compressed.stats.promotedToSummary,
-          hasHistorySummary: Boolean(convCtx.compressed.historySummary),
-          historySummaryChars: convCtx.historySummaryChars,
-          depthNoteChars: convCtx.depthNoteChars,
-          effectiveContextChars: convCtx.effectiveContextChars,
-          compressionRatio: convCtx.compressionRatio,
-        },
+        compression: compressionMeta,
       }),
     });
 
