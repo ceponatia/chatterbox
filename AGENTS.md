@@ -18,18 +18,19 @@ pnpm start                  # runs production app (binds 0.0.0.0)
 Requires `apps/web/.env` with at minimum `OPENROUTER_API_KEY`. See `apps/web/src/lib/env.ts` for typed env vars and defaults.
 
 Optional env vars:
+
 - `FACT_EXTRACTION_MODEL` - model ID used by digest fact extraction (`/api/chat`) for PH04 compression.
 
 ## Build & validate
 
-| Command | Scope | Purpose |
-|---------|-------|---------|
-| `pnpm dev` | apps/web | Dev server (Turbopack) |
-| `pnpm build` | apps/web | Production build |
-| `pnpm typecheck` | all packages | `tsc --noEmit` recursively |
-| `pnpm lint` | all packages | ESLint recursively |
-| `pnpm infra:up` / `infra:down` | infra | Postgres via Docker Compose |
-| `pnpm fetch:providers` | root script | Refresh OpenRouter provider order snapshot for model registry |
+| Command                        | Scope        | Purpose                                                       |
+| ------------------------------ | ------------ | ------------------------------------------------------------- |
+| `pnpm dev`                     | apps/web     | Dev server (Turbopack)                                        |
+| `pnpm build`                   | apps/web     | Production build                                              |
+| `pnpm typecheck`               | all packages | `tsc --noEmit` recursively                                    |
+| `pnpm lint`                    | all packages | ESLint recursively                                            |
+| `pnpm infra:up` / `infra:down` | infra        | Postgres via Docker Compose                                   |
+| `pnpm fetch:providers`         | root script  | Refresh OpenRouter provider order snapshot for model registry |
 
 **No test framework exists.** Validation relies on `pnpm typecheck` + `pnpm lint` + `pnpm dev` starts successfully.
 
@@ -73,6 +74,7 @@ apps/web → @chatterbox/sockets
 
 <!-- markdownlint-disable -->
 <!-- cspell:disable -->
+
 Do not use any typographic or "smart" punctuation.
 
 - Forbidden Characters (non-ASCII)
@@ -81,8 +83,8 @@ Do not use any typographic or "smart" punctuation.
   - Curly quotes: “ ” ‘ ’
   - Ellipsis: …
   - Non-breaking spaces
-  <!-- cspell:enable -->
-<!-- markdownlint-restore -->
+      <!-- cspell:enable -->
+    <!-- markdownlint-restore -->
 
 ### Package boundaries
 
@@ -107,7 +109,7 @@ Do not use any typographic or "smart" punctuation.
 - Schema lives at `infra/schema.prisma` (not the default location).
 - `prisma.config.ts` at workspace root maps this; run all `prisma` CLI commands from root.
 - Uses the Postgres driver adapter (`@prisma/adapter-pg`), not Prisma's built-in connection.
-- Docker Compose: `pgvector/pgvector:pg16` (Postgres 16 + pgvector), default creds `chatterbox/chatterbox`, port 5432.
+- Docker Compose: `pgvector/pgvector:pg16` (Postgres 16 + pgvector), default creds `chatterbox/chatterbox`, host port 55432 mapped to container port 5432.
 - `globalThis` caching pattern prevents PrismaClient re-instantiation in dev hot-reload.
 
 ## Conventions

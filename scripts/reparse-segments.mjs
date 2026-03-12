@@ -23,7 +23,7 @@ const { parseSystemPromptToSegments } =
 const DRY_RUN = process.argv.includes("--dry-run");
 
 const client = new pg.Client(
-  "postgresql://chatterbox:chatterbox@localhost:5432/chatterbox",
+  "postgresql://chatterbox:chatterbox@localhost:55432/chatterbox",
 );
 await client.connect();
 

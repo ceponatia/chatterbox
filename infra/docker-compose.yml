@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: chatterbox
       POSTGRES_PASSWORD: chatterbox
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - chatterbox-postgres-data:/var/lib/postgresql/data
 

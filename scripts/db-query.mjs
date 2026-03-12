@@ -3,7 +3,7 @@ const require = createRequire(import.meta.url);
 const pg = require("/home/brian/projects/chatterbox/node_modules/.pnpm/node_modules/pg");
 
 const client = new pg.Client(
-  "postgresql://chatterbox:chatterbox@localhost:5432/chatterbox",
+  "postgresql://chatterbox:chatterbox@localhost:55432/chatterbox",
 );
 await client.connect();
 

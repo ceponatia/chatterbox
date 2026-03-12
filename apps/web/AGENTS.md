@@ -10,6 +10,7 @@ Next.js 16 app runtime for Chatterbox. Hosts the chat UI, API routes, and client
 - `@chatterbox/prompt-assembly` — segmented prompt assembler, segment definitions, turn tracker types, markdown parser, serialized segment types
 
 ## Key architecture
+
 # AGENTS.md - `apps/web`
 
 ## Purpose
@@ -98,6 +99,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - Import shared packages from root only: `@chatterbox/sockets`, `@chatterbox/prompt-assembly`.
 - Do not deep-import package internals (`src/*`).
 - Use `@/*` alias for app-internal imports.
+- Runtime DB fallback in `src/lib/env.ts` points at host port `55432`; keep infra/docs in sync if that mapping changes.
 - Preserve module-scope mutable `liveConfig` in `page.tsx`; do not refactor it into React state.
 
 ## Validation

@@ -8,6 +8,6 @@ export default defineConfig({
   datasource: {
     url:
       process.env.DATABASE_URL ||
-      "postgresql://chatterbox:chatterbox@localhost:5432/chatterbox",
+      "postgresql://chatterbox:chatterbox@localhost:55432/chatterbox",
   },
 });
