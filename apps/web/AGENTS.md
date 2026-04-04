@@ -62,8 +62,12 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 ### UI behavior
 
 - Desktop: chat + persistent sidebar. Mobile: full-screen overlay sidebar.
+- Desktop configuration sidebar can be hidden and reopened from the header `Config` button; mobile uses the existing full-screen overlay trigger.
 - iPhone Safari support relies on `h-dvh`, safe-area utilities in `globals.css`, and viewport fit in `layout.tsx`.
 - Mobile message actions render below bubbles (not hover-only).
+- Shared page chrome lives in `src/app/globals.css` as semantic classes such as `app-shell`, `app-panel-header`, `app-sidebar`, `app-message-surface*`, and `app-code-chip`. Reuse these before adding one-off wrapper utility strings for the same surface pattern.
+- Sidebar editor primitives also live in `src/app/globals.css` as `app-editor-*` and `app-history-*` classes. Reuse them for section shells, editor headers, nested cards, small selects, warning notices, and history surfaces before adding new one-off chrome styles.
+- Global color tokens in `src/app/globals.css` define the shared dark palette for page chrome, message surfaces, sidebar panels, and accent states. Prefer token/class reuse over hardcoded Tailwind color utilities in app UI.
 
 ### Model and routing notes
 

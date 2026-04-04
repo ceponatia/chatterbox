@@ -27,6 +27,7 @@ import {
   embedMessagePairs,
   retrieveSimilarPairs,
 } from "@/lib/message-embeddings";
+import { getUserId } from "@/lib/get-user-id";
 import { parseStateFields } from "@/lib/state-utils";
 import { openrouter, openrouterPlainText } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
@@ -351,6 +352,7 @@ function getProviderOrder(modelId: string): string[] {
 
 function fireEmbeddingPipeline(
   conversationId: string | null | undefined,
+  userId: string,
   messages: UIMessage[],
   windowed: UIMessage[],
   verbatimCount: number,
@@ -361,7 +363,7 @@ function fireEmbeddingPipeline(
     verbatimCount,
   );
   if (pairsToEmbed.length > 0 && conversationId) {
-    void embedMessagePairs(conversationId, pairsToEmbed);
+    void embedMessagePairs(conversationId, userId, pairsToEmbed);
   }
 }
 
@@ -371,6 +373,7 @@ function fireEmbeddingPipeline(
 
 // eslint-disable-next-line max-lines-per-function
 export async function POST(req: Request) {
+  const userId = getUserId(req);
   const {
     conversationId,
     messages,
@@ -422,6 +425,7 @@ export async function POST(req: Request) {
 
     fireEmbeddingPipeline(
       conversationId,
+      userId,
       messages,
       windowed,
       convCtx.compressed.stats.verbatim,

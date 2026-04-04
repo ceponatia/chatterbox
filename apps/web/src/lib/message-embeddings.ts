@@ -35,6 +35,7 @@ function vectorLiteral(embedding: number[]): string {
 
 export async function embedMessagePairs(
   conversationId: string,
+  userId: string,
   pairs: MessagePair[],
 ): Promise<void> {
   if (!conversationId || pairs.length === 0) return;
@@ -54,12 +55,13 @@ export async function embedMessagePairs(
       await prisma.$queryRawUnsafe(
         `
           INSERT INTO "MessageEmbedding"
-            ("conversationId", "turnIndex", "userText", "assistantText", "combinedText", "embedding")
+            ("conversationId", "userId", "turnIndex", "userText", "assistantText", "combinedText", "embedding")
           VALUES
-            ($1, $2, $3, $4, $5, $6::vector)
+            ($1, $2, $3, $4, $5, $6, $7::vector)
           ON CONFLICT ("conversationId", "turnIndex") DO NOTHING
         `,
         conversationId,
+        userId,
         pair.turnIndex,
         pair.userText,
         pair.assistantText,

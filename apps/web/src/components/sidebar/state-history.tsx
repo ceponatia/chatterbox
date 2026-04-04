@@ -24,7 +24,7 @@ export function StateHistory({ entries }: StateHistoryProps) {
 
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+      <div className="app-history-empty">
         <History className="h-5 w-5" />
         <p className="text-xs">No state updates yet</p>
       </div>
@@ -76,11 +76,11 @@ function HistoryEntry({
   const Icon = config.icon;
 
   return (
-    <div className="rounded-md border border-border/50 bg-background/50 text-xs">
+    <div className="app-history-entry">
       <div className="flex items-center">
         <button
           type="button"
-          className="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/50 rounded-l-md transition-colors"
+          className="flex flex-1 items-center gap-2 rounded-l-xl px-2.5 py-1.5 text-left transition-colors hover:bg-muted/40"
           onClick={onOpenDetail}
         >
           <Icon
@@ -120,7 +120,7 @@ function HistoryEntry({
 
 function ExpandedDetails({ entry }: { entry: StateHistoryEntry }) {
   return (
-    <div className="flex flex-col gap-2 border-t px-2.5 py-2">
+    <div className="app-editor-section-body gap-2 px-2.5 py-2">
       {/* Validation summary */}
       <div className="flex flex-wrap gap-1.5">
         <ValidationBadge label="Schema" pass={entry.validation.schemaValid} />

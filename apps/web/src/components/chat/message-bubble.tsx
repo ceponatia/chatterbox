@@ -76,10 +76,8 @@ export function MessageBubble({
       <RoleAvatar isUser={isUser} />
       <div
         className={cn(
-          "relative max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-          isUser
-            ? "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-muted text-foreground rounded-tl-sm",
+          "app-message-surface",
+          isUser ? "app-message-surface-user" : "app-message-surface-assistant",
         )}
       >
         {!editing && !isLoading && (
@@ -99,7 +97,10 @@ export function MessageBubble({
         )}
         {mergedReasoning && (
           <div className="mb-1">
-            <ReasoningBlock text={mergedReasoning.text} state={mergedReasoning.state} />
+            <ReasoningBlock
+              text={mergedReasoning.text}
+              state={mergedReasoning.state}
+            />
           </div>
         )}
         {editing ? (
@@ -189,12 +190,7 @@ function ActionButtons(props: ActionButtonsProps) {
   } = props;
 
   return (
-    <div
-      className={cn(
-        "absolute -top-2 hidden gap-0.5 rounded-md border bg-background p-0.5 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 lg:flex",
-        isUser ? "left-0" : "right-0",
-      )}
-    >
+    <div className={cn("app-message-toolbar", isUser ? "left-0" : "right-0")}>
       <Button
         variant="ghost"
         size="sm"
@@ -227,10 +223,8 @@ function RoleAvatar({ isUser }: { isUser: boolean }) {
   return (
     <div
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-        isUser
-          ? "bg-primary text-primary-foreground"
-          : "bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
+        "app-message-avatar",
+        isUser ? "app-message-avatar-user" : "app-message-avatar-assistant",
       )}
     >
       {isUser ? <User className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}

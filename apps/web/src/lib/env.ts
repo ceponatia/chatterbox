@@ -9,6 +9,8 @@ export const env = {
   PORT: process.env.PORT || "3000",
   LOG_LEVEL: (process.env.LOG_LEVEL || "info").toLowerCase(),
   NODE_ENV: process.env.NODE_ENV || "development",
+  AUTH_ENABLED: process.env.AUTH_ENABLED === "true",
+  SESSION_SECRET: process.env.SESSION_SECRET || "chatterbox-dev-insecure-key",
 } as const;
 
 export function getBaseUrl() {

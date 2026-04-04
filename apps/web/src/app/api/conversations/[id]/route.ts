@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getUserId } from "@/lib/get-user-id";
 import type { Conversation } from "@/lib/storage";
 
 function toConversation(row: {
@@ -49,12 +50,13 @@ function toConversation(row: {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const userId = getUserId(request);
   const { id } = await params;
-  const row = await prisma.conversation.findUnique({
-    where: { id },
+  const row = await prisma.conversation.findFirst({
+    where: { id, userId },
   });
   if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -66,6 +68,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const userId = getUserId(request);
   const { id } = await params;
   const body = (await request.json()) as Conversation;
   if (!body || body.id !== id) {
@@ -73,6 +76,7 @@ export async function PUT(
   }
   const data = {
     id: body.id,
+    userId,
     title: body.title,
     createdAt: new Date(body.createdAt),
     updatedAt: new Date(body.updatedAt),
@@ -96,17 +100,18 @@ export async function PUT(
   };
   const row = await prisma.conversation.upsert({
     where: { id: body.id },
-    update: data,
+    update: { ...data, userId: undefined },
     create: data,
   });
   return NextResponse.json(toConversation(row));
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const userId = getUserId(request);
   const { id } = await params;
-  await prisma.conversation.delete({ where: { id } });
+  await prisma.conversation.deleteMany({ where: { id, userId } });
   return NextResponse.json({ ok: true });
 }

@@ -36,12 +36,12 @@ export function SectionShell({
   const sectionId = `section-${uid}`;
   const [expanded, setExpanded] = useState(defaultExpanded);
   return (
-    <div className="rounded-md border bg-card">
+    <div className="app-editor-section">
       <button
         type="button"
         aria-expanded={expanded}
         aria-controls={sectionId}
-        className="relative flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 before:absolute before:-inset-2 before:content-['']"
+        className="app-editor-section-trigger"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
@@ -57,7 +57,7 @@ export function SectionShell({
         )}
       </button>
       {expanded && (
-        <div id={sectionId} className="border-t px-3 py-2 flex flex-col gap-2">
+        <div id={sectionId} className="app-editor-section-body">
           {children}
         </div>
       )}
@@ -77,7 +77,7 @@ export function EntityCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded border bg-muted/30 px-2.5 py-2 flex flex-col gap-1.5">
+    <div className="app-editor-card">
       <div className="flex items-center gap-1.5">
         <span className="flex-1 text-[11px] font-medium truncate">{label}</span>
         {badge}
@@ -136,7 +136,7 @@ export function EntitySelect({
         }
       }}
       placeholder={placeholder}
-      className="h-7 text-[11px] flex-1"
+      className="app-editor-select h-7 flex-1"
       list="entity-names"
     />
   );

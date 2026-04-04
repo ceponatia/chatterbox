@@ -6,8 +6,17 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  username      String   @unique
+  passwordHash  String
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  conversations Conversation[]
+}
+
 model Conversation {
   id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @db.Uuid
   title               String
   createdAt           DateTime @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime @default(now()) @db.Timestamptz(6)
@@ -25,6 +34,9 @@ model Conversation {
   lastSummarizedTurn  Int      @default(0)
   lastPipelineTurn    Int      @default(0)
   stateHistoryEntries StateHistoryEntry[]
+  user                User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model StateHistoryEntry {

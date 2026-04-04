@@ -42,7 +42,7 @@ export const MessageList = memo(function MessageList({
   if (messages.length === 0) return <EmptyState />;
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <ScrollArea className="min-h-0 flex-1 overflow-hidden">
       <div className="flex flex-col gap-1 py-4">
         {hiddenCount > 0 && (
           <ShowMoreButton hiddenCount={hiddenCount} onClick={handleShowMore} />
@@ -138,7 +138,7 @@ function useRetryIds(messages: UIMessage[]) {
 function EmptyState() {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
-      <div className="text-center text-muted-foreground">
+      <div className="app-empty-state-card text-muted-foreground">
         <p className="text-lg font-medium">Start your story</p>
         <p className="mt-1 text-sm">
           Type your first action to begin the roleplay.
@@ -177,10 +177,10 @@ function ShowMoreButton({
 function NarratingIndicator() {
   return (
     <div className="flex gap-3 px-4 py-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300">
+      <div className="app-message-avatar app-message-avatar-assistant">
         <span className="animate-pulse text-xs">✦</span>
       </div>
-      <div className="flex items-center rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
+      <div className="app-message-surface app-message-surface-assistant flex items-center">
         <span className="animate-pulse text-sm text-muted-foreground">
           Narrating…
         </span>

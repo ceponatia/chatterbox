@@ -104,7 +104,7 @@ interface ConfirmTruncateButtonProps {
 export function ConfirmTruncateButton({
   onConfirm,
   idleClassName,
-  confirmClassName = "w-auto gap-1 px-1.5 bg-amber-500/15",
+  confirmClassName = "w-auto gap-1 px-1.5 app-warning-action-confirm",
   className,
 }: ConfirmTruncateButtonProps) {
   return (
@@ -115,7 +115,7 @@ export function ConfirmTruncateButton({
       confirmTitle="Click again to delete all after"
       idleClassName={idleClassName}
       confirmClassName={confirmClassName}
-      className={cn("text-amber-500 hover:text-amber-500", className)}
+      className={cn("app-warning-action", className)}
     />
   );
 }

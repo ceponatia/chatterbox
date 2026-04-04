@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserId } from "@/lib/get-user-id";
 import type { ConversationMeta } from "@/lib/storage";
 
 function toMeta(row: {
@@ -16,8 +17,10 @@ function toMeta(row: {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const userId = getUserId(request);
   const rows = await prisma.conversation.findMany({
+    where: { userId },
     select: { id: true, title: true, createdAt: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });

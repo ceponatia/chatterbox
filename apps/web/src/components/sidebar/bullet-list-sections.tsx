@@ -60,7 +60,7 @@ export function BulletListSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> {addLabel}
@@ -159,7 +159,7 @@ export function TimestampedBulletListSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> {addLabel}

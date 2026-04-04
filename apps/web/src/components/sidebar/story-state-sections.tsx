@@ -114,7 +114,7 @@ export function EntitiesSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> Add cast member
@@ -217,7 +217,7 @@ export function RelationshipsSection({
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-muted-foreground">Tone</label>
               <select
-                className="h-7 rounded border bg-background px-2 text-[11px]"
+                className="app-editor-select h-7"
                 value={r.tone ?? "neutral"}
                 onChange={(e) =>
                   update(i, { tone: e.target.value as RelationshipTone })
@@ -231,7 +231,7 @@ export function RelationshipsSection({
               </select>
             </div>
             {r.details.length > 0 && (
-              <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
+              <div className="app-editor-sublist">
                 {r.details.map((d, di) => (
                   <div key={di} className="flex gap-1 items-start">
                     <span className="text-[10px] text-muted-foreground mt-1">
@@ -257,7 +257,7 @@ export function RelationshipsSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> Add relationship
@@ -355,7 +355,7 @@ export function CharactersSection({
             <div className="text-[10px] font-medium text-muted-foreground px-1 pt-0.5">
               Appearance
             </div>
-            <div className="flex flex-col gap-1 pl-2 border-l-2 border-muted">
+            <div className="app-editor-sublist">
               {items.map(({ entry: e, origIdx }, localIdx) => (
                 <AppearanceAttributeRow
                   key={itemKeys[localIdx] ?? `${e.attribute}-${e.description}`}
@@ -379,7 +379,7 @@ export function CharactersSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={addNew}
       >
         <Plus className="mr-1 h-3 w-3" /> Add character entry
@@ -433,7 +433,7 @@ function AppearanceAttributeRow({
   const tagValues = splitTags(description);
 
   return (
-    <div className="rounded border bg-muted/20">
+    <div className="app-editor-card gap-0 px-0 py-0">
       <div className="flex items-center gap-1.5 px-2 py-1">
         <button
           type="button"
@@ -455,7 +455,7 @@ function AppearanceAttributeRow({
           className="h-5 text-[11px] font-medium flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
         />
         <select
-          className="h-5 rounded border bg-background px-1 text-[9px]"
+          className="app-editor-select h-5 px-1 text-[9px]"
           value={category}
           onChange={(e) =>
             onCategoryChange(e.target.value as AttributeCategory)
@@ -667,7 +667,7 @@ export function DemeanorSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> Add demeanor
@@ -765,7 +765,7 @@ export function OpenThreadsSection({
           <div className="flex items-center gap-2">
             <label className="text-[10px] text-muted-foreground">Status</label>
             <select
-              className="h-7 rounded border bg-background px-2 text-[11px]"
+              className="app-editor-select h-7"
               value={thread.status}
               onChange={(e) =>
                 updateById(thread.id, {
@@ -783,7 +783,7 @@ export function OpenThreadsSection({
             </span>
           </div>
           {thread.lifecycleRejection && (
-            <div className="rounded bg-yellow-500/10 px-2 py-1 text-[10px] text-yellow-400">
+            <div className="app-editor-warning">
               <span className="font-medium">Removal blocked: </span>
               {thread.lifecycleRejection}
             </div>
@@ -803,7 +803,7 @@ export function OpenThreadsSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> Add thread
@@ -906,7 +906,7 @@ export function HardFactsSection({
               className="h-7 text-[11px]"
             />
             {fact.lifecycleRejection && (
-              <div className="rounded bg-yellow-500/10 px-2 py-1 text-[10px] text-yellow-400">
+              <div className="app-editor-warning">
                 <span className="font-medium">Removal blocked: </span>
                 {fact.lifecycleRejection}
               </div>
@@ -941,7 +941,7 @@ export function HardFactsSection({
       <Button
         variant="ghost"
         size="sm"
-        className="self-start text-xs"
+        className="app-editor-add-button"
         onClick={add}
       >
         <Plus className="mr-1 h-3 w-3" /> Add fact

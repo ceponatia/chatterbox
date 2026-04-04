@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getUserId } from "@/lib/get-user-id";
 import type { StateHistoryEntry } from "@/lib/state-history";
+
+async function verifyOwnership(
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  const row = await prisma.conversation.findFirst({
+    where: { id: conversationId, userId },
+    select: { id: true },
+  });
+  return row !== null;
+}
 
 function toStateHistoryEntry(row: {
   id: string;
@@ -27,11 +39,15 @@ function toStateHistoryEntry(row: {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const userId = getUserId(request);
   const { id } = await params;
   try {
+    if (!(await verifyOwnership(id, userId))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     const rows = await prisma.stateHistoryEntry.findMany({
       where: { conversationId: id },
       orderBy: { timestamp: "asc" },
@@ -47,8 +63,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const userId = getUserId(request);
   const { id } = await params;
   try {
+    if (!(await verifyOwnership(id, userId))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     const body = (await request.json()) as StateHistoryEntry;
     const row = await prisma.stateHistoryEntry.create({
       data: {
@@ -72,11 +92,15 @@ export async function POST(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const userId = getUserId(request);
   const { id } = await params;
   try {
+    if (!(await verifyOwnership(id, userId))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     await prisma.stateHistoryEntry.deleteMany({
       where: { conversationId: id },
     });

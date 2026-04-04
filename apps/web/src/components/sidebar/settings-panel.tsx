@@ -92,7 +92,7 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
           </SelectContent>
         </Select>
         {settings.model === "aion-labs/aion-2.0" && (
-          <p className="flex items-center gap-1 text-[10px] text-amber-400">
+          <p className="app-warning-note">
             <Info className="h-3 w-3 shrink-0" />
             Tools provided by GLM 5
           </p>

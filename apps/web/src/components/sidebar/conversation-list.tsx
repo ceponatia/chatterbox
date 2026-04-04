@@ -76,12 +76,12 @@ export function ConversationList({
 }: ConversationListProps) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-3 py-3">
+      <div className="app-panel-header px-3 py-3">
         <span className="text-sm font-semibold">Conversations</span>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0"
+          className="app-button-square h-7 w-7"
           onClick={onNew}
           title="New chat"
         >

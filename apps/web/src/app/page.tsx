@@ -10,6 +10,7 @@ import {
   BookOpen,
   ScrollText,
   ArrowLeft,
+  PanelRightClose,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -182,6 +183,7 @@ function useHomeState() {
       handleDeleteAfter: handleDeleteAfterWithRollback,
     },
     mobile: useMobileSidebar(),
+    desktopSidebarOpenState: useState(true),
     activeTabState: useState("story-state"),
     mobileSidebarTriggerRef: useRef<HTMLButtonElement | null>(null),
   };
@@ -190,6 +192,8 @@ function useHomeState() {
 function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
   const { chat, conv, pipeline, stateHistory, mobile } = state;
   const [activeTab, setActiveTab] = state.activeTabState;
+  const [desktopSidebarOpen, setDesktopSidebarOpen] =
+    state.desktopSidebarOpenState;
   const { mobileSidebarTriggerRef } = state;
   const sidebar = (
     <SidebarContent
@@ -202,7 +206,7 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
     />
   );
   return (
-    <div className="flex h-dvh overflow-hidden safe-top">
+    <div className="app-shell safe-top">
       <MobileSidebarOverlay
         open={mobile.open}
         onClose={mobile.close}
@@ -212,13 +216,28 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
       </MobileSidebarOverlay>
       <ChatPane
         state={state}
+        configSidebarOpen={desktopSidebarOpen}
+        onToggleConfigSidebar={() => setDesktopSidebarOpen((open) => !open)}
         mobileSidebarTriggerRef={mobileSidebarTriggerRef}
       />
-      <aside className="hidden w-125 shrink-0 border-l lg:flex lg:flex-col">
-        <div className="flex h-16 shrink-0 items-center justify-between border-b px-4">
+      <aside
+        className={
+          desktopSidebarOpen ? "app-sidebar w-125" : "app-sidebar-closed w-125"
+        }
+      >
+        <div className="app-panel-header h-16 px-4">
           <h2 className="text-sm font-semibold">Configuration</h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="app-button-square"
+            title="Hide configuration"
+            onClick={() => setDesktopSidebarOpen(false)}
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{sidebar}</div>
+        <div className="app-panel-body px-5 py-4">{sidebar}</div>
       </aside>
     </div>
   );
@@ -226,41 +245,51 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
 
 function ChatPane({
   state,
+  configSidebarOpen,
+  onToggleConfigSidebar,
   mobileSidebarTriggerRef,
 }: {
   state: ReturnType<typeof useHomeState>;
+  configSidebarOpen: boolean;
+  onToggleConfigSidebar: () => void;
   mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const { chat, conv, pipeline, isLoading, msgActions, mobile } = state;
   const messages = chat.messages;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="app-chat-pane">
       <ChatHeader
         conv={conv}
         messages={messages}
         isLoading={isLoading}
         onTriggerPipeline={pipeline.triggerPipeline}
+        configSidebarOpen={configSidebarOpen}
+        onToggleConfigSidebar={onToggleConfigSidebar}
         onOpenMobileSidebar={mobile.toggle}
         mobileSidebarTriggerRef={mobileSidebarTriggerRef}
         onClearChat={msgActions.handleClearChat}
       />
-      <MessageList
-        messages={messages}
-        isLoading={isLoading}
-        onEdit={msgActions.handleEditMessage}
-        onDelete={msgActions.handleDeleteMessage}
-        onDeleteAfter={msgActions.handleDeleteAfter}
-        onRetry={msgActions.handleRetryMessage}
-        onEditAndGenerate={msgActions.handleEditAndGenerate}
-      />
-      <ChatInput
-        input={msgActions.input}
-        onInputChange={msgActions.setInput}
-        onSubmit={msgActions.handleSend}
-        isLoading={isLoading}
-        onStop={chat.stop}
-      />
+      <div className="app-chat-main">
+        <div className="app-chat-column">
+          <MessageList
+            messages={messages}
+            isLoading={isLoading}
+            onEdit={msgActions.handleEditMessage}
+            onDelete={msgActions.handleDeleteMessage}
+            onDeleteAfter={msgActions.handleDeleteAfter}
+            onRetry={msgActions.handleRetryMessage}
+            onEditAndGenerate={msgActions.handleEditAndGenerate}
+          />
+          <ChatInput
+            input={msgActions.input}
+            onInputChange={msgActions.setInput}
+            onSubmit={msgActions.handleSend}
+            isLoading={isLoading}
+            onStop={chat.stop}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -315,13 +344,13 @@ function MobileSidebarOverlay({
       role="dialog"
       aria-modal={true}
       aria-label="Configuration"
-      className="fixed inset-0 z-50 flex flex-col bg-background lg:hidden"
+      className="app-mobile-overlay"
     >
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b px-4 safe-top">
+      <div className="app-panel-header h-14 gap-2 px-4 safe-top">
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="app-button-square"
           aria-label="Back to chat"
           onClick={onClose}
         >
@@ -329,7 +358,7 @@ function MobileSidebarOverlay({
         </Button>
         <h2 className="text-sm font-semibold">Configuration</h2>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4 safe-bottom safe-x">
+      <div className="app-panel-body px-4 py-4 safe-bottom safe-x">
         {children}
       </div>
     </div>
@@ -458,8 +487,11 @@ const SidebarContent = memo(function SidebarContent({
   return (
     <>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full">
-          <TabsTrigger value="story-state" className="relative flex-1">
+        <TabsList className="app-tabs-list">
+          <TabsTrigger
+            value="story-state"
+            className="app-tabs-trigger relative flex-1"
+          >
             <ScrollText className="mr-1 h-3 w-3" />
             Story State
             <SyncDot
@@ -467,12 +499,15 @@ const SidebarContent = memo(function SidebarContent({
               pulse={recentlyUpdated}
             />
           </TabsTrigger>
-          <TabsTrigger value="system-prompt" className="relative flex-1">
+          <TabsTrigger
+            value="system-prompt"
+            className="app-tabs-trigger relative flex-1"
+          >
             <BookOpen className="mr-1 h-3 w-3" />
             System Prompt
             <SyncDot status={conv.systemPromptSync} />
           </TabsTrigger>
-          <TabsTrigger value="settings" className="flex-1">
+          <TabsTrigger value="settings" className="app-tabs-trigger flex-1">
             <SettingsIcon className="mr-1 h-3 w-3" />
             Settings
           </TabsTrigger>
@@ -517,8 +552,7 @@ const SidebarContent = memo(function SidebarContent({
       </Tabs>
       <Separator className="my-4" />
       <p className="text-xs text-muted-foreground">
-        Model:{" "}
-        <code className="rounded bg-muted px-1 py-0.5">{modelLabel}</code>
+        Model: <code className="app-code-chip">{modelLabel}</code>
       </p>
     </>
   );

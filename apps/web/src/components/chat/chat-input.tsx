@@ -54,13 +54,11 @@ export function ChatInput({
   };
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="border-t bg-background px-4 py-3 safe-bottom"
-    >
+    <form onSubmit={onSubmit} className="app-input-bar safe-bottom">
       <div className="flex items-end gap-2">
         <Textarea
           ref={textareaRef}
+          suppressHydrationWarning
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={handleKeyDown}

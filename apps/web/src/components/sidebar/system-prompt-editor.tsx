@@ -92,12 +92,12 @@ function SegmentCard({
     : null;
 
   return (
-    <div className="rounded-md border bg-card">
+    <div className="app-editor-section">
       <button
         type="button"
         aria-expanded={expanded}
         aria-controls={contentId}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50"
+        className="app-editor-section-trigger"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
@@ -117,27 +117,23 @@ function SegmentCard({
         </span>
         {turnsAgo !== undefined && (
           <span
-            className={`text-[10px] tabular-nums ${isStale ? "text-amber-500" : "text-green-500"}`}
+            className={`text-[10px] tabular-nums ${isStale ? "app-status-stale" : "app-status-recent"}`}
           >
             {turnsAgo === 0 ? "now" : `${turnsAgo}t ago`}
           </span>
         )}
       </button>
       {expanded && (
-        <div id={contentId} className="border-t px-3 py-2">
-          <div className="mb-1.5 flex items-center gap-2">
+        <div id={contentId} className="app-editor-section-body">
+          <div className="app-editor-summary flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
               {segment.priority}
             </Badge>
-            <span className="text-[10px] text-muted-foreground">
-              order: {segment.order}
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              cat: {segment.category}
-            </span>
+            <span>order: {segment.order}</span>
+            <span>cat: {segment.category}</span>
             {segment.policy.type === "on_topic" && (
               <span
-                className="text-[10px] text-muted-foreground truncate max-w-40"
+                className="truncate max-w-40"
                 title={segment.policy.keywords.join(", ")}
               >
                 kw: {segment.policy.keywords.slice(0, 4).join(", ")}
@@ -146,7 +142,7 @@ function SegmentCard({
             )}
             {segment.policy.type === "on_presence" && (
               <span
-                className="text-[10px] text-muted-foreground truncate max-w-40"
+                className="truncate max-w-40"
                 title={`Linked entity: ${linkedEntity?.name ?? linkedEntityId}`}
               >
                 linked: {linkedEntity?.name ?? linkedEntityId}
@@ -229,16 +225,16 @@ export function SystemPromptEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col gap-0.5">
+      <div className="app-editor-header">
+        <div className="app-editor-heading">
           <Label className="text-sm font-semibold">System Prompt</Label>
           {segments && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="app-editor-summary">
               {segments.length} segments · ~{totalTokens} tokens total
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="app-editor-actions">
           <input
             ref={fileInputRef}
             type="file"
@@ -254,7 +250,7 @@ export function SystemPromptEditor({
             onChange={handleCharacterFileChange}
           />
           <select
-            className="h-8 rounded border bg-background px-2 text-[11px]"
+            className="app-editor-select h-8"
             value={selectedEntityId}
             onChange={(event) => setSelectedEntityId(event.target.value)}
           >
@@ -320,7 +316,7 @@ export function SystemPromptEditor({
             />
           ))}
           <Separator className="my-1" />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="app-editor-summary">
             Badges: <strong>always</strong> = every turn ·{" "}
             <strong>every N</strong> = periodic · <strong>on topic</strong> =
             keyword/semantic match · <strong>on state</strong> = when state

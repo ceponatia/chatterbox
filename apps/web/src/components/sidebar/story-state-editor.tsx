@@ -85,15 +85,12 @@ function StoryStateHeader({
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col gap-0.5">
+      <div className="app-editor-header">
+        <div className="app-editor-heading">
           <Label className="text-sm font-semibold">Story State</Label>
           <div className="flex items-center gap-1.5">
             {recentlyUpdated && (
-              <span
-                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-green-500"
-                title="State recently updated"
-              />
+              <span className="app-status-dot" title="State recently updated" />
             )}
             {isStructured && (
               <Badge variant="secondary" className="text-[9px] px-1 py-0">
@@ -108,7 +105,7 @@ function StoryStateHeader({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="app-editor-actions">
           <input
             ref={fileInputRef}
             type="file"

@@ -5,6 +5,8 @@ import {
   Sparkles,
   Trash2,
   PanelLeftOpen,
+  PanelRightOpen,
+  PanelRightClose,
   SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,6 +60,8 @@ export function ChatHeader({
   messages,
   isLoading,
   onTriggerPipeline,
+  configSidebarOpen,
+  onToggleConfigSidebar,
   onOpenMobileSidebar,
   mobileSidebarTriggerRef,
   onClearChat,
@@ -66,6 +70,8 @@ export function ChatHeader({
   messages: ReturnType<typeof useChat>["messages"];
   isLoading: boolean;
   onTriggerPipeline: () => void;
+  configSidebarOpen: boolean;
+  onToggleConfigSidebar: () => void;
   onOpenMobileSidebar: () => void;
   mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
   onClearChat: () => void;
@@ -76,10 +82,10 @@ export function ChatHeader({
   );
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b px-3 lg:h-16 lg:px-4">
+    <header className="app-panel-header h-14 px-3 lg:h-16 lg:px-4">
       <div className="flex items-center gap-2 lg:gap-3">
         <ConversationDrawer conv={conv} />
-        <h1 className="hidden text-base font-bold lg:inline lg:text-lg">
+        <h1 className="hidden whitespace-nowrap text-base font-bold tracking-tight lg:inline lg:text-lg">
           RP Sketcher
         </h1>
         <TurnCounter
@@ -87,9 +93,8 @@ export function ChatHeader({
           autoSummarizeInterval={conv.settings.autoSummarizeInterval}
           lastPipelineTurn={conv.lastPipelineTurn}
         />
-        <p className="hidden text-xs text-muted-foreground lg:block">
-          Model:{" "}
-          <code className="rounded bg-muted px-1 py-0.5">{modelLabel}</code>
+        <p className="hidden max-w-32 text-xs leading-tight text-muted-foreground xl:block">
+          Model: <code className="app-code-chip">{modelLabel}</code>
           <br />
           Quick n&apos; dirty RP interface for model testing
         </p>
@@ -100,7 +105,7 @@ export function ChatHeader({
           size="sm"
           onClick={conv.handleNewConversation}
           title="New chat"
-          className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
+          className="app-toolbar-button"
         >
           <Plus className="h-4 w-4 lg:mr-1" />
           <span className="hidden lg:inline">New</span>
@@ -111,7 +116,7 @@ export function ChatHeader({
           onClick={onTriggerPipeline}
           disabled={messages.length < 2 || isLoading}
           title="Update Story State"
-          className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
+          className="app-toolbar-button"
         >
           <Sparkles className="h-4 w-4 lg:mr-1" />
           <span className="hidden lg:inline">Update State</span>
@@ -122,10 +127,26 @@ export function ChatHeader({
           onClick={onClearChat}
           disabled={messages.length === 0}
           title="Clear chat"
-          className="h-8 w-8 p-0 lg:h-9 lg:w-auto lg:px-3"
+          className="app-toolbar-button"
         >
           <Trash2 className="h-4 w-4 lg:mr-1" />
           <span className="hidden lg:inline">Clear</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onToggleConfigSidebar}
+          title={
+            configSidebarOpen ? "Hide configuration" : "Show configuration"
+          }
+          className="app-toolbar-button hidden lg:inline-flex"
+        >
+          {configSidebarOpen ? (
+            <PanelRightClose className="h-4 w-4 lg:mr-1" />
+          ) : (
+            <PanelRightOpen className="h-4 w-4 lg:mr-1" />
+          )}
+          <span className="hidden lg:inline">Config</span>
         </Button>
         <Button
           ref={mobileSidebarTriggerRef}
@@ -133,7 +154,7 @@ export function ChatHeader({
           size="sm"
           onClick={onOpenMobileSidebar}
           title="Configure"
-          className="h-8 w-8 p-0 lg:hidden"
+          className="app-button-square lg:hidden"
         >
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
