@@ -16,6 +16,7 @@ import {
 import {
   createDefaultAssembler,
   createAssemblerFromSerialized,
+  parseSystemPromptToSegments,
 } from "@chatterbox/prompt-assembly";
 import type {
   AssemblyContext,
@@ -44,6 +45,7 @@ import {
 import { buildDepthNote } from "./depth-note";
 import {
   buildSystemPrompt,
+  extractPlayerFromSegments,
   extractPrimaryUserFromCast,
   buildRuntimePlayerBoundary,
 } from "./system-prompt";
@@ -177,6 +179,19 @@ async function retrieveRagContext(
   return ctx;
 }
 
+/**
+ * Find a safe splice index that does not land between an assistant tool-call
+ * and its tool-result message. If `target` points at a `tool` message, walk
+ * backward to splice before the preceding `assistant` instead.
+ */
+function safeInsertIndex(messages: ModelMessage[], target: number): number {
+  let idx = Math.max(0, Math.min(target, messages.length));
+  while (idx > 0 && messages[idx]?.role === "tool") {
+    idx--;
+  }
+  return idx;
+}
+
 function injectDepthNote(
   modelMessages: ModelMessage[],
   storyState: string,
@@ -184,7 +199,8 @@ function injectDepthNote(
 ): number {
   const depthNote = buildDepthNote(storyState, presentEntityIds);
   if (!depthNote || modelMessages.length < 3) return 0;
-  modelMessages.splice(modelMessages.length - 2, 0, {
+  const depthIdx = safeInsertIndex(modelMessages, modelMessages.length - 2);
+  modelMessages.splice(depthIdx, 0, {
     role: "system",
     content: depthNote,
   });
@@ -193,6 +209,50 @@ function injectDepthNote(
     "info",
   );
   return depthNote.length;
+}
+
+// ---------------------------------------------------------------------------
+// Orphaned tool-call sanitization (operates on ModelMessage[])
+// ---------------------------------------------------------------------------
+
+function stripOrphanedModelToolCalls(messages: ModelMessage[]): ModelMessage[] {
+  const toolResultIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role !== "tool") continue;
+    if (!Array.isArray(msg.content)) continue;
+    for (const part of msg.content) {
+      if (typeof part === "object" && part !== null && "toolCallId" in part) {
+        toolResultIds.add(part.toolCallId);
+      }
+    }
+  }
+
+  let stripped = 0;
+  const result = messages.map((msg) => {
+    if (msg.role !== "assistant" || typeof msg.content === "string") return msg;
+    const content = msg.content;
+    const hasOrphan = content.some(
+      (part) =>
+        part.type === "tool-call" && !toolResultIds.has(part.toolCallId),
+    );
+    if (!hasOrphan) return msg;
+
+    const cleanContent = content.filter((part) => {
+      if (part.type === "tool-call" && !toolResultIds.has(part.toolCallId)) {
+        stripped++;
+        return false;
+      }
+      return true;
+    });
+    return { ...msg, content: cleanContent };
+  });
+
+  if (stripped > 0) {
+    logWarn(
+      `/api/chat: stripped ${stripped} orphaned tool-call(s) from model messages`,
+    );
+  }
+  return result;
 }
 
 async function buildConversationContext(
@@ -215,8 +275,10 @@ async function buildConversationContext(
     compressed.verbatimMessages,
     { ignoreIncompleteToolCalls: true },
   );
+  const cleanedMessages = stripOrphanedModelToolCalls(modelMessages);
+
   const depthNoteChars = injectDepthNote(
-    modelMessages,
+    cleanedMessages,
     storyState,
     presentEntityIds,
   );
@@ -225,8 +287,9 @@ async function buildConversationContext(
     windowed,
     currentUserMessage,
   );
-  if (ragContext && modelMessages.length >= 5) {
-    modelMessages.splice(modelMessages.length - 4, 0, {
+  if (ragContext && cleanedMessages.length >= 5) {
+    const ragIdx = safeInsertIndex(cleanedMessages, cleanedMessages.length - 4);
+    cleanedMessages.splice(ragIdx, 0, {
       role: "system",
       content: ragContext,
     });
@@ -238,12 +301,12 @@ async function buildConversationContext(
 
   return {
     compressed,
-    modelMessages,
+    modelMessages: cleanedMessages,
     historySummaryMessage: compressed.historySummary
       ? [{ role: "system" as const, content: compressed.historySummary }]
       : [],
     ragSummaryMessage:
-      ragContext && modelMessages.length < 5
+      ragContext && cleanedMessages.length < 5
         ? [{ role: "system" as const, content: ragContext }]
         : [],
     windowedChars,
@@ -269,19 +332,22 @@ function buildToolConfig(
   mustUseStoryContext: boolean,
 ) {
   if (!toolUseEnabled) return {};
+  const maxToolSteps = 3;
   return {
     tools,
-    stopWhen: stepCountIs(3),
+    stopWhen: stepCountIs(maxToolSteps),
     prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+      const opts: Record<string, unknown> = {};
       if (mustUseStoryContext && stepNumber === 0) {
-        return {
-          toolChoice: {
-            type: "tool" as const,
-            toolName: "get_story_context" as const,
-          },
+        opts.toolChoice = {
+          type: "tool" as const,
+          toolName: "get_story_context" as const,
         };
       }
-      return {};
+      if (stepNumber >= maxToolSteps - 1) {
+        opts.activeTools = [];
+      }
+      return opts;
     },
   };
 }
@@ -300,6 +366,7 @@ interface PromptContext {
 
 async function preparePrompt(
   messages: UIMessage[],
+  rawSystemPrompt: string,
   storyState: string,
   settings: ChatSettings,
   entityIds: string[],
@@ -313,14 +380,23 @@ async function preparePrompt(
     entityIds,
     lastIncludedAt,
   );
+  const resolvedSegments =
+    customSegments ??
+    (rawSystemPrompt.trim().length > 0
+      ? parseSystemPromptToSegments(rawSystemPrompt)
+      : null);
   const assembler = customSegments
     ? createAssemblerFromSerialized(customSegments)
-    : defaultAssembler;
+    : resolvedSegments
+      ? createAssemblerFromSerialized(resolvedSegments)
+      : defaultAssembler;
   const assembly = assembler.assemble(ctx);
   const allSegments = assembler.listSegments();
   const tools = createChatTools(allSegments, storyState);
 
-  const primaryUserAlias = extractPrimaryUserFromCast(storyState);
+  const primaryUserAlias =
+    extractPlayerFromSegments(customSegments) ??
+    extractPrimaryUserFromCast(storyState);
   const runtimeBoundary = buildRuntimePlayerBoundary(primaryUserAlias);
   const modelId = settings.model ?? DEFAULT_MODEL_ID;
   const toolUseEnabled = modelId !== AION_NO_TOOL_USE_MODEL_ID;
@@ -399,6 +475,7 @@ export async function POST(req: Request) {
   const entityIds = presentEntityIds ?? [];
   const prompt = await preparePrompt(
     messages,
+    _rawSystemPrompt,
     storyState,
     settings,
     entityIds,

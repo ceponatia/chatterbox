@@ -72,16 +72,16 @@ This package depends on `@chatterbox/sockets` for the `AssemblyContext`, `Assemb
 
 ## Module layout
 
-| File | Responsibility |
-|------|---------------|
-| `types.ts` | All shared types: `PromptSegment`, `InjectionPolicy`, `SegmentPriority`, `SerializedSegment`, `SerializedPolicy`. Re-exports `AssemblyContext`/`AssemblyResult` from sockets. |
-| `assembler.ts` | `PromptAssembler` class — policy evaluation, sorting, token budget enforcement, omitted-context notes. |
-| `parser.ts` | Markdown parser (`parseSystemPromptToSegments`, `segmentsToMarkdown`), serialization/deserialization (`deserializeSegment`, `createAssemblerFromSerialized`). |
-| `parser-mappings.ts` | Static mapping data: `HEADING_MAPPINGS`, `SUB_SECTION_MAPPINGS`, `MERGE_GROUPS`. Defines how markdown headings map to segment IDs, policies, and metadata. |
-| `token-estimator.ts` | `estimateTokens()` — character-based heuristic (~4 chars/token). |
-| `topic-detector.ts` | `matchesTopicKeywords()` — word-boundary keyword matching with basic suffix stripping. |
-| `socket-adapter.ts` | `segmentedPromptAssembly` — adapts the assembler to the `PromptAssemblySocket` interface. |
-| `segments/` | Individual default segment definitions + `DEFAULT_SEGMENTS` array + `createDefaultAssembler()` factory. |
+| File                 | Responsibility                                                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`           | All shared types: `PromptSegment`, `InjectionPolicy`, `SegmentPriority`, `SerializedSegment`, `SerializedPolicy`. Re-exports `AssemblyContext`/`AssemblyResult` from sockets. |
+| `assembler.ts`       | `PromptAssembler` class — policy evaluation, sorting, token budget enforcement, omitted-context notes.                                                                        |
+| `parser.ts`          | Markdown parser (`parseSystemPromptToSegments`, `segmentsToMarkdown`), serialization/deserialization (`deserializeSegment`, `createAssemblerFromSerialized`).                 |
+| `parser-mappings.ts` | Static mapping data: `HEADING_MAPPINGS`, `SUB_SECTION_MAPPINGS`, `MERGE_GROUPS`. Defines how markdown headings map to segment IDs, policies, and metadata.                    |
+| `token-estimator.ts` | `estimateTokens()` — character-based heuristic (~4 chars/token).                                                                                                              |
+| `topic-detector.ts`  | `matchesTopicKeywords()` — word-boundary keyword matching with basic suffix stripping.                                                                                        |
+| `socket-adapter.ts`  | `segmentedPromptAssembly` — adapts the assembler to the `PromptAssemblySocket` interface.                                                                                     |
+| `segments/`          | Individual default segment definitions + `DEFAULT_SEGMENTS` array + `createDefaultAssembler()` factory.                                                                       |
 
 ## Key concepts
 
@@ -123,18 +123,18 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 
 ### Segment policy assignments
 
-| Segment | Policy | Priority |
-|---------|--------|----------|
-| `core_rules`, `output_format`, `setting_premise`, `character_identity` | `always` | critical/high |
-| `narration_guidelines` | `every_n(3)` | normal |
-| `speech_patterns` | `every_n(2)` | high |
-| `vocabulary_humor`, `mannerisms` | `every_n(3)` | normal |
-| `interaction_guide` | `every_n(3)` | normal |
-| `appearance_visual` | `every_n(2)` | normal |
-| `outfit_hairstyle` | `every_n(2)` | normal |
-| `voice_sound` | `every_n(2)` | normal |
-| `backstory` | `on_topic` (remember, school, ...) | normal |
-| `relationship_status` | `on_state_field("relationships")` | normal |
+| Segment                                                                | Policy                             | Priority      |
+| ---------------------------------------------------------------------- | ---------------------------------- | ------------- |
+| `core_rules`, `output_format`, `setting_premise`, `character_identity` | `always`                           | critical/high |
+| `narration_guidelines`                                                 | `every_n(3)`                       | normal        |
+| `speech_patterns`                                                      | `every_n(2)`                       | high          |
+| `vocabulary_humor`, `mannerisms`                                       | `every_n(3)`                       | normal        |
+| `interaction_guide`                                                    | `every_n(3)`                       | normal        |
+| `appearance_visual`                                                    | `every_n(2)`                       | normal        |
+| `outfit_hairstyle`                                                     | `every_n(2)`                       | normal        |
+| `voice_sound`                                                          | `every_n(2)`                       | normal        |
+| `backstory`                                                            | `on_topic` (remember, school, ...) | normal        |
+| `relationship_status`                                                  | `on_state_field("relationships")`  | normal        |
 
 `core_rules` must preserve strict non-authorship constraints for `{{ user }}` and honor runtime-provided player aliases as equivalent to `{{ user }}`.
 
@@ -150,6 +150,7 @@ All default segments in `src/segments/` are **story-agnostic** — they use `{{ 
 6. Capturing unknown sections as generic `custom_N` segments with `always` policy
 
 Additional heading mappings:
+
 - `Narration Guidelines` headings map to the `narration_guidelines` segment (`every_n(3)`, `normal`, `rules` category).
 - `NPC framing` headings map to the `npc_framing` segment (`always`, `high`, `character` category).
 - `Background and scenario` headings match the same `backstory` segment as `Background and relationship` (`on_topic`, `normal`, `world` category).
@@ -184,3 +185,4 @@ Before merging changes, verify:
 - `pnpm --filter @chatterbox/prompt-assembly lint`
 - app still compiles when consuming from `@chatterbox/prompt-assembly` root exports only
 - all segments in `DEFAULT_SEGMENTS` produce the same content as the original `DEFAULT_SYSTEM_PROMPT` when assembled with `always` policies
+- Package tooling relies on the `typescript-eslint` meta package; do not add a direct `@typescript-eslint/parser` dependency unless a config explicitly needs it.

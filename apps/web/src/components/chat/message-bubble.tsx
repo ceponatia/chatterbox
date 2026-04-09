@@ -35,6 +35,128 @@ function getTextContent(message: UIMessage): string {
     .join("");
 }
 
+function getMergedReasoning(
+  message: UIMessage,
+  isUser: boolean,
+): { text: string; state: "done" | "streaming" } | null {
+  if (isUser) return null;
+
+  const reasoningParts = (message.parts ?? []).filter(
+    (part): part is Extract<typeof part, { type: "reasoning" }> =>
+      part.type === "reasoning",
+  );
+  if (reasoningParts.length === 0) return null;
+
+  return {
+    text: reasoningParts.map((part) => part.text).join("\n\n"),
+    state: reasoningParts.every((part) => part.state === "done")
+      ? "done"
+      : "streaming",
+  };
+}
+
+function MessageContent({
+  editing,
+  mergedReasoning,
+  text,
+  editText,
+  setEditText,
+  onSave,
+  onSaveAndGenerate,
+  onCancel,
+}: {
+  editing: boolean;
+  mergedReasoning: { text: string; state: "done" | "streaming" } | null;
+  text: string;
+  editText: string;
+  setEditText: (value: string) => void;
+  onSave: () => void;
+  onSaveAndGenerate: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <>
+      {mergedReasoning && (
+        <div className="mb-1">
+          <ReasoningBlock
+            text={mergedReasoning.text}
+            state={mergedReasoning.state}
+          />
+        </div>
+      )}
+      {editing ? (
+        <EditForm
+          editText={editText}
+          setEditText={setEditText}
+          onSave={onSave}
+          onSaveAndGenerate={onSaveAndGenerate}
+          onCancel={onCancel}
+        />
+      ) : (
+        <div className="whitespace-pre-wrap">{text}</div>
+      )}
+    </>
+  );
+}
+
+function MobileActionButtons({
+  isUser,
+  visible,
+  canRetry,
+  isLastMessage,
+  messageId,
+  onEdit,
+  onRetry,
+  onDelete,
+  onDeleteAfter,
+}: {
+  isUser: boolean;
+  visible: boolean;
+  canRetry: boolean;
+  isLastMessage: boolean;
+  messageId: string;
+  onEdit: () => void;
+  onRetry: (id: string) => void;
+  onDelete: (id: string) => void;
+  onDeleteAfter: (id: string) => void;
+}) {
+  if (!visible) return null;
+
+  return (
+    <div
+      className={cn(
+        "mt-2 flex flex-wrap gap-1.5 lg:hidden",
+        isUser ? "justify-end" : "justify-start",
+      )}
+    >
+      <Button
+        variant="outline"
+        size="sm"
+        className="relative h-7 gap-1 px-2 text-xs before:absolute before:-inset-2 before:content-['']"
+        onClick={onEdit}
+      >
+        <Pencil className="h-3.5 w-3.5" />
+        Edit
+      </Button>
+      {canRetry && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="relative h-7 gap-1 px-2 text-xs before:absolute before:-inset-2 before:content-['']"
+          onClick={() => onRetry(messageId)}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Regenerate
+        </Button>
+      )}
+      {!isLastMessage && (
+        <ConfirmTruncateButton onConfirm={() => onDeleteAfter(messageId)} />
+      )}
+      <ConfirmDeleteButton onConfirm={() => onDelete(messageId)} />
+    </div>
+  );
+}
+
 export function MessageBubble({
   message,
   canRetry,
@@ -48,23 +170,15 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const text = getTextContent(message);
-  const reasoningParts = isUser
-    ? []
-    : (message.parts ?? []).filter(
-        (p): p is Extract<typeof p, { type: "reasoning" }> =>
-          p.type === "reasoning",
-      );
-  const mergedReasoning =
-    reasoningParts.length > 0
-      ? {
-          text: reasoningParts.map((p) => p.text).join("\n\n"),
-          state: reasoningParts.every((p) => p.state === "done")
-            ? ("done" as const)
-            : ("streaming" as const),
-        }
-      : null;
+  const mergedReasoning = getMergedReasoning(message, isUser);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(text);
+  const showActions = !editing && !isLoading;
+
+  function startEditing() {
+    setEditText(text);
+    setEditing(true);
+  }
 
   return (
     <div
@@ -80,87 +194,48 @@ export function MessageBubble({
           isUser ? "app-message-surface-user" : "app-message-surface-assistant",
         )}
       >
-        {!editing && !isLoading && (
+        {showActions && (
           <ActionButtons
             isUser={isUser}
             canRetry={canRetry}
             canTruncate={!isLastMessage}
             messageId={message.id}
-            onEdit={() => {
-              setEditText(text);
-              setEditing(true);
-            }}
+            onEdit={startEditing}
             onRetry={onRetry}
             onDelete={onDelete}
             onDeleteAfter={onDeleteAfter}
           />
         )}
-        {mergedReasoning && (
-          <div className="mb-1">
-            <ReasoningBlock
-              text={mergedReasoning.text}
-              state={mergedReasoning.state}
-            />
-          </div>
-        )}
-        {editing ? (
-          <EditForm
-            editText={editText}
-            setEditText={setEditText}
-            onSave={() => {
-              onEdit(message.id, editText);
-              setEditing(false);
-            }}
-            onSaveAndGenerate={() => {
-              onEditAndGenerate(message.id, editText);
-              setEditing(false);
-            }}
-            onCancel={() => {
-              setEditText(text);
-              setEditing(false);
-            }}
-          />
-        ) : (
-          <div className="whitespace-pre-wrap">{text}</div>
-        )}
-        {!editing && !isLoading && (
-          <div
-            className={cn(
-              "mt-2 flex flex-wrap gap-1.5 lg:hidden",
-              isUser ? "justify-end" : "justify-start",
-            )}
-          >
-            <Button
-              variant="outline"
-              size="sm"
-              className="relative h-7 gap-1 px-2 text-xs before:absolute before:-inset-2 before:content-['']"
-              onClick={() => {
-                setEditText(text);
-                setEditing(true);
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </Button>
-            {canRetry && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="relative h-7 gap-1 px-2 text-xs before:absolute before:-inset-2 before:content-['']"
-                onClick={() => onRetry(message.id)}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Regenerate
-              </Button>
-            )}
-            {!isLastMessage && (
-              <ConfirmTruncateButton
-                onConfirm={() => onDeleteAfter(message.id)}
-              />
-            )}
-            <ConfirmDeleteButton onConfirm={() => onDelete(message.id)} />
-          </div>
-        )}
+        <MessageContent
+          editing={editing}
+          mergedReasoning={mergedReasoning}
+          text={text}
+          editText={editText}
+          setEditText={setEditText}
+          onSave={() => {
+            onEdit(message.id, editText);
+            setEditing(false);
+          }}
+          onSaveAndGenerate={() => {
+            onEditAndGenerate(message.id, editText);
+            setEditing(false);
+          }}
+          onCancel={() => {
+            setEditText(text);
+            setEditing(false);
+          }}
+        />
+        <MobileActionButtons
+          isUser={isUser}
+          visible={showActions}
+          canRetry={canRetry}
+          isLastMessage={isLastMessage}
+          messageId={message.id}
+          onEdit={startEditing}
+          onRetry={onRetry}
+          onDelete={onDelete}
+          onDeleteAfter={onDeleteAfter}
+        />
       </div>
     </div>
   );

@@ -1,0 +1,1 @@
+ALTER TABLE "StoryCharacter" ADD COLUMN "provenance" JSONB;

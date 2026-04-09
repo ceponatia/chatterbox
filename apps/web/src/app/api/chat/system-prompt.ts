@@ -1,3 +1,5 @@
+import type { SerializedSegment } from "@chatterbox/prompt-assembly";
+
 export type SystemPromptMessage = {
   role: "system";
   content: string;
@@ -88,10 +90,29 @@ export function extractPrimaryUserFromCast(storyState: string): string | null {
   const castBody = castSection[1] ?? "";
   if (!castBody) return null;
 
+  const playerLine = castBody.match(
+    /^\s*-\s+\*\*(.+?)\*\*.*\[player character\]/im,
+  );
+  if (playerLine?.[1]) return normalizeAlias(playerLine[1]);
+
   const nameMatches = [...castBody.matchAll(/^\s*-\s+\*\*(.+?)\*\*/gm)];
   const secondMember = nameMatches[1]?.[1];
   if (!secondMember) return null;
   return normalizeAlias(secondMember);
+}
+
+/**
+ * Extract the player name from the critical `player_identity` segment
+ * that was generated at story launch time.
+ */
+export function extractPlayerFromSegments(
+  segments: SerializedSegment[] | null | undefined,
+): string | null {
+  if (!segments) return null;
+  const seg = segments.find((s) => s.id === "player_identity");
+  if (!seg?.content) return null;
+  const match = seg.content.match(/The player character is called "(.+?)"/);
+  return match?.[1] ?? null;
 }
 
 export function buildRuntimePlayerBoundary(
@@ -103,7 +124,7 @@ export function buildRuntimePlayerBoundary(
 
   return [
     "## Player Control Boundary (Critical)",
-    "- The second member of the Cast list is the canonical {{ user }} identity.",
+    "- The Cast member tagged [player character] is the canonical {{ user }} identity.",
     identityClause,
     "- NEVER write dialogue, actions, thoughts, decisions, intentions, or internal state for the player-controlled entity.",
     "- NEVER decide what the player says, does, feels, notices, or concludes.",

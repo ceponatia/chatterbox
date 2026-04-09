@@ -17,8 +17,7 @@ interface ConfirmActionButtonProps {
   /** Base classes always applied */
   className?: string;
 }
-
-export function ConfirmActionButton({
+function ConfirmActionButton({
   onConfirm,
   icon: Icon,
   idleTitle,

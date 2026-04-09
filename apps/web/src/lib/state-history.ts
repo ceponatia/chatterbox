@@ -77,9 +77,3 @@ export async function appendStateHistoryEntry(
     body: JSON.stringify(entry),
   });
 }
-
-export async function deleteStateHistory(convId: string): Promise<void> {
-  await requestJson(`/api/conversations/${convId}/state-history`, {
-    method: "DELETE",
-  });
-}

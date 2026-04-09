@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import type { UIMessage } from "ai";
 import {
   appendStateHistoryEntry,
@@ -52,6 +60,45 @@ interface Params {
   customSegments?: SerializedSegment[] | null;
   lastPipelineTurn: number;
   setLastPipelineTurn: (turn: number) => void;
+}
+
+function usePipelineCompletionTrigger({
+  isLoading,
+  messages,
+  autoSummarizeInterval,
+  lastPipelineTurnRef,
+  runPipeline,
+}: {
+  isLoading: boolean;
+  messages: UIMessage[];
+  autoSummarizeInterval: number;
+  lastPipelineTurnRef: MutableRefObject<number>;
+  runPipeline: (turnNumber: number) => Promise<void>;
+}) {
+  const wasLoadingRef = useRef(false);
+
+  useEffect(() => {
+    const wasLoading = wasLoadingRef.current;
+    wasLoadingRef.current = isLoading;
+    if (!wasLoading || isLoading) return;
+
+    const turnNumber = messages.filter(
+      (message) => message.role === "user",
+    ).length;
+    if (turnNumber <= 0) return;
+
+    const interval = autoSummarizeInterval > 0 ? autoSummarizeInterval : 5;
+    const turnsSinceLast = turnNumber - lastPipelineTurnRef.current;
+    if (turnsSinceLast < interval) return;
+
+    void runPipeline(turnNumber);
+  }, [
+    isLoading,
+    messages,
+    autoSummarizeInterval,
+    lastPipelineTurnRef,
+    runPipeline,
+  ]);
 }
 
 function computeStaleSections(
@@ -123,6 +170,17 @@ async function applyPipelineResult(
       `diff ${data.validation.diffPercentage}%`,
   );
   return true;
+}
+
+function markPipelineUpdated(
+  setHistoryVersion: Dispatch<SetStateAction<number>>,
+  setRecentlyUpdated: Dispatch<SetStateAction<boolean>>,
+  recentTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+) {
+  setHistoryVersion((version) => version + 1);
+  setRecentlyUpdated(true);
+  if (recentTimerRef.current) clearTimeout(recentTimerRef.current);
+  recentTimerRef.current = setTimeout(() => setRecentlyUpdated(false), 3000);
 }
 
 /**
@@ -198,15 +256,12 @@ export function useStatePipeline({
           onCascadeResets,
           customSegments,
         );
-        if (applied) {
-          setHistoryVersion((v) => v + 1);
-          setRecentlyUpdated(true);
-          if (recentTimerRef.current) clearTimeout(recentTimerRef.current);
-          recentTimerRef.current = setTimeout(
-            () => setRecentlyUpdated(false),
-            3000,
+        if (applied)
+          markPipelineUpdated(
+            setHistoryVersion,
+            setRecentlyUpdated,
+            recentTimerRef,
           );
-        }
         setLastPipelineTurn(turnNumber);
       } catch (err) {
         console.error("state-pipeline error:", err);
@@ -224,28 +279,13 @@ export function useStatePipeline({
       setLastPipelineTurn,
     ],
   );
-
-  // Trigger after assistant response completes (isLoading transitions false)
-  const wasLoadingRef = useRef(false);
-
-  useEffect(() => {
-    const wasLoading = wasLoadingRef.current;
-    wasLoadingRef.current = isLoading;
-
-    // Only trigger when loading just finished
-    if (!wasLoading || isLoading) return;
-
-    const turnNumber = messages.filter((m) => m.role === "user").length;
-    if (turnNumber <= 0) return;
-
-    // Throttle: run every N turns (same interval as auto-summarize, or every 5 if 0)
-    const interval = autoSummarizeInterval > 0 ? autoSummarizeInterval : 5;
-    const turnsSinceLast = turnNumber - lastPipelineTurnRef.current;
-    if (turnsSinceLast < interval) return;
-
-    // Fire and forget
-    void runPipeline(turnNumber);
-  }, [isLoading, messages, autoSummarizeInterval, runPipeline]);
+  usePipelineCompletionTrigger({
+    isLoading,
+    messages,
+    autoSummarizeInterval,
+    lastPipelineTurnRef,
+    runPipeline,
+  });
 
   return {
     /** Manually trigger the pipeline for the current turn */

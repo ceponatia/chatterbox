@@ -12,31 +12,98 @@ model User {
   passwordHash  String
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   conversations Conversation[]
+  storyProjects StoryProject[]
 }
 
 model Conversation {
-  id                  String   @id @default(uuid()) @db.Uuid
-  userId              String   @db.Uuid
-  title               String
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @default(now()) @db.Timestamptz(6)
-  messages            Json     @default("[]")
-  systemPrompt        String
-  storyState          String
-  previousStoryState  String?
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @db.Uuid
+  storyProjectId        String?  @db.Uuid
+  title                 String
+  createdAt             DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @db.Timestamptz(6)
+  messages              Json     @default("[]")
+  systemPrompt          String
+  storyState            String
+  previousStoryState    String?
   storyStateLastUpdated DateTime? @db.Timestamptz(6)
-  settings            Json
+  settings              Json
   systemPromptBaseline String?
-  storyStateBaseline  String?
-  lastIncludedAt      Json     @default("{}")
-  customSegments      Json?
-  structuredState     Json?
-  lastSummarizedTurn  Int      @default(0)
-  lastPipelineTurn    Int      @default(0)
+  storyStateBaseline    String?
+  lastIncludedAt        Json     @default("{}")
+  customSegments        Json?
+  structuredState       Json?
+  lastSummarizedTurn    Int      @default(0)
+  lastPipelineTurn      Int      @default(0)
   stateHistoryEntries StateHistoryEntry[]
-  user                User     @relation(fields: [userId], references: [id])
+  storyProject         StoryProject? @relation(fields: [storyProjectId], references: [id])
+  user                 User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([storyProjectId])
+}
+
+model StoryProject {
+  id                     String   @id @default(uuid()) @db.Uuid
+  userId                 String   @db.Uuid
+  name                   String
+  description            String   @default("")
+  authoringMode          String   @default("form")
+  importedSystemPrompt   String?
+  importedStoryState     String?
+  generatedSystemPrompt  String   @default("")
+  generatedStoryState    String   @default("")
+  generatedSegments      Json?
+  generatedStructuredState Json?
+  segmentOverrides       Json?
+  createdAt              DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(6)
+  characters             StoryCharacter[]
+  conversations          Conversation[]
+  relationships          StoryRelationship[]
+  user                   User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model StoryCharacter {
+  id               String   @id @default(uuid()) @db.Uuid
+  storyProjectId   String   @db.Uuid
+  entityId         String
+  name             String
+  role             String   @default("supporting")
+  isPlayer         Boolean  @default(false)
+  identity         Json?
+  background       String?
+  appearance       Json?
+  behavioralProfile Json?
+  startingDemeanor String?
+  provenance       Json?
+  importedMarkdown String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+  storyProject     StoryProject @relation(fields: [storyProjectId], references: [id], onDelete: Cascade)
+
+  @@index([storyProjectId])
+  @@unique([storyProjectId, entityId])
+}
+
+// The single-player-character partial unique index is managed via raw SQL migration
+// because Prisma does not support filtered unique indexes in schema syntax.
+
+model StoryRelationship {
+  id             String   @id @default(uuid()) @db.Uuid
+  storyProjectId String   @db.Uuid
+  fromEntityId   String
+  toEntityId     String
+  description    String
+  details        Json     @default("[]")
+  tone           String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  storyProject   StoryProject @relation(fields: [storyProjectId], references: [id], onDelete: Cascade)
+
+  @@index([storyProjectId])
 }
 
 model StateHistoryEntry {

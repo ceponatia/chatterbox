@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE_NAME, verifyToken } from "@/lib/auth";
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   // Auth is opt-in via AUTH_ENABLED env var
   if (process.env.AUTH_ENABLED !== "true") return NextResponse.next();
 

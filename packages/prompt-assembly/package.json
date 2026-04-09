@@ -16,7 +16,6 @@
     "@chatterbox/sockets": "workspace:*"
   },
   "devDependencies": {
-    "@typescript-eslint/parser": "^8.55.0",
     "typescript": "^5",
     "typescript-eslint": "^8.55.0"
   }

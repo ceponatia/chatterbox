@@ -31,6 +31,7 @@ export interface ConversationMeta {
 
 export interface Conversation extends ConversationMeta {
   messages: UIMessage[];
+  storyProjectId: string | null;
   systemPrompt: string;
   storyState: string;
   previousStoryState: string | null;
@@ -58,6 +59,11 @@ async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
       ...(options?.headers ?? {}),
     },
   });
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+    // Never resolves -- page is navigating away
+    return new Promise<T>(() => {});
+  }
   if (!res.ok) {
     throw new Error(`Storage request failed: ${res.status} ${res.statusText}`);
   }
@@ -96,6 +102,7 @@ function createConversationSnapshot(title = "New Chat"): Conversation {
     createdAt: now,
     updatedAt: now,
     messages: [],
+    storyProjectId: null,
     systemPrompt: segmentsToMarkdown(segments),
     storyState: "",
     previousStoryState: null,
@@ -115,17 +122,6 @@ export function createConversationDraft(title = "New Chat"): Conversation {
   return createConversationSnapshot(title);
 }
 
-export async function createConversation(
-  title = "New Chat",
-): Promise<Conversation> {
-  const conv = createConversationSnapshot(title);
-  await requestJson(`/api/conversations/${conv.id}`, {
-    method: "PUT",
-    body: JSON.stringify(conv),
-  });
-  return conv;
-}
-
 /** Fill in turn-tracking fields that may be absent on older conversations. */
 function applyTurnDefaults(conv: Conversation): void {
   const raw = conv as Partial<
@@ -136,15 +132,16 @@ function applyTurnDefaults(conv: Conversation): void {
 }
 
 /** Apply defaults for fields added after a conversation was first created. */
-function migrateConversation(conv: Conversation): Conversation {
-  conv.settings = { ...DEFAULT_SETTINGS, ...conv.settings };
-  if (conv.systemPromptBaseline === undefined) conv.systemPromptBaseline = null;
-  if (conv.storyStateBaseline === undefined) conv.storyStateBaseline = null;
-  if (!conv.lastIncludedAt) conv.lastIncludedAt = {};
-  if (conv.customSegments === undefined) conv.customSegments = null;
-  if (conv.structuredState === undefined) conv.structuredState = null;
-  applyTurnDefaults(conv);
-  // Migrate old cast-based structuredState (IM03) → entity-based (IM04)
+function recoverMissingPromptAndState(conv: Conversation): void {
+  if (conv.customSegments == null && conv.systemPrompt.trim()) {
+    conv.customSegments = parseSystemPromptToSegments(conv.systemPrompt);
+  }
+  if (conv.structuredState == null && conv.storyState.trim()) {
+    conv.structuredState = parseMarkdownToStructured(conv.storyState);
+  }
+}
+
+function normalizeStructuredState(conv: Conversation): void {
   if (
     conv.structuredState &&
     "cast" in conv.structuredState &&
@@ -157,6 +154,19 @@ function migrateConversation(conv: Conversation): Conversation {
   if (conv.structuredState) {
     conv.structuredState = ensureLifecycleDefaults(conv.structuredState);
   }
+}
+
+function migrateConversation(conv: Conversation): Conversation {
+  conv.settings = { ...DEFAULT_SETTINGS, ...conv.settings };
+  if (conv.systemPromptBaseline === undefined) conv.systemPromptBaseline = null;
+  if (conv.storyStateBaseline === undefined) conv.storyStateBaseline = null;
+  if (!conv.lastIncludedAt) conv.lastIncludedAt = {};
+  if (conv.customSegments === undefined) conv.customSegments = null;
+  if (conv.structuredState === undefined) conv.structuredState = null;
+  if (conv.storyProjectId === undefined) conv.storyProjectId = null;
+  applyTurnDefaults(conv);
+  recoverMissingPromptAndState(conv);
+  normalizeStructuredState(conv);
   return conv;
 }
 
@@ -181,11 +191,4 @@ export async function saveConversation(conv: Conversation) {
 
 export async function deleteConversation(id: string) {
   await requestJson(`/api/conversations/${id}`, { method: "DELETE" });
-}
-
-export async function renameConversation(id: string, title: string) {
-  const conv = await loadConversation(id);
-  if (!conv) return;
-  conv.title = title;
-  await saveConversation(conv);
 }

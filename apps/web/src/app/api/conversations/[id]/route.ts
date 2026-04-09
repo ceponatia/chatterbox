@@ -4,11 +4,20 @@ import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
 import type { Conversation } from "@/lib/storage";
 
+function toIsoString(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function asJsonField<T>(value: unknown, fallback: T): T {
+  return (value ?? fallback) as T;
+}
+
 function toConversation(row: {
   id: string;
   title: string;
   createdAt: Date;
   updatedAt: Date;
+  storyProjectId: string | null;
   messages: unknown;
   systemPrompt: string;
   storyState: string;
@@ -28,22 +37,27 @@ function toConversation(row: {
     title: row.title,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    messages: (row.messages ?? []) as Conversation["messages"],
+    storyProjectId: row.storyProjectId,
+    messages: asJsonField(row.messages, []) as Conversation["messages"],
     systemPrompt: row.systemPrompt ?? "",
     storyState: row.storyState ?? "",
     previousStoryState: row.previousStoryState ?? null,
-    storyStateLastUpdated: row.storyStateLastUpdated
-      ? row.storyStateLastUpdated.toISOString()
-      : null,
-    settings: (row.settings ?? {}) as Conversation["settings"],
+    storyStateLastUpdated: toIsoString(row.storyStateLastUpdated),
+    settings: asJsonField(row.settings, {}) as Conversation["settings"],
     systemPromptBaseline: row.systemPromptBaseline ?? null,
     storyStateBaseline: row.storyStateBaseline ?? null,
-    lastIncludedAt: (row.lastIncludedAt ??
-      {}) as Conversation["lastIncludedAt"],
-    customSegments: (row.customSegments ??
-      null) as Conversation["customSegments"],
-    structuredState: (row.structuredState ??
-      null) as Conversation["structuredState"],
+    lastIncludedAt: asJsonField(
+      row.lastIncludedAt,
+      {},
+    ) as Conversation["lastIncludedAt"],
+    customSegments: asJsonField(
+      row.customSegments,
+      null,
+    ) as Conversation["customSegments"],
+    structuredState: asJsonField(
+      row.structuredState,
+      null,
+    ) as Conversation["structuredState"],
     lastSummarizedTurn: row.lastSummarizedTurn ?? 0,
     lastPipelineTurn: row.lastPipelineTurn ?? 0,
   };
@@ -80,6 +94,7 @@ export async function PUT(
     title: body.title,
     createdAt: new Date(body.createdAt),
     updatedAt: new Date(body.updatedAt),
+    storyProjectId: body.storyProjectId,
     messages: body.messages as unknown as Prisma.InputJsonValue,
     systemPrompt: body.systemPrompt,
     storyState: body.storyState,

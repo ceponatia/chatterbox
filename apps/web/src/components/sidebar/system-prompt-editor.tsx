@@ -1,17 +1,14 @@
 "use client";
 
-import { useRef, useState, useId } from "react";
-import type {
-  SerializedSegment,
-  SerializedPolicy,
-} from "@chatterbox/prompt-assembly";
+import { useRef, useState } from "react";
+import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { RotateCcw, Upload, ChevronDown, ChevronRight } from "lucide-react";
-import { DeferredInput, DeferredTextarea } from "./deferred-inputs";
+import { RotateCcw, Upload } from "lucide-react";
+import { DeferredTextarea } from "./deferred-inputs";
 import type { Entity } from "@/lib/story-state-model";
+import { SegmentCard } from "./system-prompt-segment-card";
 
 interface SystemPromptEditorProps {
   value: string;
@@ -32,145 +29,6 @@ interface SystemPromptEditorProps {
   ) => void;
   lastIncludedAt: Record<string, number>;
   turnNumber: number;
-}
-
-function policyLabel(policy: SerializedPolicy): string {
-  switch (policy.type) {
-    case "always":
-      return "always";
-    case "every_n":
-      return `every ${policy.n}`;
-    case "on_topic":
-      return `on topic`;
-    case "on_state_field":
-      return `on state: ${policy.field}`;
-    case "on_presence":
-      return "on presence";
-  }
-}
-
-function policyVariant(
-  policy: SerializedPolicy,
-): "default" | "secondary" | "outline" {
-  switch (policy.type) {
-    case "always":
-      return "default";
-    case "every_n":
-      return "secondary";
-    case "on_topic":
-      return "outline";
-    case "on_state_field":
-      return "outline";
-    case "on_presence":
-      return "outline";
-  }
-}
-
-function SegmentCard({
-  segment,
-  onUpdate,
-  lastIncluded,
-  turnNumber,
-  entities,
-}: {
-  segment: SerializedSegment;
-  onUpdate: (patch: { content?: string; omittedSummary?: string }) => void;
-  lastIncluded: number | undefined;
-  turnNumber: number;
-  entities: Entity[];
-}) {
-  const uid = useId();
-  const contentId = `segment-${uid}`;
-  const [expanded, setExpanded] = useState(false);
-  const turnsAgo =
-    lastIncluded !== undefined ? turnNumber - lastIncluded : undefined;
-  const isStale = turnsAgo !== undefined && turnsAgo > 5;
-  const linkedEntityId =
-    segment.policy.type === "on_presence" ? segment.policy.entityId : null;
-  const linkedEntity = linkedEntityId
-    ? entities.find((entity) => entity.id === linkedEntityId)
-    : null;
-
-  return (
-    <div className="app-editor-section">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={contentId}
-        className="app-editor-section-trigger"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-        )}
-        <span className="flex-1 text-xs font-medium">{segment.label}</span>
-        <Badge
-          variant={policyVariant(segment.policy)}
-          className="text-[10px] px-1.5 py-0"
-        >
-          {policyLabel(segment.policy)}
-        </Badge>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
-          ~{segment.tokenEstimate}t
-        </span>
-        {turnsAgo !== undefined && (
-          <span
-            className={`text-[10px] tabular-nums ${isStale ? "app-status-stale" : "app-status-recent"}`}
-          >
-            {turnsAgo === 0 ? "now" : `${turnsAgo}t ago`}
-          </span>
-        )}
-      </button>
-      {expanded && (
-        <div id={contentId} className="app-editor-section-body">
-          <div className="app-editor-summary flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {segment.priority}
-            </Badge>
-            <span>order: {segment.order}</span>
-            <span>cat: {segment.category}</span>
-            {segment.policy.type === "on_topic" && (
-              <span
-                className="truncate max-w-40"
-                title={segment.policy.keywords.join(", ")}
-              >
-                kw: {segment.policy.keywords.slice(0, 4).join(", ")}
-                {segment.policy.keywords.length > 4 ? "…" : ""}
-              </span>
-            )}
-            {segment.policy.type === "on_presence" && (
-              <span
-                className="truncate max-w-40"
-                title={`Linked entity: ${linkedEntity?.name ?? linkedEntityId}`}
-              >
-                linked: {linkedEntity?.name ?? linkedEntityId}
-              </span>
-            )}
-          </div>
-          <DeferredTextarea
-            value={segment.content}
-            onCommit={(content) => onUpdate({ content })}
-            className="min-h-24 font-mono text-[11px] leading-relaxed"
-          />
-          <div className="mt-2 flex flex-col gap-1">
-            <Label className="text-[10px] text-muted-foreground">
-              Omitted Summary (shown when this segment is skipped)
-            </Label>
-            <DeferredInput
-              value={segment.omittedSummary ?? ""}
-              onCommit={(omittedSummary) =>
-                onUpdate({ omittedSummary: omittedSummary.trim() || undefined })
-              }
-              className="h-7 text-[11px]"
-              placeholder="Optional one-line summary"
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function SystemPromptEditor({

@@ -14,7 +14,6 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@typescript-eslint/parser": "^8.55.0",
     "typescript": "^5",
     "typescript-eslint": "^8.55.0",
     "vitest": "^3.0.0"

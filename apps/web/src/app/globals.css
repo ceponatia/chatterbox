@@ -459,6 +459,38 @@
   .app-warning-action-confirm {
     background: var(--app-warning-soft);
   }
+
+  .app-story-main {
+    @apply flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-4 sm:px-6 lg:px-8 lg:pt-6 lg:pb-6;
+  }
+
+  .app-story-column {
+    @apply mx-auto flex w-full max-w-7xl flex-col gap-4;
+  }
+
+  .app-story-grid {
+    @apply grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)];
+  }
+
+  .app-story-card {
+    @apply rounded-2xl border p-4;
+    border-color: var(--app-panel-line);
+    background: linear-gradient(
+      180deg,
+      var(--app-panel-strong) 0%,
+      var(--app-panel-surface) 100%
+    );
+    box-shadow: 0 28px 56px -42px var(--app-shadow);
+    backdrop-filter: blur(18px);
+  }
+
+  .app-story-stack {
+    @apply flex flex-col gap-4;
+  }
+
+  .app-story-meta {
+    @apply flex flex-wrap items-center gap-2 text-xs text-muted-foreground;
+  }
 }
 
 /* iOS Safari safe-area support */

@@ -2,28 +2,16 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useMemo, useCallback, memo, useRef, useEffect } from "react";
-import type { StateHistoryEntry } from "@/lib/state-history";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useStateHistoryEntries } from "@/lib/hooks/use-state-history";
-import {
-  Settings as SettingsIcon,
-  BookOpen,
-  ScrollText,
-  ArrowLeft,
-  PanelRightClose,
-} from "lucide-react";
+import { ArrowLeft, PanelRightClose } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMobileSidebar } from "@/lib/hooks/use-mobile-sidebar";
-import { Separator } from "@/components/ui/separator";
 import { MessageList } from "@/components/chat/message-list";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatHeader } from "@/components/chat/chat-header";
-import { SystemPromptEditor } from "@/components/sidebar/system-prompt-editor";
-import { StoryStateEditor } from "@/components/sidebar/story-state-editor";
-import { SettingsPanel } from "@/components/sidebar/settings-panel";
-import { SyncDot } from "@/components/sidebar/sync-dot";
+import { HomeSidebarContent } from "@/components/sidebar/home-sidebar-content";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import {
   DEFAULT_SYSTEM_PROMPT,
@@ -36,7 +24,6 @@ import { useMessageActions } from "@/lib/hooks/use-message-actions";
 import { useDeleteAfterRollback } from "@/lib/hooks/use-delete-after-rollback";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
 import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
-import { getModelEntry } from "@/lib/model-registry";
 import { trapTabKey } from "@/lib/focus-trap";
 import { scanPresenceFromAssistantMessage } from "@/lib/presence-scanner";
 
@@ -196,7 +183,7 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
     state.desktopSidebarOpenState;
   const { mobileSidebarTriggerRef } = state;
   const sidebar = (
-    <SidebarContent
+    <HomeSidebarContent
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       conv={conv}
@@ -464,96 +451,3 @@ function useAssistantPresenceSync({
     });
   }, [isLoading, messages, structuredState, onStructuredStateUpdate]);
 }
-
-const SidebarContent = memo(function SidebarContent({
-  activeTab,
-  setActiveTab,
-  conv,
-  recentlyUpdated,
-  stateHistory,
-  messages,
-}: {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  conv: ReturnType<typeof useConversationManager>;
-  recentlyUpdated: boolean;
-  stateHistory: StateHistoryEntry[];
-  messages: ReturnType<typeof useChat>["messages"];
-}) {
-  const modelLabel =
-    getModelEntry(conv.settings.model)?.label ?? conv.settings.model;
-  const turnNumber = messages.filter((m) => m.role === "user").length;
-
-  return (
-    <>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="app-tabs-list">
-          <TabsTrigger
-            value="story-state"
-            className="app-tabs-trigger relative flex-1"
-          >
-            <ScrollText className="mr-1 h-3 w-3" />
-            Story State
-            <SyncDot
-              status={recentlyUpdated ? "saved" : conv.storyStateSync}
-              pulse={recentlyUpdated}
-            />
-          </TabsTrigger>
-          <TabsTrigger
-            value="system-prompt"
-            className="app-tabs-trigger relative flex-1"
-          >
-            <BookOpen className="mr-1 h-3 w-3" />
-            System Prompt
-            <SyncDot status={conv.systemPromptSync} />
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="app-tabs-trigger flex-1">
-            <SettingsIcon className="mr-1 h-3 w-3" />
-            Settings
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="story-state" className="mt-4">
-          <StoryStateEditor
-            value={conv.storyState}
-            onChange={conv.handleStoryStateChange}
-            onImport={conv.handleStoryStateImport}
-            onReset={conv.handleStoryStateReset}
-            baseline={conv.storyStateBaseline}
-            lastUpdated={conv.storyStateLastUpdated}
-            recentlyUpdated={recentlyUpdated}
-            stateHistory={stateHistory}
-            structuredState={conv.structuredState}
-            onStructuredStateUpdate={(s) =>
-              conv.handleStructuredStateUpdate(s, conv.markStoryStateError)
-            }
-          />
-        </TabsContent>
-        <TabsContent value="system-prompt" className="mt-4">
-          <SystemPromptEditor
-            value={conv.systemPrompt}
-            onChange={conv.handleSystemPromptChange}
-            onImport={conv.handleSystemPromptImport}
-            onReset={conv.handleSystemPromptReset}
-            baseline={conv.systemPromptBaseline}
-            segments={conv.customSegments}
-            onSegmentUpdate={conv.handleSegmentUpdate}
-            entities={conv.structuredState?.entities ?? []}
-            onCharacterFileImport={conv.handleCharacterFileImport}
-            lastIncludedAt={conv.lastIncludedAt}
-            turnNumber={turnNumber}
-          />
-        </TabsContent>
-        <TabsContent value="settings" className="mt-4">
-          <SettingsPanel
-            settings={conv.settings}
-            onChange={conv.handleSettingsChange}
-          />
-        </TabsContent>
-      </Tabs>
-      <Separator className="my-4" />
-      <p className="text-xs text-muted-foreground">
-        Model: <code className="app-code-chip">{modelLabel}</code>
-      </p>
-    </>
-  );
-});

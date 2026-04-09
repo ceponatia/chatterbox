@@ -12,9 +12,9 @@ import {
   persistActiveConvId,
   useHydrateOnMount,
   useAutoSave,
-  useAutoTitle,
   useConversationActions,
 } from "./use-conversation-manager-helpers";
+import { useAutoTitle } from "./use-conversation-autotitle";
 
 interface Params {
   messages: UIMessage[];

@@ -11,6 +11,10 @@ import {
   type Conversation,
   type ConversationMeta,
 } from "@/lib/storage";
+import {
+  persistActiveConversationId,
+  readActiveConversationId,
+} from "@/lib/active-conversation";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import type { Settings } from "@/lib/defaults";
 import { useFieldSetters } from "./use-field-setters";
@@ -69,23 +73,12 @@ function withDefault<T>(value: T | null | undefined, fallback: T): T {
   return value == null ? fallback : value;
 }
 
-const ACTIVE_CONV_KEY = "chatterbox_active_conv_id";
-
 export function persistActiveConvId(id: string | null) {
-  try {
-    if (id) sessionStorage.setItem(ACTIVE_CONV_KEY, id);
-    else sessionStorage.removeItem(ACTIVE_CONV_KEY);
-  } catch {
-    // SSR or private browsing — ignore
-  }
+  persistActiveConversationId(id);
 }
 
 function readPersistedConvId(): string | null {
-  try {
-    return sessionStorage.getItem(ACTIVE_CONV_KEY);
-  } catch {
-    return null;
-  }
+  return readActiveConversationId();
 }
 
 export function useHydrateOnMount(
@@ -440,32 +433,6 @@ export function useAutoSave(
     onStoryPending,
     onPromptPending,
   ]);
-}
-
-export function useAutoTitle(
-  activeConvRef: React.RefObject<Conversation | null>,
-  messages: UIMessage[],
-  setConversations: (c: ConversationMeta[]) => void,
-) {
-  useEffect(() => {
-    if (!activeConvRef.current) return;
-    const conv = activeConvRef.current;
-    if (conv.title !== "New Chat") return;
-    const firstUser = messages.find((m) => m.role === "user");
-    if (!firstUser) return;
-    const text = firstUser.parts?.find((p) => p.type === "text");
-    if (!text || text.type !== "text") return;
-    const title = text.text.slice(0, 60) + (text.text.length > 60 ? "…" : "");
-    conv.title = title;
-    void (async () => {
-      try {
-        await saveConversation(conv);
-        setConversations(await listConversations());
-      } catch (err) {
-        console.error("Failed to auto-title conversation:", err);
-      }
-    })();
-  }, [messages, activeConvRef, setConversations]);
 }
 
 export function useConversationActions(

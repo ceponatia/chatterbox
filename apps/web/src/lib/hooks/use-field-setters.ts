@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, type Dispatch, type SetStateAction } from "react";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import {
   parseSystemPromptToSegments,
@@ -17,6 +17,7 @@ import {
   remapEntityIds,
   applySectionMetaTransition,
 } from "@/lib/story-state-model";
+import { buildCharacterBehaviorSegment } from "@/lib/character-markdown";
 
 /** Story-state-specific handlers (extracted to keep main hook under line limit). */
 function useStoryStateHandlers() {
@@ -115,13 +116,21 @@ function useStoryStateHandlers() {
   };
 }
 
-export function useFieldSetters() {
+function syncPromptFromSegments(
+  segments: SerializedSegment[],
+  setSystemPrompt: Dispatch<SetStateAction<string>>,
+  setSystemPromptTouched: Dispatch<SetStateAction<boolean>>,
+) {
+  setSystemPrompt(segmentsToMarkdown(segments));
+  setSystemPromptTouched(true);
+}
+
+function usePromptAssemblyState() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [systemPromptTouched, setSystemPromptTouched] = useState(false);
   const [systemPromptBaseline, setSystemPromptBaseline] = useState<
     string | null
   >(null);
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [lastIncludedAt, setLastIncludedAt] = useState<Record<string, number>>(
     {},
   );
@@ -131,8 +140,6 @@ export function useFieldSetters() {
   const [lastSummarizedTurn, setLastSummarizedTurn] = useState(0);
   const [lastPipelineTurn, setLastPipelineTurn] = useState(0);
 
-  const story = useStoryStateHandlers();
-
   const handleSystemPromptChange = useCallback((value: string) => {
     setSystemPrompt(value);
     setSystemPromptTouched(true);
@@ -141,63 +148,40 @@ export function useFieldSetters() {
   const handleSystemPromptImport = useCallback((content: string) => {
     const segments = parseSystemPromptToSegments(content);
     setCustomSegments(segments);
-    setSystemPrompt(segmentsToMarkdown(segments));
+    syncPromptFromSegments(segments, setSystemPrompt, setSystemPromptTouched);
     setSystemPromptBaseline(content);
-    setSystemPromptTouched(true);
   }, []);
 
   const handleCharacterFileImport = useCallback(
     (content: string, entityId: string, entityName: string) => {
-      const trimmed = content.trim();
-      if (!trimmed || !entityId) return;
-
-      const headingMatch = trimmed.match(/^#\s+(.+)$/m);
-      const label =
-        headingMatch?.[1]?.trim() ||
-        `${entityName || "Character"} Behavior Profile`;
-      const segmentId = `character_behavior_${entityId}`;
-      const omittedSummary = entityName
-        ? `Behavior profile for ${entityName}`
-        : undefined;
+      const nextSegment = buildCharacterBehaviorSegment(
+        content,
+        entityId,
+        entityName,
+      );
+      if (!nextSegment) return;
 
       setCustomSegments((prev) => {
         const base = prev ?? parseSystemPromptToSegments(systemPrompt);
-        const nextSegment: SerializedSegment = {
-          id: segmentId,
-          label,
-          content: trimmed,
-          policy: { type: "on_presence", entityId },
-          priority: "high",
-          order: 35,
-          tokenEstimate: Math.ceil(trimmed.length / 4),
-          category: "character",
-          omittedSummary,
-        };
-
-        const idx = base.findIndex((segment) => segment.id === segmentId);
+        const index = base.findIndex(
+          (segment) => segment.id === nextSegment.id,
+        );
         const next = [...base];
-        if (idx >= 0) next[idx] = nextSegment;
+        if (index >= 0) next[index] = nextSegment;
         else next.push(nextSegment);
 
-        setSystemPrompt(segmentsToMarkdown(next));
-        setSystemPromptTouched(true);
+        syncPromptFromSegments(next, setSystemPrompt, setSystemPromptTouched);
         return next;
       });
     },
     [systemPrompt],
   );
 
-  const resetInputTouchFlags = useCallback(() => {
-    story.setStoryStateTouched(false);
-    setSystemPromptTouched(false);
-  }, [story]);
-
   const handleSystemPromptReset = useCallback(() => {
-    if (systemPromptBaseline !== null) {
-      const segments = parseSystemPromptToSegments(systemPromptBaseline);
-      setCustomSegments(segments);
-      setSystemPrompt(segmentsToMarkdown(segments));
-    }
+    if (systemPromptBaseline === null) return;
+    const segments = parseSystemPromptToSegments(systemPromptBaseline);
+    setCustomSegments(segments);
+    setSystemPrompt(segmentsToMarkdown(segments));
   }, [systemPromptBaseline]);
 
   const handleSegmentUpdate = useCallback(
@@ -207,40 +191,33 @@ export function useFieldSetters() {
     ) => {
       setCustomSegments((prev) => {
         if (!prev) return prev;
-        return prev.map((s) =>
-          s.id === segmentId
+        return prev.map((segment) =>
+          segment.id === segmentId
             ? {
-                ...s,
-                content: patch.content ?? s.content,
+                ...segment,
+                content: patch.content ?? segment.content,
                 tokenEstimate: Math.ceil(
-                  (patch.content ?? s.content).length / 4,
+                  (patch.content ?? segment.content).length / 4,
                 ),
                 omittedSummary:
                   patch.omittedSummary !== undefined
                     ? patch.omittedSummary
-                    : s.omittedSummary,
+                    : segment.omittedSummary,
               }
-            : s,
+            : segment,
         );
       });
     },
     [],
   );
 
-  const handleSettingsChange = useCallback((value: Settings) => {
-    setSettings(value);
-  }, []);
-
   return {
-    ...story,
     systemPrompt,
     setSystemPrompt,
     systemPromptTouched,
     setSystemPromptTouched,
     systemPromptBaseline,
     setSystemPromptBaseline,
-    settings,
-    setSettings,
     lastIncludedAt,
     setLastIncludedAt,
     customSegments,
@@ -254,6 +231,29 @@ export function useFieldSetters() {
     handleCharacterFileImport,
     handleSystemPromptReset,
     handleSegmentUpdate,
+  };
+}
+
+export function useFieldSetters() {
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+
+  const story = useStoryStateHandlers();
+  const prompt = usePromptAssemblyState();
+
+  const resetInputTouchFlags = useCallback(() => {
+    story.setStoryStateTouched(false);
+    prompt.setSystemPromptTouched(false);
+  }, [prompt, story]);
+
+  const handleSettingsChange = useCallback((value: Settings) => {
+    setSettings(value);
+  }, []);
+
+  return {
+    ...story,
+    ...prompt,
+    settings,
+    setSettings,
     handleSettingsChange,
     resetInputTouchFlags,
   };

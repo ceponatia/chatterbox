@@ -108,6 +108,9 @@ function useAutoScroll(
   bottomRef: React.RefObject<HTMLDivElement | null>,
   isLoading: boolean,
 ) {
+  const prevConversationRef = useRef<string | undefined>(undefined);
+  const conversationKey = messages[0]?.id;
+
   const lastMsg = messages[messages.length - 1];
   const scrollTrigger = `${messages.length}:${lastMsg?.id}:${
     lastMsg?.parts?.reduce(
@@ -115,9 +118,14 @@ function useAutoScroll(
       0,
     ) ?? 0
   }:${isLoading}`;
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [scrollTrigger, bottomRef]);
+    const isNewConversation = prevConversationRef.current !== conversationKey;
+    prevConversationRef.current = conversationKey;
+    // Instant jump on conversation switch; smooth scroll for live updates
+    const behavior = isNewConversation ? "instant" : "smooth";
+    bottomRef.current?.scrollIntoView({ behavior });
+  }, [scrollTrigger, bottomRef, conversationKey]);
 }
 
 function useRetryIds(messages: UIMessage[]) {

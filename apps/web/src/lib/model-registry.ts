@@ -25,6 +25,28 @@ export const MODEL_REGISTRY: ModelEntry[] = [
     ],
   },
   {
+    id: "z-ai/glm-5.1",
+    label: "GLM 5.1",
+    providers: [
+      "Together",
+      "Friendli",
+      "Parasail",
+      "io.net",
+      "GMICloud",
+      "Novita",
+      "DeepInfra",
+      "Z.AI",
+      "Fireworks",
+      "AtlasCloud",
+      "Venice",
+    ],
+  },
+  {
+    id: "z-ai/glm-5-turbo",
+    label: "GLM 5 Turbo",
+    providers: ["Z.AI", "AtlasCloud"],
+  },
+  {
     id: "aion-labs/aion-2.0",
     label: "Aion 2.0",
     providers: ["AionLabs"],

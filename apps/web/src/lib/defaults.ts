@@ -39,12 +39,7 @@ ALWAYS do these:
 
 ## Voice and speech
 
-How {{ char }} talks. This section defines behavioral rules — it is not updated by the state pipeline.
-
-- Speech patterns: [customize — rhythm, pacing, sentence structure, verbal tics]
-- Vocabulary: [customize — register, slang level, characteristic phrases]
-- Humor style: [customize — dry, playful, sarcastic, gentle, etc.]
-- Directness: [customize — blunt, indirect, diplomatic, etc.]
+Each NPC has its own voice and speech patterns defined in their character behavior profile. When writing dialogue or narration for an NPC, follow the speech patterns, vocabulary, humor style, and mannerisms described in that character's profile. Do not blend one character's voice into another.
 
 ## Interaction guidelines
 

@@ -94,6 +94,7 @@ Review EVERY section of the current story state against what is happening in the
 - Update character descriptions to reflect development
 - Add new characters that have appeared
 - Update roles if they have changed
+- Preserve the [player character] tag on the player character entry exactly as it appears
 - {{ user }} and {{ char }} are template placeholders, NOT literal character names. The player character is already listed in the Cast by their real name. Do NOT add {{ user }} or {{ char }} as separate entries.
 
 ### Relationships
