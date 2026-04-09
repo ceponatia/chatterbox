@@ -11,7 +11,7 @@ import { generateText } from "ai";
 import { openrouter } from "@/lib/openrouter";
 import { log, logResponse, logWarn, startTimer } from "@/lib/api-logger";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
-import type { ExtractedFact } from "@/lib/state-history";
+import type { StatePipelineChange } from "@chatterbox/sockets";
 import type { SocketMessage } from "@chatterbox/sockets";
 
 // ---------------------------------------------------------------------------
@@ -67,12 +67,11 @@ Output ONLY valid JSON:
 // ---------------------------------------------------------------------------
 
 export function extractLifecycleActions(
-  changes: ExtractedFact[],
+  changes: StatePipelineChange[],
 ): LifecycleAction[] {
   return changes
     .filter(
-      (c) =>
-        c.type === "thread_resolved" || c.type === "hard_fact_superseded",
+      (c) => c.type === "thread_resolved" || c.type === "hard_fact_superseded",
     )
     .map((c) => ({
       kind: c.type as LifecycleAction["kind"],
@@ -166,9 +165,9 @@ export interface LifecycleRejection {
 }
 
 export function applyLifecycleVerdicts(
-  changes: ExtractedFact[],
+  changes: StatePipelineChange[],
   verdicts: LifecycleVerdict[],
-): { changes: ExtractedFact[]; rejections: LifecycleRejection[] } {
+): { changes: StatePipelineChange[]; rejections: LifecycleRejection[] } {
   if (verdicts.length === 0) return { changes, rejections: [] };
 
   const rejectedMap = new Map<string, string>();
@@ -182,15 +181,15 @@ export function applyLifecycleVerdicts(
 
   const rejections: LifecycleRejection[] = [];
   const filtered = changes.filter((c) => {
-    if (
-      c.type !== "thread_resolved" &&
-      c.type !== "hard_fact_superseded"
-    ) {
+    if (c.type !== "thread_resolved" && c.type !== "hard_fact_superseded") {
       return true;
     }
     const key = c.detail.toLowerCase().trim();
     for (const [rejected, reason] of rejectedMap) {
-      if (key.includes(rejected.slice(0, 28)) || rejected.includes(key.slice(0, 28))) {
+      if (
+        key.includes(rejected.slice(0, 28)) ||
+        rejected.includes(key.slice(0, 28))
+      ) {
         rejections.push({
           detail: c.detail,
           kind: c.type as LifecycleRejection["kind"],

@@ -2,7 +2,7 @@ import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import type {
   RelationshipTone,
   StructuredStoryState,
-} from "@/lib/story-state-model";
+} from "@chatterbox/state-model";
 
 export type StoryAuthoringMode = "form" | "imported" | "hybrid";
 

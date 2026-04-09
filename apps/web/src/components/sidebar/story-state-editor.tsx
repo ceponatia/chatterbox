@@ -10,7 +10,7 @@ import { DeferredTextarea } from "./deferred-inputs";
 
 import { StateHistory } from "./state-history";
 import type { StateHistoryEntry } from "@/lib/state-history";
-import type { StructuredStoryState } from "@/lib/story-state-model";
+import type { StructuredStoryState } from "@chatterbox/state-model";
 import {
   EntitiesSection,
   RelationshipsSection,

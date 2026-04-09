@@ -1,8 +1,17 @@
 {
   "files": [],
   "references": [
-    { "path": "apps/web" },
-    { "path": "packages/sockets" },
-    { "path": "packages/prompt-assembly" }
+    {
+      "path": "apps/web"
+    },
+    {
+      "path": "packages/sockets"
+    },
+    {
+      "path": "packages/prompt-assembly"
+    },
+    {
+      "path": "packages/state-model"
+    }
   ]
 }

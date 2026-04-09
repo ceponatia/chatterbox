@@ -14,6 +14,7 @@
     "@ai-sdk/react": "^3.0.81",
     "@chatterbox/prompt-assembly": "workspace:*",
     "@chatterbox/sockets": "workspace:*",
+    "@chatterbox/state-model": "workspace:*",
     "@openrouter/ai-sdk-provider": "^2.2.3",
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.0.0",

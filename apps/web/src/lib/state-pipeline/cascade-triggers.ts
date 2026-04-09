@@ -7,7 +7,7 @@
  * every_n and on_topic policies fire immediately.
  */
 
-import type { ExtractedFact } from "@/lib/state-history";
+import type { StatePipelineChange } from "@chatterbox/sockets";
 
 /**
  * Map of fact types to segment IDs that should be refreshed.
@@ -55,7 +55,7 @@ function parseEntityIdFromDetail(detail: string): string | null {
 }
 
 export function computeCascadeResets(
-  facts: ExtractedFact[],
+  facts: StatePipelineChange[],
   characterSegmentIds?: CharacterSegmentLookup,
 ): string[] {
   const resets = new Set<string>();

@@ -8,6 +8,7 @@ Next.js 16 app runtime for Chatterbox. Hosts the chat UI, API routes, and client
 
 - `@chatterbox/sockets` — boundary contract types and default implementations
 - `@chatterbox/prompt-assembly` — segmented prompt assembler, segment definitions, turn tracker types, markdown parser, serialized segment types
+- `@chatterbox/state-model` — entity-centric story state types, markdown parser/serializer, entity operations, lifecycle reconciliation, and presence scanning
 
 ## Key architecture
 
@@ -21,6 +22,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 
 - `@chatterbox/sockets` for boundary contracts
 - `@chatterbox/prompt-assembly` for segmented prompt parsing and assembly
+- `@chatterbox/state-model` for entity-centric story state types, parser, serializer, entity operations, lifecycle reconciliation, and presence scanning
 
 ## Current system summary
 
@@ -41,10 +43,10 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 
 ### Story state and pipeline
 
-- Story state is entity-centric (`StructuredStoryState`) in `src/lib/story-state-model.ts` with stable entity IDs.
-- `src/lib/story-state-model.ts` is a public barrel. Shared types/meta live in `src/lib/story-state-types.ts`, entity helpers in `src/lib/story-state-entities.ts`, lifecycle defaults in `src/lib/story-state-lifecycle.ts`, markdown parsing in `src/lib/story-state-parser*.ts`, and serialization in `src/lib/story-state-serializer.ts`.
+- Story state is entity-centric (`StructuredStoryState`) defined in `@chatterbox/state-model` with stable entity IDs.
+- Local files (`src/lib/story-state-model.ts`, `src/lib/story-state-types.ts`, `src/lib/story-state-entities.ts`, `src/lib/story-state-lifecycle.ts`, `src/lib/story-state-parser.ts`, `src/lib/story-state-parser-helpers.ts`, `src/lib/story-state-serializer.ts`, `src/lib/presence-scanner.ts`, `src/lib/effective-state.ts`) are re-export shims pointing to `@chatterbox/state-model`. All types, parsing, serialization, entity operations, lifecycle reconciliation, presence scanning, and effective state resolution live in the package.
 - Pipeline runs through `/api/state-update`: message windowing, LLM update, lifecycle validation, deterministic validation, auto-accept, and cascade resets.
-- Presence scanning in `src/lib/presence-scanner.ts` updates `scene.presentEntityIds` for `on_presence` segment behavior.
+- Presence scanning via `@chatterbox/state-model` updates `scene.presentEntityIds` for `on_presence` segment behavior.
 - State history is persisted via `/api/conversations/[id]/state-history` and surfaced in sidebar history views.
 
 ### Conversation and persistence
@@ -67,7 +69,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/lib/story-project-core.ts` is the shared helper path for import/generation/export/launch; routes should stay thin and reuse it instead of reimplementing prompt/state generation logic.
 - `src/lib/character-derivation.ts` derives entities, appearance, demeanor, and on-presence behavior segments from structured character fields. `src/lib/story-project-core.ts` should prefer these structured derivations and fall back to `importedMarkdown` only when structured behavior data is absent.
 - Launching a story project creates a new conversation snapshot from generated artifacts and persists `storyProjectId` on that conversation.
-- `src/lib/effective-state.ts` is a small app-local pure helper for baseline/runtime fallback behavior. Keep it app-internal until a second consumer exists.
+- `src/lib/effective-state.ts` is a re-export shim; the effective state resolver now lives in `@chatterbox/state-model`.
 
 ### Truncate and rollback
 
@@ -124,13 +126,15 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/app/api/chat/stream-telemetry.ts` - tool call telemetry collection and stream callbacks
 - `src/app/api/state-update/route.ts` - automatic state update pipeline
 - `src/app/api/state-rollback/route.ts` - rollback after message truncation
-- `src/lib/story-state-model.ts` - canonical state types, parser, serializer, reconciliation
-- `src/lib/story-state-types.ts` - shared story-state types, section meta helpers, empty state
-- `src/lib/story-state-entities.ts` - entity lookup, creation, reconciliation, ID remapping
-- `src/lib/story-state-lifecycle.ts` - lifecycle defaults and metadata reconciliation
-- `src/lib/story-state-parser.ts` - markdown-to-structured entrypoint
-- `src/lib/story-state-parser-helpers.ts` - markdown parser helpers and raw section parsing
-- `src/lib/story-state-serializer.ts` - structured-to-markdown serializer
+- `src/lib/story-state-model.ts` - re-export shim for `@chatterbox/state-model` (canonical barrel)
+- `src/lib/story-state-types.ts` - re-export shim for state-model types, section meta helpers, empty state
+- `src/lib/story-state-entities.ts` - re-export shim for entity lookup, creation, reconciliation, ID remapping
+- `src/lib/story-state-lifecycle.ts` - re-export shim for lifecycle defaults and metadata reconciliation
+- `src/lib/story-state-parser.ts` - re-export shim for markdown-to-structured entrypoint
+- `src/lib/story-state-parser-helpers.ts` - re-export shim for markdown parser helpers and raw section parsing
+- `src/lib/story-state-serializer.ts` - re-export shim for structured-to-markdown serializer
+- `src/lib/presence-scanner.ts` - re-export shim for presence scanning from `@chatterbox/state-model`
+- `src/lib/effective-state.ts` - re-export shim for effective state resolution from `@chatterbox/state-model`
 - `src/lib/hooks/use-state-pipeline.ts` - client trigger and cascade reset integration
 - `src/lib/hooks/use-conversation-manager.ts` - hydration, save lifecycle, switching
 - `src/lib/state-pipeline/pipeline-socket.ts` - pipeline orchestration
@@ -139,7 +143,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 
 ## Guardrails and boundaries
 
-- Import shared packages from root only: `@chatterbox/sockets`, `@chatterbox/prompt-assembly`.
+- Import shared packages from root only: `@chatterbox/sockets`, `@chatterbox/prompt-assembly`, `@chatterbox/state-model`.
 - Do not deep-import package internals (`src/*`).
 - Use `@/*` alias for app-internal imports.
 - Runtime DB fallback in `src/lib/env.ts` points at host port `55432`; keep infra/docs in sync if that mapping changes.

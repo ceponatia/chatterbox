@@ -11,17 +11,17 @@ import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 import { determineDisposition } from "@/lib/state-pipeline/auto-accept";
 import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
 import { validateState } from "@/lib/state-pipeline/validation";
-import type { ExtractedFact } from "@/lib/state-history";
+import type { StatePipelineChange } from "@chatterbox/sockets";
 import { prisma } from "@/lib/prisma";
 
 interface RollbackResult {
   updatedState: string;
-  changes: ExtractedFact[];
+  changes: StatePipelineChange[];
 }
 
 interface EvaluatedRollbackResult {
   updatedState: string;
-  changes: ExtractedFact[];
+  changes: StatePipelineChange[];
   validation: ReturnType<typeof validateState>;
   disposition: ReturnType<typeof determineDisposition>;
 }
@@ -175,7 +175,7 @@ ${formatMessagesForPrompt(remainingMessages) || "(none)"}${retryFeedback ?? ""}`
     const cleaned = result.text.replace(/```json\n?|\n?```/g, "").trim();
     const parsed = JSON.parse(cleaned) as {
       updatedState?: string;
-      changes?: ExtractedFact[];
+      changes?: StatePipelineChange[];
     };
     return {
       updatedState: (parsed.updatedState ?? "").trim(),
@@ -203,7 +203,7 @@ function noOpRollbackResponse(body: RollbackRequestBody) {
 function evaluateRollbackResult(
   updatedState: string,
   currentStoryState: string,
-  changes: ExtractedFact[],
+  changes: StatePipelineChange[],
 ): EvaluatedRollbackResult {
   const validation = validateState(updatedState, currentStoryState, changes);
   const disposition = determineDisposition(validation);

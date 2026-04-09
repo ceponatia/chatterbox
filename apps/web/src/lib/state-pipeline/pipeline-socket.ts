@@ -12,6 +12,7 @@ import type {
   StatePipelineRequest,
   StatePipelineResult,
   StatePipelineDisposition,
+  StatePipelineValidation,
   SocketMessage,
 } from "@chatterbox/sockets";
 import { validateState } from "./validation";
@@ -25,19 +26,21 @@ import {
   startTimer,
 } from "@/lib/api-logger";
 import { openrouter } from "@/lib/openrouter";
-import type { ExtractedFact } from "@/lib/state-history";
+import type { StatePipelineChange } from "@chatterbox/sockets";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 import {
   parseMarkdownToStructured,
   structuredToMarkdown,
   reconcileLifecycleState,
-} from "@/lib/story-state-model";
+  type StructuredStoryState,
+} from "@chatterbox/state-model";
 import {
   extractLifecycleActions,
   validateLifecycleActions,
   applyLifecycleVerdicts,
   type LifecycleRejection,
 } from "./lifecycle-validation";
+import { STATE_UPDATE_INSTRUCTION } from "./pipeline-prompt";
 
 // ---------------------------------------------------------------------------
 // Message windowing
@@ -78,96 +81,8 @@ export function windowSocketMessages(
 }
 
 // ---------------------------------------------------------------------------
-// Single-pass prompt
+// Lifecycle constants and helpers
 // ---------------------------------------------------------------------------
-
-const STATE_UPDATE_INSTRUCTION = `You are a story state editor for an ongoing roleplay. You will read the recent conversation messages and the current story state, then produce TWO things:
-
-1. **Updated Story State** — a complete, corrected story state document
-2. **Change Log** — a structured list of what changed and why
-
-## Instructions for updating the story state
-
-Review EVERY section of the current story state against what is happening in the conversation. For each section:
-
-### Cast
-- Update character descriptions to reflect development
-- Add new characters that have appeared
-- Update roles if they have changed
-- Preserve the [player character] tag on the player character entry exactly as it appears
-- {{ user }} and {{ char }} are template placeholders, NOT literal character names. The player character is already listed in the Cast by their real name. Do NOT add {{ user }} or {{ char }} as separate entries.
-
-### Relationships
-- Update dynamics that have shifted (strangers → friends, tension → trust, etc.)
-- Remove relationship descriptions superseded by newer ones
-- Add new relationships that have formed- When describing relationship tone, use one of these values accurately: hostile (active animosity/threat), cold (emotionally distant/resentful/guarded), neutral (indifferent/formal/acquaintance-level), warm (positive/friendly/caring), close (trusted/bonded/loyal), intimate (deeply connected/romantic/sexual)
-- Map emotional descriptions to the correct tone -- "lacking emotional depth" or "not serious" is cold or neutral, not hostile
-### Characters
-- This section uses nested headings: ### CharacterName > #### Appearance > - **key**: comma-separated values
-- Update entries that have changed (clothing, hair, injuries, etc.)
-- Preserve unchanged entries
-- Add new appearance details introduced in conversation
-- Keep the compact comma-separated format for appearance values
-
-### Scene
-- Overwrite to reflect the CURRENT location, who is present, and atmosphere
-- This section should always match what is happening RIGHT NOW in the conversation
-- "Who is present" means physically present in the current scene only
-- If someone arrives, add them and emit character_enters
-- If someone leaves, remove them and emit character_leaves
-
-### Current Demeanor
-- Re-evaluate each character's mood and energy based on recent events
-- This section should reflect the characters' emotional state RIGHT NOW
-
-### Open Threads
-- REMOVE threads that have been resolved or are no longer relevant
-- UPDATE threads whose nature has evolved
-- ADD new unresolved plot hooks or tensions
-- Every thread MUST have a resolution hint in parentheses before the date tag: (resolves when: concise condition) (added: YYYY-MM-DD)
-- For NEW threads, think about what narrative outcome would close this thread and write that as the resolution hint
-- For EXISTING threads missing a resolution hint, add one based on the thread's context
-- Aim for 3-8 active threads maximum
-- Preserve original dates for kept items, use today's date for new ones
-- When REMOVING a resolved/stale thread, you MUST include a "thread_resolved" change entry with a specific rationale explaining what happened in the story to close it (e.g., "Amanda confessed her feelings in turn 12, resolving the romantic tension thread"). Generic rationales like "no longer relevant" are not acceptable.
-
-### Hard Facts
-- CRITICALLY review every existing fact for current relevance
-- REMOVE facts that have been SUPERSEDED (e.g., "they are strangers" once they become friends; "interested in each other" once they start dating)
-- UPDATE facts whose details have changed
-- ADD new established facts
-- Character biographical facts (name, age, occupation) rarely change — only update if the story explicitly changes them
-- Relationship-status and situational facts MUST be updated or removed as the situation evolves
-- Each fact must end with (added: YYYY-MM-DD)
-- Aim for 10-20 hard facts maximum — prune aggressively- Categorize each fact by appending a tag in square brackets before the date: [biographical] (name, age, occupation), [spatial] (locations, geography), [relational] (feelings, dynamics, trust between people), [temporal] (dates, timelines, durations), [world] (setting rules, lore, physics), [event] (actions that occurred, promises made, incidents). Example: "Brian wanted to ask Sabrina to prom [relational] (added: 2026-02-26)"- When REMOVING a superseded fact, you MUST include a "hard_fact_superseded" change entry with a specific rationale explaining what new information replaced it (e.g., "Brian revealed he owns a tech company, superseding the assumption about his wealth"). Generic rationales like "Superseded during state update" are not acceptable.
-
-## Rules
-- ALWAYS use full character names exactly as they appear in the Cast section (e.g., "Kaho Higashi" not "Kaho", "Nagato Jiro" not "Jiro"). This applies to ALL sections — Cast, Relationships, Characters, Demeanor, etc.
-- Do NOT blindly preserve old content. If something is outdated, remove or update it.
-- Do NOT invent information beyond what the conversation and existing state provide.
-- Output ALL 7 sections even if some are unchanged.
-- Keep the total story state under 1200 tokens.
-
-## Output format
-
-Output ONLY valid JSON with this exact structure:
-{
-  "updatedState": "## Cast\\n...\\n\\n## Relationships\\n...\\n\\n## Characters\\n\\n### CharName\\n\\n#### Appearance\\n\\n- **key**: values\\n...\\n\\n## Scene\\n...\\n\\n## Current Demeanor\\n...\\n\\n## Open Threads\\n...\\n\\n## Hard Facts\\n...",
-  "changes": [
-    {
-      "type": "scene_change|relationship_shift|appearance_change|mood_change|new_thread|thread_resolved|thread_evolved|hard_fact|hard_fact_superseded|cast_change|character_enters|character_leaves",
-      "detail": "concise one-line description",
-      "sourceTurn": 0,
-      "confidence": 0.9
-    }
-  ]
-}
-
-- "updatedState" must be the COMPLETE story state as a markdown string with all 7 sections.
-- "changes" lists every modification you made, including removals. Use "hard_fact_superseded" for removed facts, "thread_resolved" for removed threads, and "thread_evolved" when one thread transforms into another.
-- If nothing needs to change, return the current state unchanged and an empty changes array.
-- sourceTurn is the approximate user-message count where the change originated.
-- confidence is 0.0-1.0 for how certain you are.`;
 
 const HARD_FACT_REVIEW_WINDOW = 12;
 const THREAD_STALE_DAYS = 30;
@@ -183,10 +98,121 @@ function includesSnippet(haystack: string, detail: string): boolean {
   return snippet.length > 0 && haystack.includes(snippet);
 }
 
+function processFactLifecycle(
+  state: StructuredStoryState,
+  supersededChanges: StatePipelineChange[],
+  recentText: string,
+  recentFacts: StatePipelineChange[],
+  today: string,
+): void {
+  state.hardFacts = state.hardFacts.map((fact) => {
+    const confirmed =
+      includesSnippet(recentText, fact.fact) ||
+      recentFacts.some((f) =>
+        includesSnippet(f.detail.toLowerCase(), fact.fact),
+      );
+    if (confirmed) {
+      return { ...fact, lastConfirmedAt: today, superseded: false };
+    }
+    if (fact.superseded) {
+      const matchingChange = supersededChanges.find((c) =>
+        includesSnippet(c.detail.toLowerCase(), fact.fact),
+      );
+      if (matchingChange) {
+        return { ...fact, supersededBy: matchingChange.detail };
+      }
+    }
+    return fact;
+  });
+}
+
+function isThreadStale(
+  thread: StructuredStoryState["openThreads"][number],
+  referenced: boolean,
+  resolvedChange: StatePipelineChange | undefined,
+  evolved: StatePipelineChange | undefined,
+): boolean {
+  if (referenced || resolvedChange || evolved) return false;
+  const lastRef = toDay(thread.lastReferencedAt ?? thread.createdAt);
+  return Date.now() - lastRef > THREAD_STALE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function resolveThreadUpdate(
+  thread: StructuredStoryState["openThreads"][number],
+  changes: StatePipelineChange[],
+  recentText: string,
+  today: string,
+): StructuredStoryState["openThreads"][number] {
+  const referenced = includesSnippet(recentText, thread.description);
+  const resolvedChange = changes.find(
+    (c) =>
+      c.type === "thread_resolved" &&
+      includesSnippet(c.detail.toLowerCase(), thread.description),
+  );
+  const evolved = changes.find(
+    (c) =>
+      c.type === "thread_evolved" &&
+      includesSnippet(c.detail.toLowerCase(), thread.description),
+  );
+  const stale = isThreadStale(thread, referenced, resolvedChange, evolved);
+
+  let status = thread.status;
+  if (resolvedChange) status = "resolved";
+  else if (evolved) status = "evolved";
+  else if (stale) status = "stale";
+
+  let closureRationale = thread.closureRationale;
+  if (resolvedChange) closureRationale = resolvedChange.detail;
+  else if (stale)
+    closureRationale = `Thread stale -- not referenced in ${THREAD_STALE_DAYS}+ days`;
+
+  const evolvedInto =
+    evolved?.detail && evolved.detail.includes("->")
+      ? evolved.detail.split("->")[1]?.trim() || thread.evolvedInto
+      : thread.evolvedInto;
+
+  return {
+    ...thread,
+    lastReferencedAt: referenced ? today : thread.lastReferencedAt,
+    status,
+    closureRationale,
+    evolvedInto,
+  };
+}
+
+function stampLifecycleRejections(
+  state: StructuredStoryState,
+  rejections: readonly LifecycleRejection[],
+): void {
+  for (const r of rejections) {
+    if (r.kind === "thread_resolved") {
+      const idx = state.openThreads.findIndex((t) =>
+        includesSnippet(r.detail.toLowerCase(), t.description),
+      );
+      if (idx >= 0) {
+        state.openThreads[idx] = {
+          ...state.openThreads[idx]!,
+          lifecycleRejection: r.reason,
+        };
+      }
+    } else {
+      const idx = state.hardFacts.findIndex((f) =>
+        includesSnippet(r.detail.toLowerCase(), f.fact),
+      );
+      if (idx >= 0) {
+        state.hardFacts[idx] = {
+          ...state.hardFacts[idx]!,
+          lifecycleRejection: r.reason,
+        };
+      }
+    }
+  }
+}
+
 function applyLifecycleStage(
   previousState: string,
   candidateState: string,
-  changes: ExtractedFact[],
+  changes: StatePipelineChange[],
   windowedMessages: readonly SocketMessage[],
   rejections?: readonly LifecycleRejection[],
 ): string {
@@ -199,101 +225,24 @@ function applyLifecycleStage(
     .map((m) => m.content.toLowerCase())
     .join("\n");
   const recentFacts = changes.slice(-HARD_FACT_REVIEW_WINDOW);
-
   const supersededChanges = changes.filter(
     (c) => c.type === "hard_fact_superseded",
   );
 
-  state.hardFacts = state.hardFacts.map((fact) => {
-    const confirmed =
-      includesSnippet(recentText, fact.fact) ||
-      recentFacts.some((f) =>
-        includesSnippet(f.detail.toLowerCase(), fact.fact),
-      );
-    if (confirmed) {
-      return {
-        ...fact,
-        lastConfirmedAt: today,
-        superseded: false,
-      };
-    }
-    if (fact.superseded) {
-      const matchingChange = supersededChanges.find((c) =>
-        includesSnippet(c.detail.toLowerCase(), fact.fact),
-      );
-      if (matchingChange) {
-        return { ...fact, supersededBy: matchingChange.detail };
-      }
-    }
-    return fact;
-  });
+  processFactLifecycle(
+    state,
+    supersededChanges,
+    recentText,
+    recentFacts,
+    today,
+  );
 
-  state.openThreads = state.openThreads.map((thread) => {
-    const referenced = includesSnippet(recentText, thread.description);
-    const resolvedChange = changes.find(
-      (c) =>
-        c.type === "thread_resolved" &&
-        includesSnippet(c.detail.toLowerCase(), thread.description),
-    );
-    const evolved = changes.find(
-      (c) =>
-        c.type === "thread_evolved" &&
-        includesSnippet(c.detail.toLowerCase(), thread.description),
-    );
-    const stale =
-      !referenced &&
-      !resolvedChange &&
-      !evolved &&
-      Date.now() - toDay(thread.lastReferencedAt ?? thread.createdAt) >
-        THREAD_STALE_DAYS * 24 * 60 * 60 * 1000;
+  state.openThreads = state.openThreads.map((thread) =>
+    resolveThreadUpdate(thread, changes, recentText, today),
+  );
 
-    return {
-      ...thread,
-      lastReferencedAt: referenced ? today : thread.lastReferencedAt,
-      status: resolvedChange
-        ? "resolved"
-        : evolved
-          ? "evolved"
-          : stale
-            ? "stale"
-            : thread.status,
-      closureRationale: resolvedChange
-        ? resolvedChange.detail
-        : stale
-          ? `Thread stale -- not referenced in ${THREAD_STALE_DAYS}+ days`
-          : thread.closureRationale,
-      evolvedInto:
-        evolved?.detail && evolved.detail.includes("->")
-          ? evolved.detail.split("->")[1]?.trim() || thread.evolvedInto
-          : thread.evolvedInto,
-    };
-  });
-
-  // Stamp lifecycle rejection reasons onto threads/facts that were kept active
   if (rejections && rejections.length > 0) {
-    for (const r of rejections) {
-      if (r.kind === "thread_resolved") {
-        const idx = state.openThreads.findIndex((t) =>
-          includesSnippet(r.detail.toLowerCase(), t.description),
-        );
-        if (idx >= 0) {
-          state.openThreads[idx] = {
-            ...state.openThreads[idx]!,
-            lifecycleRejection: r.reason,
-          };
-        }
-      } else {
-        const idx = state.hardFacts.findIndex((f) =>
-          includesSnippet(r.detail.toLowerCase(), f.fact),
-        );
-        if (idx >= 0) {
-          state.hardFacts[idx] = {
-            ...state.hardFacts[idx]!,
-            lifecycleRejection: r.reason,
-          };
-        }
-      }
-    }
+    stampLifecycleRejections(state, rejections);
   }
 
   return structuredToMarkdown(state);
@@ -305,7 +254,7 @@ function applyLifecycleStage(
 
 interface LLMResult {
   updatedState: string;
-  changes: ExtractedFact[];
+  changes: StatePipelineChange[];
 }
 
 interface AppPipelineRequest extends StatePipelineRequest {
@@ -366,7 +315,7 @@ async function runLLMUpdate(
     const cleaned = result.text.replace(/```json\n?|\n?```/g, "").trim();
     const parsed = JSON.parse(cleaned) as {
       updatedState?: string;
-      changes?: ExtractedFact[];
+      changes?: StatePipelineChange[];
     };
     return {
       updatedState: (parsed.updatedState ?? "").trim(),
@@ -429,6 +378,69 @@ const PASS_VALIDATION = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Socket helpers
+// ---------------------------------------------------------------------------
+
+function resolveModelAndProviders(appRequest: AppPipelineRequest): {
+  model: string;
+  providerOrder: readonly string[];
+} {
+  const requestedModel = appRequest.model ?? DEFAULT_MODEL_ID;
+  const model =
+    requestedModel === "aion-labs/aion-2.0" ? DEFAULT_MODEL_ID : requestedModel;
+  if (model !== requestedModel) {
+    log(
+      `  \x1b[2mstate-update: model fallback ${requestedModel} -> ${model}\x1b[0m`,
+      "info",
+    );
+  }
+  const providerOrder =
+    getModelEntry(model)?.providers ??
+    getModelEntry(DEFAULT_MODEL_ID)?.providers ??
+    [];
+  return { model, providerOrder };
+}
+
+async function executeRetryPass(
+  model: string,
+  providerOrder: readonly string[],
+  windowed: readonly SocketMessage[],
+  currentState: string,
+  staleSections: readonly string[] | undefined,
+  currentValidation: StatePipelineValidation,
+): Promise<{
+  updatedState: string;
+  changes: StatePipelineChange[];
+  validation: StatePipelineValidation;
+  disposition: StatePipelineDisposition;
+} | null> {
+  logWarn("/api/state-update: validation failed, retrying\u2026");
+  const retryFeedback = buildRetryFeedback(currentValidation);
+  const retry = await runLLMUpdate(
+    model,
+    providerOrder,
+    windowed,
+    currentState,
+    staleSections,
+    retryFeedback,
+  );
+  if (!retry.updatedState) return null;
+  const validation = validateState(
+    retry.updatedState,
+    currentState,
+    retry.changes,
+  );
+  let disposition = determineDisposition(validation);
+  if (disposition === "retried") disposition = "flagged";
+  return {
+    updatedState: retry.updatedState,
+    changes: retry.changes,
+    validation,
+    disposition,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Socket implementation
 // ---------------------------------------------------------------------------
 
@@ -441,27 +453,11 @@ export const statePipelineAdapter: StatePipelineSocket = {
     );
 
     log(
-      `  \x1b[2mstate-update: ${request.messages.length} msgs → ${windowed.length} windowed\x1b[0m`,
+      `  \x1b[2mstate-update: ${request.messages.length} msgs \u2192 ${windowed.length} windowed\x1b[0m`,
       "info",
     );
 
-    // Aion does not support tool calls or structured output; fall back to GLM
-    // for state updates so the pipeline always uses a capable model.
-    const requestedModel = appRequest.model ?? DEFAULT_MODEL_ID;
-    const model =
-      requestedModel === "aion-labs/aion-2.0"
-        ? DEFAULT_MODEL_ID
-        : requestedModel;
-    if (model !== requestedModel) {
-      log(
-        `  \x1b[2mstate-update: model fallback ${requestedModel} -> ${model}\x1b[0m`,
-        "info",
-      );
-    }
-    const providerOrder =
-      getModelEntry(model)?.providers ??
-      getModelEntry(DEFAULT_MODEL_ID)?.providers ??
-      [];
+    const { model, providerOrder } = resolveModelAndProviders(appRequest);
 
     let { updatedState, changes } = await runLLMUpdate(
       model,
@@ -511,39 +507,30 @@ export const statePipelineAdapter: StatePipelineSocket = {
       request.currentStoryState,
       changes,
     );
-    let disposition = determineDisposition(
-      validation,
-    ) as StatePipelineDisposition;
+    let disposition = determineDisposition(validation);
 
     if (disposition === "retried") {
-      logWarn("/api/state-update: validation failed, retrying…");
-      const retryFeedback = buildRetryFeedback(validation);
-      const retry = await runLLMUpdate(
+      const retryResult = await executeRetryPass(
         model,
         providerOrder,
         windowed,
         request.currentStoryState,
         appRequest.staleSections,
-        retryFeedback,
+        validation,
       );
-      if (retry.updatedState) {
-        updatedState = retry.updatedState;
-        changes = retry.changes;
-        validation = validateState(
-          updatedState,
-          request.currentStoryState,
-          changes,
-        );
-        disposition = determineDisposition(
-          validation,
-        ) as StatePipelineDisposition;
+      if (retryResult) {
+        updatedState = retryResult.updatedState;
+        changes = retryResult.changes;
+        validation = retryResult.validation;
+        disposition = retryResult.disposition;
+      } else {
+        disposition = "flagged";
       }
-      if (disposition === "retried") disposition = "flagged";
     }
 
     const cascadeResets = computeCascadeResets(changes);
     log(
-      `  \x1b[2m✅ state-update: ${disposition}, diff ${validation.diffPercentage}%, ` +
+      `  \x1b[2m\u2705 state-update: ${disposition}, diff ${validation.diffPercentage}%, ` +
         `${changes.length} changes` +
         (cascadeResets.length > 0
           ? `, cascade: ${cascadeResets.join(", ")}`

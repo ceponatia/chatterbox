@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
-import type { Entity } from "@/lib/story-state-model";
-import { findEntityByName, resolveEntityName } from "@/lib/story-state-model";
+import type { Entity } from "@chatterbox/state-model";
+import { findEntityByName, resolveEntityName } from "@chatterbox/state-model";
 
 export function keyedByBase<T>(
   items: T[],

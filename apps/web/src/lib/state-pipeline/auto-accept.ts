@@ -7,11 +7,14 @@
  * - retried: schema fails or output truncated (caller should retry)
  */
 
-import type { ValidationReport, StateHistoryEntry } from "@/lib/state-history";
+import type {
+  StatePipelineValidation,
+  StatePipelineDisposition,
+} from "@chatterbox/sockets";
 
-export type Disposition = StateHistoryEntry["disposition"];
-
-export function determineDisposition(report: ValidationReport): Disposition {
+export function determineDisposition(
+  report: StatePipelineValidation,
+): StatePipelineDisposition {
   // Reject and retry: schema fails or output incomplete
   if (!report.schemaValid || !report.outputComplete) {
     return "retried";

@@ -1,3 +1,17 @@
+export {
+  applySectionMetaTransition,
+  emptyStructuredState,
+  findEntityByName,
+  findOrCreateEntity,
+  reconcileEntities,
+  remapEntityIds,
+  resolveEntityName,
+  ensureLifecycleDefaults,
+  reconcileLifecycleState,
+  parseMarkdownToStructured,
+  structuredToMarkdown,
+} from "@chatterbox/state-model";
+
 export type {
   AppearanceEntry,
   AttributeCategory,
@@ -14,25 +28,4 @@ export type {
   SectionMetaKey,
   StoryThread,
   StructuredStoryState,
-} from "@/lib/story-state-types";
-
-export {
-  applySectionMetaTransition,
-  emptyStructuredState,
-} from "@/lib/story-state-types";
-
-export {
-  findEntityByName,
-  findOrCreateEntity,
-  reconcileEntities,
-  remapEntityIds,
-  resolveEntityName,
-} from "@/lib/story-state-entities";
-
-export {
-  ensureLifecycleDefaults,
-  reconcileLifecycleState,
-} from "@/lib/story-state-lifecycle";
-
-export { parseMarkdownToStructured } from "@/lib/story-state-parser";
-export { structuredToMarkdown } from "@/lib/story-state-serializer";
+} from "@chatterbox/state-model";

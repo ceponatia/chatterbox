@@ -1,7 +1,7 @@
 import {
   parseMarkdownToStructured,
   resolveEntityName,
-} from "@/lib/story-state-model";
+} from "@chatterbox/state-model";
 import { compactText } from "./chat-tools";
 
 function latestIsoTimestamp(...values: Array<string | undefined>): string {

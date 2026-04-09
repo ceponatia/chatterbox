@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
-import type { CustomSection } from "@/lib/story-state-model";
+import type { CustomSection } from "@chatterbox/state-model";
 import { DeferredTextarea } from "./deferred-inputs";
 import { SectionShell } from "./section-primitives";
 

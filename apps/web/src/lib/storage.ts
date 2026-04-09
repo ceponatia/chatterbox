@@ -9,12 +9,12 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   type Settings,
 } from "./defaults";
-import type { StructuredStoryState } from "./story-state-model";
+import type { StructuredStoryState } from "@chatterbox/state-model";
 import {
   parseMarkdownToStructured,
   emptyStructuredState,
   ensureLifecycleDefaults,
-} from "./story-state-model";
+} from "@chatterbox/state-model";
 
 export type { Settings };
 

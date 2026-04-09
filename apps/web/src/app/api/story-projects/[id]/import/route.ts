@@ -12,7 +12,7 @@ import {
   getStoryProjectRow,
   regenerateStoryProject,
 } from "@/lib/story-project-db";
-import { parseMarkdownToStructured } from "@/lib/story-state-model";
+import { parseMarkdownToStructured } from "@chatterbox/state-model";
 import type { StoryProjectImportInput } from "@/lib/story-project-types";
 
 function hasImportPayload(body: StoryProjectImportInput | null): boolean {

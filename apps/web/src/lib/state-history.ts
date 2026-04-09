@@ -1,26 +1,30 @@
 /**
  * State history data model — tracks all state changes per conversation.
  * Persisted in Postgres via conversation state-history API routes.
+ *
+ * Pipeline-level types (StatePipelineChange, StatePipelineValidation,
+ * StatePipelineDisposition) live in @chatterbox/sockets. This module
+ * re-uses them and adds app-level history concerns (manual_edit, rollback).
  */
+
+import type {
+  StatePipelineChange,
+  StatePipelineValidation,
+  StatePipelineDisposition,
+} from "@chatterbox/sockets";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ExtractedFact {
-  type: string;
-  detail: string;
-  sourceTurn: number;
-  confidence: number;
-}
-
-export interface ValidationReport {
-  schemaValid: boolean;
-  allHardFactsPreserved: boolean;
-  noUnknownFacts: boolean;
-  outputComplete: boolean;
-  diffPercentage: number;
-}
+/**
+ * Disposition for history entries. Extends the pipeline disposition with
+ * app-level values that are never produced by the pipeline itself.
+ */
+export type StateHistoryDisposition =
+  | StatePipelineDisposition
+  | "manual_edit"
+  | "rollback";
 
 export interface StateHistoryEntry {
   id: string;
@@ -28,14 +32,9 @@ export interface StateHistoryEntry {
   turnRange: [number, number];
   previousState: string;
   newState: string;
-  extractedFacts: ExtractedFact[];
-  validation: ValidationReport;
-  disposition:
-    | "auto_accepted"
-    | "flagged"
-    | "retried"
-    | "manual_edit"
-    | "rollback";
+  extractedFacts: StatePipelineChange[];
+  validation: StatePipelineValidation;
+  disposition: StateHistoryDisposition;
 }
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ import type {
   AttributeCategory,
   DemeanorEntry,
   Entity,
-} from "@/lib/story-state-types";
+} from "@chatterbox/state-model";
 
 const SHARED_BEHAVIOR_FIELDS = [
   ["Emotional texture", "emotionalTexture"],

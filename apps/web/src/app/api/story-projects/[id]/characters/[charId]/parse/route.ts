@@ -25,6 +25,7 @@ export async function POST(
   const userId = getUserId(request);
 
   try {
+    // eslint-disable-next-line complexity
     const result = await prisma.$transaction(async (tx) => {
       const project = await getStoryProjectRow(tx, userId, id);
       const character = project?.characters.find((item) => item.id === charId);

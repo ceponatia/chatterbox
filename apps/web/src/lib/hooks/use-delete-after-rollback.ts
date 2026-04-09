@@ -2,11 +2,11 @@
 
 import { useCallback, useState } from "react";
 import type { UIMessage } from "ai";
-import {
-  appendStateHistoryEntry,
-  type ExtractedFact,
-  type ValidationReport,
-} from "@/lib/state-history";
+import { appendStateHistoryEntry } from "@/lib/state-history";
+import type {
+  StatePipelineChange,
+  StatePipelineValidation,
+} from "@chatterbox/sockets";
 import { generateId } from "@/lib/storage";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
@@ -14,8 +14,8 @@ import { buildCharacterSegmentLookup } from "@/lib/prompt-segment-utils";
 
 interface StateRollbackResponse {
   newState: string;
-  extractedFacts: ExtractedFact[];
-  validation: ValidationReport;
+  extractedFacts: StatePipelineChange[];
+  validation: StatePipelineValidation;
   disposition: "rollback";
   cascadeResets?: string[];
   turnNumber: number;

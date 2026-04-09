@@ -7,7 +7,7 @@
  * new ones — rather than blindly appending.
  */
 
-import type { ExtractedFact } from "@/lib/state-history";
+import type { StatePipelineChange } from "@chatterbox/sockets";
 
 /** Map fact types to the state sections they affect. */
 const FACT_SECTION_MAP: Record<string, string[]> = {
@@ -25,7 +25,7 @@ const FACT_SECTION_MAP: Record<string, string[]> = {
 
 interface SectionMergeGroup {
   section: string;
-  facts: ExtractedFact[];
+  facts: StatePipelineChange[];
   instruction: string;
 }
 
@@ -54,9 +54,9 @@ const SECTION_INSTRUCTIONS: Record<string, string> = {
  * Facts can route to multiple sections (e.g., relationship_shift → Relationships + Cast).
  */
 export function buildSectionMergeGroups(
-  facts: ExtractedFact[],
+  facts: StatePipelineChange[],
 ): SectionMergeGroup[] {
-  const groups = new Map<string, ExtractedFact[]>();
+  const groups = new Map<string, StatePipelineChange[]>();
 
   for (const fact of facts) {
     const sections = FACT_SECTION_MAP[fact.type] ?? ["General"];

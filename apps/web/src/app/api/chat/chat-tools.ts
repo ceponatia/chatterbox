@@ -2,7 +2,7 @@ import { tool, jsonSchema } from "ai";
 import {
   parseMarkdownToStructured,
   resolveEntityName,
-} from "@/lib/story-state-model";
+} from "@chatterbox/state-model";
 import type { PromptSegment } from "@chatterbox/prompt-assembly";
 
 const CHARACTER_DETAIL_SEGMENT_IDS = [

@@ -121,6 +121,18 @@ function pushUnparsedSection(
   );
 }
 
+const BEHAVIORAL_HEADING_MAP: Record<string, keyof CharacterBehavioralProfile> =
+  {
+    "speech patterns": "speechPatterns",
+    "speech pattern": "speechPatterns",
+    vocabulary: "vocabulary",
+    "emotional texture": "emotionalTexture",
+    "with {{ user }}": "withPlayer",
+    "common mistakes to avoid": "commonMistakes",
+    "common mistakes": "commonMistakes",
+    mannerisms: "mannerisms",
+  };
+
 function parseBehavioralProfile(
   content: string,
   unparsed: string[],
@@ -150,31 +162,9 @@ function parseBehavioralProfile(
     const end = nextMatch?.index ?? cleaned.length;
     const value = cleanText(cleaned.slice(start, end));
 
-    if (heading === "speech patterns" || heading === "speech pattern") {
-      profile.speechPatterns = value;
-      continue;
-    }
-    if (heading === "vocabulary") {
-      profile.vocabulary = value;
-      continue;
-    }
-    if (heading === "emotional texture") {
-      profile.emotionalTexture = value;
-      continue;
-    }
-    if (heading === "with {{ user }}") {
-      profile.withPlayer = value;
-      continue;
-    }
-    if (
-      heading === "common mistakes to avoid" ||
-      heading === "common mistakes"
-    ) {
-      profile.commonMistakes = value;
-      continue;
-    }
-    if (heading === "mannerisms") {
-      profile.mannerisms = value;
+    const field = BEHAVIORAL_HEADING_MAP[heading];
+    if (field) {
+      profile[field] = value;
       continue;
     }
 

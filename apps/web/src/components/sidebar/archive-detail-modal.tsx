@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { StoryThread, HardFact } from "@/lib/story-state-model";
+import type { StoryThread, HardFact } from "@chatterbox/state-model";
 
 // ---------------------------------------------------------------------------
 // Shared expandable row

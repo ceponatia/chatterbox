@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, useCallback, type Dispatch, type SetStateAction } from "react";
+import {
+  useState,
+  useCallback,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import {
   parseSystemPromptToSegments,
@@ -8,7 +13,7 @@ import {
 } from "@chatterbox/prompt-assembly";
 import { DEFAULT_SETTINGS } from "@/lib/defaults";
 import type { Settings } from "@/lib/defaults";
-import type { StructuredStoryState } from "@/lib/story-state-model";
+import type { StructuredStoryState } from "@chatterbox/state-model";
 import {
   parseMarkdownToStructured,
   structuredToMarkdown,
@@ -16,7 +21,7 @@ import {
   reconcileLifecycleState,
   remapEntityIds,
   applySectionMetaTransition,
-} from "@/lib/story-state-model";
+} from "@chatterbox/state-model";
 import { buildCharacterBehaviorSegment } from "@/lib/character-markdown";
 
 /** Story-state-specific handlers (extracted to keep main hook under line limit). */

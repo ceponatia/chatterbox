@@ -20,7 +20,6 @@ import {
 } from "@chatterbox/prompt-assembly";
 import type {
   AssemblyContext,
-  AssemblyResult,
   SerializedSegment,
 } from "@chatterbox/prompt-assembly";
 import { computeTopicScores } from "@/lib/topic-embeddings";
@@ -51,43 +50,16 @@ import {
 } from "./system-prompt";
 import { streamCallbacks } from "./stream-telemetry";
 import { generateGlmDraft, buildAionMessages } from "./aion-draft";
-
-// ---------------------------------------------------------------------------
-// Types & constants
-// ---------------------------------------------------------------------------
-
-interface ChatSettings {
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  tokenBudget?: number;
-}
-
-const AION_NO_TOOL_USE_MODEL_ID = "aion-labs/aion-2.0";
-
-const SETTING_DEFAULTS = {
-  temperature: 0.85,
-  maxTokens: 1024,
-  topP: 1,
-  frequencyPenalty: 0,
-  presencePenalty: 0,
-};
+import {
+  type ChatSettings,
+  AION_NO_TOOL_USE_MODEL_ID,
+  resolveSettings,
+  logAssembly,
+  logCompression,
+  stripOrphanedModelToolCalls,
+} from "./chat-helpers";
 
 const defaultAssembler = createDefaultAssembler();
-
-function resolveSettings(s: ChatSettings) {
-  const merged = { ...SETTING_DEFAULTS, ...s };
-  return {
-    temperature: merged.temperature,
-    maxOutputTokens: merged.maxTokens,
-    topP: merged.topP,
-    frequencyPenalty: merged.frequencyPenalty,
-    presencePenalty: merged.presencePenalty,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Assembly context
@@ -113,46 +85,6 @@ async function buildAssemblyContext(
     tokenBudget: settings.tokenBudget ?? 2500,
     topicScores,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Logging
-// ---------------------------------------------------------------------------
-
-function logAssembly(assembly: AssemblyResult, ctx: AssemblyContext) {
-  const budgetPct = Math.round(
-    (assembly.tokenEstimate / ctx.tokenBudget) * 100,
-  );
-  const omittedReasons = new Map<string, number>();
-  for (const o of assembly.omitted) {
-    omittedReasons.set(o.reason, (omittedReasons.get(o.reason) ?? 0) + 1);
-  }
-  const reasonSummary = [...omittedReasons.entries()]
-    .map(([r, n]) => `${r}(${n})`)
-    .join(", ");
-  log(
-    `  \x1b[2m\u{1f9e9} assembly t${ctx.turnNumber}: ` +
-      `${assembly.included.length} included, ${assembly.omitted.length} omitted, ` +
-      `~${assembly.tokenEstimate}/${ctx.tokenBudget} tokens (${budgetPct}%)` +
-      (reasonSummary ? ` | omit: ${reasonSummary}` : "") +
-      `\x1b[0m`,
-    "info",
-  );
-}
-
-function logCompression(stats: {
-  total: number;
-  verbatim: number;
-  summary: number;
-  digest: number;
-  promotedToVerbatim: number;
-  promotedToSummary: number;
-}) {
-  if (stats.total <= VERBATIM_TIER_SIZE) return;
-  log(
-    `  \x1b[2m\u{1f5dc} history: total=${stats.total}, verbatim=${stats.verbatim}, summary=${stats.summary}, digest=${stats.digest}, promotions(v=${stats.promotedToVerbatim}, s=${stats.promotedToSummary})\x1b[0m`,
-    "info",
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -209,50 +141,6 @@ function injectDepthNote(
     "info",
   );
   return depthNote.length;
-}
-
-// ---------------------------------------------------------------------------
-// Orphaned tool-call sanitization (operates on ModelMessage[])
-// ---------------------------------------------------------------------------
-
-function stripOrphanedModelToolCalls(messages: ModelMessage[]): ModelMessage[] {
-  const toolResultIds = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role !== "tool") continue;
-    if (!Array.isArray(msg.content)) continue;
-    for (const part of msg.content) {
-      if (typeof part === "object" && part !== null && "toolCallId" in part) {
-        toolResultIds.add(part.toolCallId);
-      }
-    }
-  }
-
-  let stripped = 0;
-  const result = messages.map((msg) => {
-    if (msg.role !== "assistant" || typeof msg.content === "string") return msg;
-    const content = msg.content;
-    const hasOrphan = content.some(
-      (part) =>
-        part.type === "tool-call" && !toolResultIds.has(part.toolCallId),
-    );
-    if (!hasOrphan) return msg;
-
-    const cleanContent = content.filter((part) => {
-      if (part.type === "tool-call" && !toolResultIds.has(part.toolCallId)) {
-        stripped++;
-        return false;
-      }
-      return true;
-    });
-    return { ...msg, content: cleanContent };
-  });
-
-  if (stripped > 0) {
-    logWarn(
-      `/api/chat: stripped ${stripped} orphaned tool-call(s) from model messages`,
-    );
-  }
-  return result;
 }
 
 async function buildConversationContext(

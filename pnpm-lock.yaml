@@ -38,6 +38,9 @@ importers:
       '@chatterbox/sockets':
         specifier: workspace:*
         version: link:../../packages/sockets
+      '@chatterbox/state-model':
+        specifier: workspace:*
+        version: link:../../packages/state-model
       '@openrouter/ai-sdk-provider':
         specifier: ^2.2.3
         version: 2.2.3(ai@6.0.79(zod@4.3.6))(zod@4.3.6)
@@ -132,6 +135,18 @@ importers:
         version: 8.55.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
 
   packages/sockets:
+    devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.55.0
+        version: 8.55.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@20.19.33)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.10(@types/node@20.19.33)(typescript@5.9.3))
+
+  packages/state-model:
     devDependencies:
       typescript:
         specifier: ^5

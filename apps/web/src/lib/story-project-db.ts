@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
-import type { StructuredStoryState } from "@/lib/story-state-model";
+import type { StructuredStoryState } from "@chatterbox/state-model";
 import { generateStoryProjectArtifacts } from "@/lib/story-project-core";
 import type {
   CharacterAppearanceEntry,

@@ -10,16 +10,16 @@ import {
   type SetStateAction,
 } from "react";
 import type { UIMessage } from "ai";
-import {
-  appendStateHistoryEntry,
-  type ExtractedFact,
-  type ValidationReport,
-} from "@/lib/state-history";
+import { appendStateHistoryEntry } from "@/lib/state-history";
+import type {
+  StatePipelineChange,
+  StatePipelineValidation,
+} from "@chatterbox/sockets";
 import { generateId } from "@/lib/storage";
 import type { SerializedSegment } from "@chatterbox/prompt-assembly";
 import { computeCascadeResets } from "@/lib/state-pipeline/cascade-triggers";
 import { buildCharacterSegmentLookup } from "@/lib/prompt-segment-utils";
-import type { StructuredStoryState } from "@/lib/story-state-model";
+import type { StructuredStoryState } from "@chatterbox/state-model";
 
 const SECTION_STALE_TURNS = 30;
 
@@ -37,8 +37,8 @@ const SECTION_LABELS: Record<string, string> = {
 
 interface StateUpdateResponse {
   newState: string;
-  extractedFacts: ExtractedFact[];
-  validation: ValidationReport;
+  extractedFacts: StatePipelineChange[];
+  validation: StatePipelineValidation;
   disposition: "auto_accepted" | "flagged" | "retried";
   cascadeResets?: string[];
   turnNumber: number;

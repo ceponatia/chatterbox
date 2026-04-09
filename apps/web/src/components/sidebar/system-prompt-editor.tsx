@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { RotateCcw, Upload } from "lucide-react";
 import { DeferredTextarea } from "./deferred-inputs";
-import type { Entity } from "@/lib/story-state-model";
+import type { Entity } from "@chatterbox/state-model";
 import { SegmentCard } from "./system-prompt-segment-card";
 
 interface SystemPromptEditorProps {
@@ -31,6 +31,7 @@ interface SystemPromptEditorProps {
   turnNumber: number;
 }
 
+// eslint-disable-next-line max-lines-per-function
 export function SystemPromptEditor({
   value,
   onChange,

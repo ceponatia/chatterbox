@@ -6,7 +6,10 @@
  * Facts may be removed only when explicitly superseded.
  */
 
-import type { ValidationReport, ExtractedFact } from "@/lib/state-history";
+import type {
+  StatePipelineValidation,
+  StatePipelineChange,
+} from "@chatterbox/sockets";
 
 const REQUIRED_SECTIONS = [
   "## Cast",
@@ -52,8 +55,8 @@ function computeDiffPercentage(previous: string, candidate: string): number {
 export function validateState(
   candidate: string,
   previous: string,
-  extractedFacts: ExtractedFact[],
-): ValidationReport {
+  extractedFacts: StatePipelineChange[],
+): StatePipelineValidation {
   // 1. Schema validation — all required sections present and non-empty
   const schemaValid = REQUIRED_SECTIONS.every((section) => {
     const idx = candidate.indexOf(section);

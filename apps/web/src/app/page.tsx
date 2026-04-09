@@ -25,7 +25,7 @@ import { useDeleteAfterRollback } from "@/lib/hooks/use-delete-after-rollback";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
 import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
 import { trapTabKey } from "@/lib/focus-trap";
-import { scanPresenceFromAssistantMessage } from "@/lib/presence-scanner";
+import { scanPresenceFromAssistantMessage } from "@chatterbox/state-model";
 
 // Module-level config that the transport body function reads at request time.
 const liveConfig = {

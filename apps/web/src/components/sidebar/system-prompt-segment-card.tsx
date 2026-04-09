@@ -7,7 +7,7 @@ import type {
 } from "@chatterbox/prompt-assembly";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import type { Entity } from "@/lib/story-state-model";
+import type { Entity } from "@chatterbox/state-model";
 import { DeferredInput, DeferredTextarea } from "./deferred-inputs";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -65,7 +65,10 @@ function SegmentSummary({
         </span>
       )}
       {linkedEntityLabel && (
-        <span className="truncate max-w-40" title={`Linked entity: ${linkedEntityLabel}`}>
+        <span
+          className="truncate max-w-40"
+          title={`Linked entity: ${linkedEntityLabel}`}
+        >
           linked: {linkedEntityLabel}
         </span>
       )}

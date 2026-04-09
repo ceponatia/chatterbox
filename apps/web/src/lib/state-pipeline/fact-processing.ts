@@ -5,7 +5,7 @@
  * Filters out low-confidence facts and facts already represented in state.
  */
 
-import type { ExtractedFact } from "@/lib/state-history";
+import type { StatePipelineChange } from "@chatterbox/sockets";
 
 /** Minimum confidence to include a fact in the merge. */
 const CONFIDENCE_THRESHOLD = 0.6;
@@ -27,7 +27,10 @@ function normalize(s: string): string {
  * Uses substring matching on normalized text — if the core detail appears
  * in the state, the fact is considered a duplicate.
  */
-function isDuplicate(fact: ExtractedFact, stateNormalized: string): boolean {
+function isDuplicate(
+  fact: StatePipelineChange,
+  stateNormalized: string,
+): boolean {
   const detail = normalize(fact.detail);
   if (detail.length < 10) return false;
   // Check if the full detail or a significant prefix is already in state
@@ -39,11 +42,11 @@ function isDuplicate(fact: ExtractedFact, stateNormalized: string): boolean {
 
 export interface FactProcessingResult {
   /** Facts that passed confidence + dedup filters — ready for merge */
-  accepted: ExtractedFact[];
+  accepted: StatePipelineChange[];
   /** Facts below confidence threshold — held for potential future corroboration */
-  lowConfidence: ExtractedFact[];
+  lowConfidence: StatePipelineChange[];
   /** Facts already represented in state */
-  duplicates: ExtractedFact[];
+  duplicates: StatePipelineChange[];
 }
 
 /**
@@ -54,13 +57,13 @@ export interface FactProcessingResult {
  * 3. Remaining facts are returned for merge
  */
 export function processFacts(
-  facts: ExtractedFact[],
+  facts: StatePipelineChange[],
   currentState: string,
 ): FactProcessingResult {
   const stateNormalized = normalize(currentState);
-  const accepted: ExtractedFact[] = [];
-  const lowConfidence: ExtractedFact[] = [];
-  const duplicates: ExtractedFact[] = [];
+  const accepted: StatePipelineChange[] = [];
+  const lowConfidence: StatePipelineChange[] = [];
+  const duplicates: StatePipelineChange[] = [];
 
   for (const fact of facts) {
     // Corrections and superseded markers always pass — they exist to fix stale state

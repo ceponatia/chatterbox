@@ -21,7 +21,7 @@ import {
   remapEntityIds,
   structuredToMarkdown,
   type StructuredStoryState,
-} from "@/lib/story-state-model";
+} from "@chatterbox/state-model";
 import type {
   SegmentOverrides,
   StoryAuthoringMode,

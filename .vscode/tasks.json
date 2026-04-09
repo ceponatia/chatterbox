@@ -4,10 +4,15 @@
     {
       "label": "lint:workspace",
       "type": "shell",
-      "command": "pnpm --filter @chatterbox/sockets exec eslint -f stylish src/; pnpm --filter @chatterbox/prompt-assembly exec eslint -f stylish src/; pnpm --filter web exec eslint -f stylish .",
-      "problemMatcher": ["$eslint-stylish"],
+      "command": "pnpm --filter @chatterbox/sockets exec eslint -f stylish src/; pnpm --filter @chatterbox/prompt-assembly exec eslint -f stylish src/; pnpm --filter @chatterbox/state-model exec eslint -f stylish src/; pnpm --filter web exec eslint -f stylish .",
+      "problemMatcher": [
+        "$eslint-stylish"
+      ],
       "group": "build",
-      "presentation": { "reveal": "always", "panel": "dedicated" }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ]
 }
