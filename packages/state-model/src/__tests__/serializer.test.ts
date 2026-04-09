@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { structuredToMarkdown } from "../serializer.js";
-import { parseMarkdownToStructured } from "../parser.js";
-import { emptyStructuredState } from "../types.js";
-import type { StructuredStoryState } from "../types.js";
+import { structuredToMarkdown } from "../serializer";
+import { parseMarkdownToStructured } from "../parser";
+import { emptyStructuredState } from "../types";
+import type { StructuredStoryState } from "../types";
 
 function buildTestState(): StructuredStoryState {
   const state = emptyStructuredState();

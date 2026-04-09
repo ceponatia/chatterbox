@@ -1,4 +1,4 @@
-import type { AttributeCategory, FactTag, RelationshipTone } from "./types.js";
+import type { AttributeCategory, FactTag, RelationshipTone } from "./types";
 
 const ATTRIBUTE_KEYWORDS: Record<AttributeCategory, readonly string[]> = {
   face: [

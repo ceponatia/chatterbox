@@ -4,7 +4,7 @@ import {
   type HardFact,
   type StoryThread,
   type StructuredStoryState,
-} from "./types.js";
+} from "./types";
 import {
   deriveThreadHook,
   generateStoryItemId,
@@ -13,7 +13,7 @@ import {
   inferRelationshipTone,
   normalizeTextKey,
   summarizeFact,
-} from "./inference.js";
+} from "./inference";
 
 function resolveFactContent(
   fact: HardFact,

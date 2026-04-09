@@ -7,7 +7,7 @@ import {
   deriveThreadHook,
   generateStoryItemId,
   normalizeTextKey,
-} from "../inference.js";
+} from "../inference";
 
 describe("inferAttributeCategory", () => {
   it('returns "face" for eyes', () => {

@@ -151,7 +151,11 @@ function renderTabContent(
         <CharacterSourceTab
           importedMarkdown={builder.character.importedMarkdown}
           provenance={builder.character.provenance}
-          onParse={() => builder.parseFromImport()}
+          existingDraft={builder.draft}
+          onPreviewParse={() => builder.previewParse()}
+          onApplyParse={(parsed, sections) =>
+            builder.applySelectiveParse(parsed, sections)
+          }
           busy={builder.saving}
         />
       );

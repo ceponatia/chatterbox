@@ -87,6 +87,7 @@ Before merging socket changes, verify:
 
 - `pnpm --filter @chatterbox/sockets typecheck`
 - `pnpm --filter @chatterbox/sockets lint`
+- `pnpm --filter @chatterbox/sockets test`
 - app still compiles when consuming from `@chatterbox/sockets` root exports only
 - Package tooling relies on the `typescript-eslint` meta package; do not add a direct `@typescript-eslint/parser` dependency unless a config explicitly needs it.
 

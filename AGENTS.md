@@ -32,9 +32,7 @@ Optional env vars:
 | `pnpm infra:up` / `infra:down` | infra        | Postgres via Docker Compose                                   |
 | `pnpm fetch:providers`         | root script  | Refresh OpenRouter provider order snapshot for model registry |
 
-**No test framework exists.** Validation relies on `pnpm typecheck` + `pnpm lint` + `pnpm dev` starts successfully.
-
-Per-package: `pnpm --filter @chatterbox/sockets typecheck`, etc.
+Tests exist in `@chatterbox/sockets` and `@chatterbox/state-model` (vitest). Run per-package: `pnpm --filter @chatterbox/state-model test`, etc. Full validation relies on `pnpm typecheck` + `pnpm lint` + per-package tests + `pnpm dev` starts successfully.
 
 ## Workspace structure
 
@@ -43,7 +41,8 @@ chatterbox/
 ├── apps/web/                # Next.js 16 app (React 19, App Router)
 ├── packages/
 │   ├── sockets/             # boundary contract types + defaults (leaf)
-│   └── prompt-assembly/     # segmented prompt engine
+│   ├── prompt-assembly/     # segmented prompt engine
+│   └── state-model/         # entity-centric story state model (leaf)
 ├── infra/                   # schema.prisma, migrations, docker-compose.yml
 ├── dev-docs/                # planning docs (gitignored, local-only)
 ├── prompts/                 # character prompt assets (gitignored, local-only)
@@ -64,9 +63,11 @@ chatterbox/
 ```
 apps/web → @chatterbox/prompt-assembly → @chatterbox/sockets
 apps/web → @chatterbox/sockets
+apps/web → @chatterbox/state-model
 ```
 
 `@chatterbox/sockets` is a strict leaf — it cannot import from any other package.
+`@chatterbox/state-model` is a strict leaf — it cannot import from any other package.
 
 ## Non-negotiable boundaries
 

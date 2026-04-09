@@ -46,6 +46,23 @@ function completenessSummary(character: StoryCharacterRecord): string {
   ].join(" | ");
 }
 
+function computeCompleteness(character: StoryCharacterRecord): {
+  missingFields: string[];
+  isComplete: boolean;
+} {
+  const missing: string[] = [];
+  if (!character.behavioralProfile?.overview?.trim()) {
+    missing.push("No overview");
+  }
+  if (countAppearanceAttributes(character) === 0) {
+    missing.push("No appearance");
+  }
+  if (!character.startingDemeanor?.trim()) {
+    missing.push("No demeanor");
+  }
+  return { missingFields: missing, isComplete: missing.length === 0 };
+}
+
 export function StoryCharacterSummaryCard({
   storyId,
   character,
@@ -57,6 +74,8 @@ export function StoryCharacterSummaryCard({
   busy: boolean;
   onDelete: () => Promise<void>;
 }) {
+  const { missingFields, isComplete } = computeCompleteness(character);
+
   return (
     <div className="app-story-card transition-colors hover:bg-accent/10">
       <div className="flex items-start gap-3">
@@ -68,6 +87,24 @@ export function StoryCharacterSummaryCard({
             <h3 className="text-sm font-semibold">{character.name}</h3>
             <Badge variant="outline">{character.role}</Badge>
             {character.isPlayer && <Badge>player</Badge>}
+            {isComplete ? (
+              <Badge
+                variant="outline"
+                className="border-green-600 text-green-500"
+              >
+                Complete
+              </Badge>
+            ) : (
+              missingFields.map((label) => (
+                <Badge
+                  key={label}
+                  variant="outline"
+                  className="border-yellow-600 text-yellow-500"
+                >
+                  {label}
+                </Badge>
+              ))
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
             {completenessSummary(character)}

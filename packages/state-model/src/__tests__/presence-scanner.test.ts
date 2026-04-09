@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { scanPresenceFromAssistantMessage } from "../presence-scanner.js";
-import type { Entity } from "../types.js";
+import { scanPresenceFromAssistantMessage } from "../presence-scanner";
+import type { Entity } from "../types";
 
 const AMANDA: Entity = {
   id: "e-amanda",

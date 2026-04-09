@@ -17,6 +17,9 @@ import type {
   StoryProjectCharacterInput,
 } from "@/lib/story-project-types";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function normalizeText(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -172,10 +175,15 @@ export async function POST(
       return "player-conflict" as const;
     }
 
+    const entityId =
+      typeof body.entityId === "string" && UUID_RE.test(body.entityId)
+        ? body.entityId
+        : createStoryCharacterEntityId();
+
     const character = await tx.storyCharacter.create({
       data: {
         storyProjectId: id,
-        entityId: createStoryCharacterEntityId(),
+        entityId,
         ...buildCharacterData(body, name),
       },
     });

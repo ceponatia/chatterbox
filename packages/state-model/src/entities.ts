@@ -1,4 +1,4 @@
-import type { Entity, StructuredStoryState } from "./types.js";
+import type { Entity, StructuredStoryState } from "./types";
 
 function generateEntityId(): string {
   return crypto.randomUUID();

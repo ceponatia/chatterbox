@@ -5,7 +5,7 @@ import {
   normalizeSectionMeta,
   applySectionMetaTransition,
   type StructuredStoryState,
-} from "../types.js";
+} from "../types";
 
 describe("emptyStructuredState", () => {
   it("returns an object with all required fields as empty arrays/defaults", () => {

@@ -71,11 +71,15 @@ export function createStoryCharacter(
   id: string,
   input: StoryProjectCharacterInput,
 ) {
+  const payload: StoryProjectCharacterInput = {
+    ...input,
+    entityId: input.entityId ?? crypto.randomUUID(),
+  };
   return requestJson<StoryCharacterRecord>(
     `/api/story-projects/${id}/characters`,
     {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify(payload),
     },
   );
 }

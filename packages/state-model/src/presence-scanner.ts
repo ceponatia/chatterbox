@@ -1,4 +1,4 @@
-import type { Entity } from "./types.js";
+import type { Entity } from "./types";
 
 const EXIT_VERB_PATTERN =
   /\b(left|leaves|leaving|walked out|walks out|walked away|walks away|stepped out|steps out|exited|exits|departed|departs|stormed out|slipped out|headed out|rushes out|rushed out|ran out|runs out)\b/i;

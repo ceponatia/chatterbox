@@ -1,15 +1,12 @@
 import { describe, it, expect } from "vitest";
-import {
-  reconcileLifecycleState,
-  ensureLifecycleDefaults,
-} from "../lifecycle.js";
+import { reconcileLifecycleState, ensureLifecycleDefaults } from "../lifecycle";
 import {
   emptyStructuredState,
   type Entity,
   type HardFact,
   type StoryThread,
   type StructuredStoryState,
-} from "../types.js";
+} from "../types";
 
 const TODAY = "2026-01-15";
 

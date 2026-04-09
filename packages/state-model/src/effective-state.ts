@@ -1,4 +1,4 @@
-import { emptyStructuredState, type StructuredStoryState } from "./types.js";
+import { emptyStructuredState, type StructuredStoryState } from "./types";
 
 export interface EffectiveStateInput {
   baseline: StructuredStoryState | null;

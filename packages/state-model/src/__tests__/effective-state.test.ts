@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveEffectiveState } from "../effective-state.js";
+import { resolveEffectiveState } from "../effective-state";
 import {
   emptyStructuredState,
   type Entity,
   type StructuredStoryState,
-} from "../types.js";
+} from "../types";
 
 const ALICE: Entity = {
   id: "e-alice",

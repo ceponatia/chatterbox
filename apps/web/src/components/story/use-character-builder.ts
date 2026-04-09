@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   createDefaultAppearanceEntries,
   createEmptyBehavioralProfile,
   createEmptyCharacterIdentity,
 } from "@/lib/character-schema";
+import { parseCharacterMarkdown } from "@/lib/character-markdown-parser";
+import type { ParsedCharacterMarkdown } from "@/lib/character-markdown-parser";
 import {
   loadStoryCharacter,
   parseCharacterIntoStructured,
@@ -50,6 +59,10 @@ function serializeDraft(draft: CharacterBuilderDraft): string {
   return JSON.stringify(draft);
 }
 
+function draftKey(characterId: string): string {
+  return `character-draft-${characterId}`;
+}
+
 function useLoadedCharacter(storyId: string, characterId: string) {
   const [character, setCharacter] = useState<StoryCharacterRecord | null>(null);
   const [draft, setDraft] = useState<CharacterBuilderDraft | null>(null);
@@ -69,10 +82,27 @@ function useLoadedCharacter(storyId: string, characterId: string) {
       try {
         const record = await loadStoryCharacter(storyId, characterId);
         if (!active) return;
-        const nextDraft = createDraft(record);
-        setCharacter(record);
-        setDraft(nextDraft);
-        setInitialSnapshot(serializeDraft(nextDraft));
+        const serverDraft = createDraft(record);
+        const serverSnapshot = serializeDraft(serverDraft);
+
+        const savedRaw = localStorage.getItem(draftKey(characterId));
+        if (savedRaw && savedRaw !== serverSnapshot) {
+          try {
+            const restored = JSON.parse(savedRaw) as CharacterBuilderDraft;
+            setCharacter(record);
+            setDraft(restored);
+            setInitialSnapshot(serverSnapshot);
+            setStatus("Restored unsaved draft.");
+          } catch {
+            setCharacter(record);
+            setDraft(serverDraft);
+            setInitialSnapshot(serverSnapshot);
+          }
+        } else {
+          setCharacter(record);
+          setDraft(serverDraft);
+          setInitialSnapshot(serverSnapshot);
+        }
       } catch (nextError) {
         if (!active) return;
         setError(
@@ -215,6 +245,24 @@ export function useCharacterBuilder({
 
   useBeforeUnloadGuard(isDirty);
 
+  const draftRef = useRef(loaded.draft);
+  draftRef.current = loaded.draft;
+
+  const persistDraft = useCallback(() => {
+    if (draftRef.current) {
+      localStorage.setItem(
+        draftKey(characterId),
+        serializeDraft(draftRef.current),
+      );
+    }
+  }, [characterId]);
+
+  useEffect(() => {
+    if (!isDirty) return undefined;
+    const timer = setTimeout(persistDraft, 500);
+    return () => clearTimeout(timer);
+  }, [isDirty, loaded.draft, persistDraft]);
+
   async function save() {
     if (!loaded.draft || loaded.saving) return;
 
@@ -237,6 +285,7 @@ export function useCharacterBuilder({
       loaded.setCharacter(saved);
       loaded.setDraft(nextDraft);
       loaded.setInitialSnapshot(serializeDraft(nextDraft));
+      localStorage.removeItem(draftKey(characterId));
       loaded.setStatus("Character saved.");
     } catch (nextError) {
       loaded.setError(
@@ -259,6 +308,7 @@ export function useCharacterBuilder({
       loaded.setCharacter(parsed);
       loaded.setDraft(nextDraft);
       loaded.setInitialSnapshot(serializeDraft(nextDraft));
+      localStorage.removeItem(draftKey(characterId));
       loaded.setStatus("Imported markdown parsed into structured fields.");
     } catch (nextError) {
       loaded.setError(
@@ -267,6 +317,49 @@ export function useCharacterBuilder({
     } finally {
       loaded.setSaving(false);
     }
+  }
+
+  function previewParse(): ParsedCharacterMarkdown | null {
+    if (!loaded.draft?.importedMarkdown) return null;
+    return parseCharacterMarkdown(loaded.draft.importedMarkdown);
+  }
+
+  function applySelectiveParse(
+    parsed: ParsedCharacterMarkdown,
+    selectedSections: Set<string>,
+  ) {
+    loaded.setDraft((current) => {
+      if (!current) return current;
+      let next = { ...current };
+
+      if (selectedSections.has("identity") && parsed.identity) {
+        next = { ...next, identity: parsed.identity };
+      }
+      if (selectedSections.has("background") && parsed.background !== null) {
+        next = { ...next, background: parsed.background };
+      }
+      if (selectedSections.has("appearance") && parsed.appearance) {
+        next = { ...next, appearance: parsed.appearance };
+      }
+      if (
+        selectedSections.has("behavioralProfile") &&
+        parsed.behavioralProfile
+      ) {
+        next = { ...next, behavioralProfile: parsed.behavioralProfile };
+      }
+      if (
+        selectedSections.has("startingDemeanor") &&
+        parsed.startingDemeanor !== null
+      ) {
+        next = { ...next, startingDemeanor: parsed.startingDemeanor };
+      }
+      if (parsed.name && selectedSections.has("identity")) {
+        next = { ...next, name: parsed.name };
+      }
+
+      return next;
+    });
+    loaded.setStatus("Applied selected sections from import.");
   }
 
   return {
@@ -280,5 +373,7 @@ export function useCharacterBuilder({
     ...actions,
     save,
     parseFromImport,
+    previewParse,
+    applySelectiveParse,
   };
 }

@@ -4,7 +4,10 @@ import { useState } from "react";
 import { FileText, RefreshCw } from "lucide-react";
 import { StoryReadonlyBlock } from "@/components/story/story-readonly-block";
 import { Button } from "@/components/ui/button";
+import type { ParsedCharacterMarkdown } from "@/lib/character-markdown-parser";
 import type { CharacterProvenance } from "@/lib/story-project-types";
+import { ImportPreviewModal } from "./character-import-preview";
+import type { CharacterBuilderDraft } from "./use-character-builder";
 
 const SECTION_LABELS: Record<keyof CharacterProvenance, string> = {
   identity: "Identity",
@@ -45,31 +48,51 @@ function getAuthoringMode(
 export function CharacterSourceTab({
   importedMarkdown,
   provenance,
-  onParse,
+  existingDraft,
+  onPreviewParse,
+  onApplyParse,
   busy,
 }: {
   importedMarkdown: string | null;
   provenance: CharacterProvenance | null;
-  onParse: () => Promise<void>;
+  existingDraft: CharacterBuilderDraft | null;
+  onPreviewParse: () => ParsedCharacterMarkdown | null;
+  onApplyParse: (
+    parsed: ParsedCharacterMarkdown,
+    selectedSections: Set<string>,
+  ) => void;
   busy: boolean;
 }) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewData, setPreviewData] =
+    useState<ParsedCharacterMarkdown | null>(null);
   const importedSections = sectionList(provenance, "imported");
   const formSections = sectionList(provenance, "form");
   const authoringMode = getAuthoringMode(importedMarkdown, provenance);
 
-  async function handleParse() {
+  function handlePreviewParse() {
     setError(null);
     setStatus(null);
     try {
-      await onParse();
-      setStatus("Imported markdown parsed into structured sections.");
+      const parsed = onPreviewParse();
+      if (!parsed) {
+        setError("No imported markdown to parse.");
+        return;
+      }
+      setPreviewData(parsed);
     } catch (nextError) {
       setError(
         nextError instanceof Error ? nextError.message : "Parse failed.",
       );
     }
+  }
+
+  function handleAcceptPreview(selectedSections: Set<string>) {
+    if (!previewData) return;
+    onApplyParse(previewData, selectedSections);
+    setPreviewData(null);
+    setStatus("Applied selected sections from import.");
   }
 
   return (
@@ -86,7 +109,7 @@ export function CharacterSourceTab({
           variant="outline"
           size="sm"
           disabled={busy || !importedMarkdown?.trim()}
-          onClick={() => void handleParse()}
+          onClick={handlePreviewParse}
         >
           <RefreshCw className="mr-1 h-4 w-4" />
           Parse from Import
@@ -126,6 +149,18 @@ export function CharacterSourceTab({
         value={importedMarkdown}
         placeholder="No imported character markdown yet."
       />
+
+      {previewData && existingDraft && (
+        <ImportPreviewModal
+          open={previewData !== null}
+          onOpenChange={(open) => {
+            if (!open) setPreviewData(null);
+          }}
+          parsed={previewData}
+          existingDraft={existingDraft}
+          onAccept={handleAcceptPreview}
+        />
+      )}
     </div>
   );
 }

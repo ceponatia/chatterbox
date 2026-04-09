@@ -1,4 +1,4 @@
-import { resolveEntityName } from "./entities.js";
+import { resolveEntityName } from "./entities";
 import type {
   AppearanceEntry,
   DemeanorEntry,
@@ -6,7 +6,7 @@ import type {
   Relationship,
   SceneInfo,
   StructuredStoryState,
-} from "./types.js";
+} from "./types";
 
 function serializeEntities(entities: Entity[]): string {
   return entities

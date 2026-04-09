@@ -5,9 +5,9 @@ import {
   findOrCreateEntity,
   reconcileEntities,
   remapEntityIds,
-} from "../entities.js";
-import { emptyStructuredState } from "../types.js";
-import type { Entity } from "../types.js";
+} from "../entities";
+import { emptyStructuredState } from "../types";
+import type { Entity } from "../types";
 
 function makeEntity(
   id: string,

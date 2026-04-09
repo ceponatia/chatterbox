@@ -1,4 +1,4 @@
-import type { StructuredStoryState } from "./types.js";
+import type { StructuredStoryState } from "./types";
 
 const SECTION_MAP: Record<string, keyof Omit<StructuredStoryState, "custom">> =
   {

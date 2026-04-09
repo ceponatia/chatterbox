@@ -4,8 +4,8 @@ import {
   type CustomSection,
   type Entity,
   type StructuredStoryState,
-} from "./types.js";
-import { findEntityByName, findOrCreateEntity } from "./entities.js";
+} from "./types";
+import { findEntityByName, findOrCreateEntity } from "./entities";
 import {
   deriveThreadHook,
   generateStoryItemId,
@@ -13,14 +13,14 @@ import {
   inferFactTags,
   inferRelationshipTone,
   summarizeFact,
-} from "./inference.js";
-import { ensureLifecycleDefaults } from "./lifecycle.js";
+} from "./inference";
+import { ensureLifecycleDefaults } from "./lifecycle";
 import {
   emptyRawSections,
   parseRawSection,
   resolveSection,
   type RawSections,
-} from "./parser-helpers.js";
+} from "./parser-helpers";
 
 const TEMPLATE_PLACEHOLDER_RE = /^\{\{\s*(user|char)\s*\}\}$/i;
 

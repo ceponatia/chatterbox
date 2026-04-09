@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdownToStructured } from "../parser.js";
-import { emptyStructuredState } from "../types.js";
+import { parseMarkdownToStructured } from "../parser";
+import { emptyStructuredState } from "../types";
 
 describe("parseMarkdownToStructured", () => {
   describe("empty/blank input", () => {

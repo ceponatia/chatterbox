@@ -125,6 +125,7 @@ export interface StoryProjectCharacterInput {
   name: string;
   role: string;
   isPlayer?: boolean;
+  entityId?: string;
   importedMarkdown?: string | null;
   identity?: CharacterIdentity | null;
   background?: string | null;

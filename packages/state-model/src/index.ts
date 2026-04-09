@@ -15,10 +15,10 @@ export type {
   SectionMetaKey,
   StoryThread,
   StructuredStoryState,
-} from "./types.js";
+} from "./types";
 
 // Type helpers and empty state
-export { applySectionMetaTransition, emptyStructuredState } from "./types.js";
+export { applySectionMetaTransition, emptyStructuredState } from "./types";
 
 // Entity operations
 export {
@@ -27,23 +27,20 @@ export {
   reconcileEntities,
   remapEntityIds,
   resolveEntityName,
-} from "./entities.js";
+} from "./entities";
 
 // Lifecycle
-export {
-  ensureLifecycleDefaults,
-  reconcileLifecycleState,
-} from "./lifecycle.js";
+export { ensureLifecycleDefaults, reconcileLifecycleState } from "./lifecycle";
 
 // Parser
-export { parseMarkdownToStructured } from "./parser.js";
+export { parseMarkdownToStructured } from "./parser";
 
 // Serializer
-export { structuredToMarkdown } from "./serializer.js";
+export { structuredToMarkdown } from "./serializer";
 
 // Presence scanner
-export { scanPresenceFromAssistantMessage } from "./presence-scanner.js";
+export { scanPresenceFromAssistantMessage } from "./presence-scanner";
 
 // Effective state resolver
-export { resolveEffectiveState } from "./effective-state.js";
-export type { EffectiveStateInput } from "./effective-state.js";
+export { resolveEffectiveState } from "./effective-state";
+export type { EffectiveStateInput } from "./effective-state";

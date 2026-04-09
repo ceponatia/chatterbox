@@ -10,7 +10,8 @@
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "fetch:providers": "node --experimental-strip-types scripts/fetch-providers.ts"
+    "fetch:providers": "node --experimental-strip-types scripts/fetch-providers.ts",
+    "validate:schema": "node --experimental-strip-types scripts/validate-character-schema.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
