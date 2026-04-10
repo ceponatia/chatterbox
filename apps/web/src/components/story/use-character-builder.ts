@@ -24,6 +24,7 @@ import type {
   CharacterAppearanceEntry,
   CharacterBehavioralProfile,
   CharacterIdentity,
+  DialogueExample,
   MutabilityTier,
   StoryCharacterRecord,
 } from "@/lib/story-project-types";
@@ -38,6 +39,7 @@ export interface CharacterBuilderDraft {
   appearance: CharacterAppearanceEntry[];
   behavioralProfile: CharacterBehavioralProfile;
   startingDemeanor: string;
+  dialogueExamples: DialogueExample[];
 }
 
 function createDraft(record: StoryCharacterRecord): CharacterBuilderDraft {
@@ -52,6 +54,7 @@ function createDraft(record: StoryCharacterRecord): CharacterBuilderDraft {
     behavioralProfile:
       record.behavioralProfile ?? createEmptyBehavioralProfile(),
     startingDemeanor: record.startingDemeanor ?? "",
+    dialogueExamples: record.dialogueExamples ?? [],
   };
 }
 
@@ -226,6 +229,35 @@ function useDraftActions(
         ),
       }));
     },
+    addDialogueExample() {
+      updateDraft((current) => ({
+        ...current,
+        dialogueExamples: [
+          ...current.dialogueExamples,
+          { text: "", tag: "general" },
+        ],
+      }));
+    },
+    removeDialogueExample(index: number) {
+      updateDraft((current) => ({
+        ...current,
+        dialogueExamples: current.dialogueExamples.filter(
+          (_, entryIndex) => entryIndex !== index,
+        ),
+      }));
+    },
+    updateDialogueExample(
+      index: number,
+      field: keyof DialogueExample,
+      value: string,
+    ) {
+      updateDraft((current) => ({
+        ...current,
+        dialogueExamples: current.dialogueExamples.map((entry, entryIndex) =>
+          entryIndex === index ? { ...entry, [field]: value } : entry,
+        ),
+      }));
+    },
   };
 }
 
@@ -280,6 +312,9 @@ export function useCharacterBuilder({
         appearance: loaded.draft.appearance,
         behavioralProfile: loaded.draft.behavioralProfile,
         startingDemeanor: loaded.draft.startingDemeanor || null,
+        dialogueExamples: loaded.draft.dialogueExamples.filter(
+          (ex) => ex.text.trim().length > 0,
+        ),
       });
       const nextDraft = createDraft(saved);
       loaded.setCharacter(saved);

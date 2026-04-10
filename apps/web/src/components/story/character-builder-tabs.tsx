@@ -2,12 +2,18 @@
 
 import { useState } from "react";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CHARACTER_TABS, type SectionDefinition } from "@/lib/character-schema";
+import {
+  CHARACTER_TABS,
+  DIALOGUE_EXAMPLE_TAGS,
+  type SectionDefinition,
+} from "@/lib/character-schema";
 import type {
   CharacterAppearanceEntry,
+  DialogueExample,
   StoryCharacterRecord,
 } from "@/lib/story-project-types";
 import { CharacterFormField } from "./character-form-field";
@@ -251,13 +257,100 @@ function BehaviorSection({
   );
 }
 
+function DialogueExamplesSection({
+  examples,
+  onAdd,
+  onRemove,
+  onUpdate,
+}: {
+  examples: DialogueExample[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onUpdate: (
+    index: number,
+    field: keyof DialogueExample,
+    value: string,
+  ) => void;
+}) {
+  return (
+    <div className="app-editor-section">
+      <div className="app-editor-section-body app-story-stack">
+        <p className="app-editor-summary">
+          Write short, distinctive lines that capture how this character speaks.
+          Include a mix of registers to show different sides of their voice.
+          These are reference examples, not scripts.
+        </p>
+        {examples.map((example, index) => (
+          <div key={index} className="app-editor-card gap-3">
+            <div className="flex items-start gap-3">
+              <div className="flex flex-1 flex-col gap-2">
+                <Textarea
+                  value={example.text}
+                  onChange={(event) =>
+                    onUpdate(index, "text", event.target.value)
+                  }
+                  placeholder="Write a line of dialogue this character would say."
+                  className="min-h-20"
+                />
+                <select
+                  className="app-editor-select w-fit"
+                  value={example.tag}
+                  onChange={(event) =>
+                    onUpdate(index, "tag", event.target.value)
+                  }
+                  title="Emotional register for this example"
+                >
+                  {DIALOGUE_EXAMPLE_TAGS.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => onRemove(index)}
+                title="Remove example"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onAdd}
+          className="self-start"
+        >
+          <Plus className="mr-1 h-4 w-4" />
+          Add Example
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function BehaviorTab({
   draft,
   onBehaviorFieldChange,
+  onAddDialogueExample,
+  onRemoveDialogueExample,
+  onUpdateDialogueExample,
 }: {
   draft: CharacterBuilderDraft;
   onBehaviorFieldChange: (
     key: keyof CharacterBuilderDraft["behavioralProfile"],
+    value: string,
+  ) => void;
+  onAddDialogueExample: () => void;
+  onRemoveDialogueExample: (index: number) => void;
+  onUpdateDialogueExample: (
+    index: number,
+    field: keyof DialogueExample,
     value: string,
   ) => void;
 }) {
@@ -281,7 +374,7 @@ export function BehaviorTab({
           .filter((section) => !hiddenKeys.has(section.fields[0]?.key ?? ""))
           .map((section) => {
             const field = section.fields[0];
-            if (!field) return null;
+            if (!field || field.key === "dialogueExamples") return null;
             return (
               <BehaviorSection
                 key={section.id}
@@ -301,6 +394,24 @@ export function BehaviorTab({
             );
           })}
       </div>
+      {!draft.isPlayer && (
+        <>
+          <div className="app-editor-section">
+            <div className="flex items-center gap-2 py-1">
+              <span className="flex-1 text-sm font-medium">
+                Dialogue examples
+              </span>
+              <Badge variant="outline">optional</Badge>
+            </div>
+          </div>
+          <DialogueExamplesSection
+            examples={draft.dialogueExamples}
+            onAdd={onAddDialogueExample}
+            onRemove={onRemoveDialogueExample}
+            onUpdate={onUpdateDialogueExample}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -51,8 +51,10 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - Phase 1 is import-first: story projects preserve imported system prompt markdown, imported story state markdown, and per-character imported markdown while regenerating cached runtime artifacts on save/import/manual generate.
 - Character records also support structured fields plus per-section provenance. The parse route for imported character markdown must be additive and must not clear sections that were not successfully parsed.
 - Character builder layout is schema-driven from `src/lib/character-schema.ts`; builder UI should reuse that metadata rather than hardcoding a second field map.
+- Character builder field types include `dialogue-examples` for dynamic lists of `DialogueExample` objects with tag selectors; `DIALOGUE_EXAMPLE_TAGS` in `character-schema.ts` defines the predefined tag set.
 - `src/lib/story-project-core.ts` is the shared helper path for import/generation/export/launch; routes should stay thin and reuse it instead of reimplementing prompt/state generation logic.
 - `src/lib/character-derivation.ts` derives entities, appearance, demeanor, and on-presence behavior segments from structured character fields. `src/lib/story-project-core.ts` should prefer these structured derivations and fall back to `importedMarkdown` only when structured behavior data is absent.
+- Character records support optional `dialogueExamples: DialogueExample[]` -- an array of `{ text, tag }` objects with predefined tags. `deriveBehaviorSegment` in `character-derivation.ts` appends tagged dialogue examples to the character behavior segment when present.
 - Launching a story project creates a new conversation snapshot from generated artifacts and persists `storyProjectId` on that conversation.
 
 ### Truncate and rollback

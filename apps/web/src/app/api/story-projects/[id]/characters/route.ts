@@ -14,11 +14,16 @@ import {
 } from "@/lib/story-project-core";
 import type {
   CharacterProvenance,
+  DialogueExample,
   StoryProjectCharacterInput,
 } from "@/lib/story-project-types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const DIALOGUE_TAGS = new Set([
+  "general", "angry", "casual", "formal", "playful", "sad", "excited", "sarcastic",
+]);
 
 function normalizeText(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
@@ -73,6 +78,27 @@ function normalizeBehavioralProfile(input: StoryProjectCharacterInput) {
   return Object.values(normalized).some(Boolean) ? normalized : null;
 }
 
+function normalizeDialogueExamples(
+  value: unknown,
+): DialogueExample[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const normalized = value
+    .filter(
+      (entry): entry is { text?: unknown; tag?: unknown } =>
+        entry != null && typeof entry === "object",
+    )
+    .map((entry) => {
+      const text = typeof entry.text === "string" ? entry.text.trim() : "";
+      const rawTag = typeof entry.tag === "string" ? entry.tag.trim().toLowerCase() : "";
+      const tag = DIALOGUE_TAGS.has(rawTag) ? rawTag : "general";
+      return { text, tag };
+    })
+    .filter((entry) => entry.text.length > 0);
+
+  return normalized.length > 0 ? normalized : null;
+}
+
 function buildProvenance(
   input: StoryProjectCharacterInput,
 ): CharacterProvenance | null {
@@ -94,6 +120,7 @@ function buildCharacterData(input: StoryProjectCharacterInput, name: string) {
   const appearance = normalizeAppearance(input);
   const behavioralProfile = normalizeBehavioralProfile(input);
   const provenance = buildProvenance(input);
+  const normalizedExamples = normalizeDialogueExamples(input.dialogueExamples);
 
   return {
     name,
@@ -112,6 +139,10 @@ function buildCharacterData(input: StoryProjectCharacterInput, name: string) {
       behavioralProfile === null
         ? Prisma.DbNull
         : (behavioralProfile as unknown as Prisma.InputJsonValue),
+    dialogueExamples:
+      normalizedExamples === null
+        ? Prisma.DbNull
+        : (normalizedExamples as unknown as Prisma.InputJsonValue),
     startingDemeanor: normalizeText(input.startingDemeanor),
     importedMarkdown: normalizeText(input.importedMarkdown),
     provenance:

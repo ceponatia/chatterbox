@@ -5,7 +5,18 @@ import type {
   MutabilityTier,
 } from "@/lib/story-project-types";
 
-export type FieldType = "text" | "textarea" | "select" | "attribute-list";
+export type FieldType = "text" | "textarea" | "select" | "attribute-list" | "dialogue-examples";
+
+export const DIALOGUE_EXAMPLE_TAGS = [
+  "general",
+  "angry",
+  "casual",
+  "formal",
+  "playful",
+  "sad",
+  "excited",
+  "sarcastic",
+] as const;
 
 export interface FieldDefinition {
   key: string;
@@ -327,6 +338,24 @@ export const CHARACTER_TABS: TabDefinition[] = [
               "Physical tics, gestures, posture habits, and nonverbal signatures.",
             placeholder:
               "Taps ring finger against mugs, glances at exits before sitting.",
+          },
+        ],
+      },
+      {
+        id: "dialogueExamples",
+        label: "Dialogue examples",
+        optional: true,
+        fields: [
+          {
+            key: "dialogueExamples",
+            label: "Dialogue examples",
+            type: "dialogue-examples" as FieldType,
+            options: undefined,
+            defaultValue: "",
+            required: false,
+            tooltip:
+              "Concrete lines of dialogue that demonstrate how this character speaks. Use short, distinctive lines that capture the character's voice. Include a mix of emotional registers to show different facets of their personality.",
+            placeholder: "Write a line of dialogue this character would say.",
           },
         ],
       },

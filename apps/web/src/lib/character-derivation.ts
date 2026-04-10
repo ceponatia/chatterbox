@@ -5,6 +5,7 @@ import {
 import type {
   CharacterAppearanceEntry,
   CharacterBehavioralProfile,
+  DialogueExample,
   StoryCharacterRecord,
 } from "@/lib/story-project-types";
 import type {
@@ -77,6 +78,39 @@ function collectBehaviorSections(
   }
 
   return sections;
+}
+
+function buildDialogueExamplesSection(
+  name: string,
+  examples: DialogueExample[] | null | undefined,
+): string | null {
+  if (!examples || examples.length === 0) return null;
+
+  const grouped = new Map<string, string[]>();
+  for (const example of examples) {
+    const tag = example.tag || "general";
+    const list = grouped.get(tag);
+    if (list) {
+      list.push(example.text);
+    } else {
+      grouped.set(tag, [example.text]);
+    }
+  }
+
+  const lines: string[] = [
+    "### Dialogue examples",
+    `These examples show how ${name} tends to speak. Use them as voice and tone reference, not lines to repeat verbatim.`,
+  ];
+
+  for (const [tag, texts] of grouped) {
+    const label = tag === "general" ? "**General:**" : `**When ${tag}:**`;
+    lines.push("", label);
+    for (const text of texts) {
+      lines.push(`> "${text}"`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 export function deriveEntity(character: StoryCharacterRecord): Entity {
@@ -153,10 +187,18 @@ export function deriveBehaviorSegment(
   const name = trimToNull(character.name) ?? "Character";
   const lines = [`# ${name} -- Behavioral Profile`, "", overview];
   if (background) lines.push("", `### Background\n${background}`);
-  const content = lines
+  const contentParts = lines
     .concat(sections.flatMap((section) => ["", section]))
     .join("\n")
     .trim();
+
+  const dialogueSection = buildDialogueExamplesSection(
+    name,
+    character.dialogueExamples,
+  );
+  const content = dialogueSection
+    ? `${contentParts}\n\n${dialogueSection}`
+    : contentParts;
 
   return {
     id: `character_behavior_${character.entityId}`,

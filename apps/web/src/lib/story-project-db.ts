@@ -7,6 +7,7 @@ import type {
   CharacterBehavioralProfile,
   CharacterIdentity,
   CharacterProvenance,
+  DialogueExample,
   SegmentOverrides,
   StoryAuthoringMode,
   StoryCharacterRecord,
@@ -63,6 +64,12 @@ function asProvenance(
   return value as unknown as CharacterProvenance;
 }
 
+function asDialogueExamples(
+  value: Prisma.JsonValue | null,
+): DialogueExample[] | null {
+  return Array.isArray(value) ? (value as unknown as DialogueExample[]) : null;
+}
+
 export function toStoryCharacterRecord(
   row: StoryProjectRow["characters"][number],
 ): StoryCharacterRecord {
@@ -78,6 +85,9 @@ export function toStoryCharacterRecord(
     appearance: asAppearance(row.appearance as Prisma.JsonValue | null),
     behavioralProfile: asBehavioralProfile(
       row.behavioralProfile as Prisma.JsonValue | null,
+    ),
+    dialogueExamples: asDialogueExamples(
+      row.dialogueExamples as Prisma.JsonValue | null,
     ),
     startingDemeanor: row.startingDemeanor ?? null,
     importedMarkdown: row.importedMarkdown ?? null,

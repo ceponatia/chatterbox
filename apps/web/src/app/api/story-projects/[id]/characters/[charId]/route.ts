@@ -14,6 +14,7 @@ import type {
   CharacterBehavioralProfile,
   CharacterIdentity,
   CharacterProvenance,
+  DialogueExample,
   StoryProjectCharacterInput,
 } from "@/lib/story-project-types";
 
@@ -28,6 +29,10 @@ const PROFILE_KEYS = [
   "mannerisms",
 ] as const;
 
+const DIALOGUE_TAGS = new Set([
+  "general", "angry", "casual", "formal", "playful", "sad", "excited", "sarcastic",
+]);
+
 type StoryProjectRow = NonNullable<Awaited<ReturnType<typeof getStoryProjectRow>>>;
 type StoryCharacterRow = StoryProjectRow["characters"][number];
 type PutResult = StoryCharacterRow | "player-conflict" | null;
@@ -41,6 +46,7 @@ interface NormalizedCharacterInput {
   background: string | null | undefined;
   appearance: CharacterAppearanceEntry[] | null | undefined;
   behavioralProfile: CharacterBehavioralProfile | null | undefined;
+  dialogueExamples: DialogueExample[] | null | undefined;
   startingDemeanor: string | null | undefined;
 }
 
@@ -103,6 +109,27 @@ function normalizeBehavioralProfile(
     | undefined;
 }
 
+function normalizeDialogueExamples(
+  value: unknown,
+): DialogueExample[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const normalized = value
+    .filter(
+      (entry): entry is { text?: unknown; tag?: unknown } =>
+        entry != null && typeof entry === "object",
+    )
+    .map((entry) => {
+      const text = typeof entry.text === "string" ? entry.text.trim() : "";
+      const rawTag = typeof entry.tag === "string" ? entry.tag.trim().toLowerCase() : "";
+      const tag = DIALOGUE_TAGS.has(rawTag) ? rawTag : "general";
+      return { text, tag };
+    })
+    .filter((entry) => entry.text.length > 0);
+
+  return normalized.length > 0 ? normalized : null;
+}
+
 function normalizeCharacterInput(
   body: StoryProjectCharacterInput,
 ): NormalizedCharacterInput {
@@ -119,6 +146,9 @@ function normalizeCharacterInput(
       body.background !== undefined ? normalizeText(body.background) : undefined,
     appearance: normalizeAppearance(body.appearance),
     behavioralProfile: normalizeBehavioralProfile(body.behavioralProfile),
+    dialogueExamples: body.dialogueExamples !== undefined
+      ? normalizeDialogueExamples(body.dialogueExamples)
+      : undefined,
     startingDemeanor:
       body.startingDemeanor !== undefined
         ? normalizeText(body.startingDemeanor)
@@ -235,6 +265,15 @@ function buildCharacterUpdateData(
   if (!sameValue(nextProvenance, existing.provenance)) {
     data.provenance = nextProvenance
       ? (nextProvenance as unknown as Prisma.InputJsonValue)
+      : Prisma.DbNull;
+  }
+
+  if (
+    input.dialogueExamples !== undefined &&
+    !sameValue(input.dialogueExamples, existing.dialogueExamples)
+  ) {
+    data.dialogueExamples = input.dialogueExamples
+      ? (input.dialogueExamples as unknown as Prisma.InputJsonValue)
       : Prisma.DbNull;
   }
 

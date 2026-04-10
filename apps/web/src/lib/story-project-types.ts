@@ -6,6 +6,11 @@ import type {
 
 export type StoryAuthoringMode = "form" | "imported" | "hybrid";
 
+export interface DialogueExample {
+  text: string;
+  tag: string;
+}
+
 export interface CharacterIdentity {
   age: string;
   role: string;
@@ -53,6 +58,7 @@ export interface StoryCharacterRecord {
   background: string | null;
   appearance: CharacterAppearanceEntry[] | null;
   behavioralProfile: CharacterBehavioralProfile | null;
+  dialogueExamples: DialogueExample[] | null;
   startingDemeanor: string | null;
   importedMarkdown: string | null;
   provenance: CharacterProvenance | null;
@@ -131,6 +137,7 @@ export interface StoryProjectCharacterInput {
   background?: string | null;
   appearance?: CharacterAppearanceEntry[] | null;
   behavioralProfile?: CharacterBehavioralProfile | null;
+  dialogueExamples?: DialogueExample[] | null;
   startingDemeanor?: string | null;
 }
 
@@ -161,6 +168,7 @@ export interface StoryProjectExportPayload {
     background: string | null;
     appearance: CharacterAppearanceEntry[] | null;
     behavioralProfile: CharacterBehavioralProfile | null;
+    dialogueExamples: DialogueExample[] | null;
     startingDemeanor: string | null;
     importedMarkdown: string | null;
     provenance: CharacterProvenance | null;

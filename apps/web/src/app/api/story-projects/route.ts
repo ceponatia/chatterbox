@@ -75,6 +75,7 @@ export async function POST(request: Request) {
             background: character.background,
             appearance: optionalJson(character.appearance),
             behavioralProfile: optionalJson(character.behavioralProfile),
+            dialogueExamples: optionalJson(character.dialogueExamples),
             startingDemeanor: character.startingDemeanor,
             importedMarkdown: character.importedMarkdown,
             provenance: optionalJson(character.provenance),

@@ -389,6 +389,7 @@ export function buildStoryProjectExport(
       background: character.background,
       appearance: character.appearance,
       behavioralProfile: character.behavioralProfile,
+      dialogueExamples: character.dialogueExamples,
       startingDemeanor: character.startingDemeanor,
       importedMarkdown: character.importedMarkdown,
       provenance: character.provenance,

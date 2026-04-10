@@ -137,6 +137,9 @@ function renderTabContent(
         <BehaviorTab
           draft={builder.draft}
           onBehaviorFieldChange={builder.updateBehaviorField}
+          onAddDialogueExample={builder.addDialogueExample}
+          onRemoveDialogueExample={builder.removeDialogueExample}
+          onUpdateDialogueExample={builder.updateDialogueExample}
         />
       );
     case "demeanor":
