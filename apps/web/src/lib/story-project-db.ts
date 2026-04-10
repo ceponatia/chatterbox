@@ -8,6 +8,8 @@ import type {
   CharacterIdentity,
   CharacterProvenance,
   DialogueExample,
+  PromptBlueprint,
+  RuntimeSeed,
   SegmentOverrides,
   StoryAuthoringMode,
   StoryCharacterRecord,
@@ -140,6 +142,9 @@ export function toStoryProjectDetail(row: StoryProjectRow): StoryProjectDetail {
     generatedStructuredState:
       (row.generatedStructuredState as StructuredStoryState | null) ?? null,
     segmentOverrides: (row.segmentOverrides as SegmentOverrides | null) ?? null,
+    mainEntityId: row.mainEntityId ?? null,
+    promptBlueprint: (row.promptBlueprint as PromptBlueprint | null) ?? null,
+    runtimeSeed: (row.runtimeSeed as RuntimeSeed | null) ?? null,
     characters: row.characters.map(toStoryCharacterRecord),
     relationships: row.relationships.map(toStoryRelationshipRecord),
   };
@@ -192,6 +197,8 @@ export async function regenerateStoryProject(
     characters: row.characters.map(toStoryCharacterRecord),
     relationships: row.relationships.map(toStoryRelationshipRecord),
     segmentOverrides: (row.segmentOverrides as SegmentOverrides | null) ?? null,
+    promptBlueprint: (row.promptBlueprint as PromptBlueprint | null) ?? null,
+    runtimeSeed: (row.runtimeSeed as RuntimeSeed | null) ?? null,
   });
 
   const updated = await db.storyProject.update({

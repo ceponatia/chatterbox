@@ -24,6 +24,7 @@ import { useMessageActions } from "@/lib/hooks/use-message-actions";
 import { useDeleteAfterRollback } from "@/lib/hooks/use-delete-after-rollback";
 import { useAssemblyTracker } from "@/lib/hooks/use-assembly-tracker";
 import { useStatePipeline } from "@/lib/hooks/use-state-pipeline";
+import { useStateRefresh } from "@/lib/hooks/use-state-refresh";
 import { trapTabKey } from "@/lib/focus-trap";
 import { scanPresenceFromAssistantMessage } from "@chatterbox/state-model";
 
@@ -135,6 +136,12 @@ function useHomeState() {
     setLastPipelineTurn: conv.setLastPipelineTurn,
   });
 
+  const refresh = useStateRefresh({
+    conversationId: conv.activeConvId,
+    enabled: !!conv.activeConvId && !isLoading,
+    triggerPipeline: pipeline.triggerPipeline,
+  });
+
   const msgActions = useMessageActions({ messages, setMessages, sendMessage });
   const { handleDeleteAfterWithRollback, rollbackHistoryVersion } =
     useDeleteAfterRollback({
@@ -160,6 +167,7 @@ function useHomeState() {
     chat,
     conv,
     pipeline,
+    refresh,
     isLoading,
     stateHistory: useStateHistoryEntries(
       conv.activeConvId,
@@ -177,7 +185,7 @@ function useHomeState() {
 }
 
 function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
-  const { chat, conv, pipeline, stateHistory, mobile } = state;
+  const { chat, conv, pipeline, refresh, stateHistory, mobile } = state;
   const [activeTab, setActiveTab] = state.activeTabState;
   const [desktopSidebarOpen, setDesktopSidebarOpen] =
     state.desktopSidebarOpenState;
@@ -190,6 +198,9 @@ function HomeLayout({ state }: { state: ReturnType<typeof useHomeState> }) {
       recentlyUpdated={pipeline.recentlyUpdated}
       stateHistory={stateHistory}
       messages={chat.messages}
+      refreshStatus={refresh.status}
+      lastRefreshAt={refresh.lastRefreshAt}
+      onManualRefresh={refresh.triggerManualRefresh}
     />
   );
   return (

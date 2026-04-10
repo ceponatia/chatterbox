@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import {
   BookCopy,
+  BookOpen,
+  GitFork,
   Plus,
   Sparkles,
   Trash2,
@@ -62,17 +65,33 @@ function HeaderIdentity({
   lastPipelineTurn,
   autoSummarizeInterval,
   modelLabel,
+  storyProjectId,
+  storyProjectName,
 }: {
   messages: ReturnType<typeof useChat>["messages"];
   lastPipelineTurn: number;
   autoSummarizeInterval: number;
   modelLabel: string;
+  storyProjectId: string | null;
+  storyProjectName: string | null;
 }) {
   return (
     <>
       <h1 className="hidden whitespace-nowrap text-base font-bold tracking-tight lg:inline lg:text-lg">
         RP Sketcher
       </h1>
+      {storyProjectId && storyProjectName && (
+        <Link
+          href={`/stories/${storyProjectId}`}
+          className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          title={`From story: ${storyProjectName}`}
+        >
+          <BookOpen className="h-3 w-3" />
+          <span className="max-w-24 truncate lg:max-w-40">
+            {storyProjectName}
+          </span>
+        </Link>
+      )}
       <TurnCounter
         messages={messages}
         autoSummarizeInterval={autoSummarizeInterval}
@@ -92,6 +111,8 @@ function HeaderActions({
   messages,
   isLoading,
   onTriggerPipeline,
+  onForkToStory,
+  forkInProgress,
   configSidebarOpen,
   onToggleConfigSidebar,
   onOpenMobileSidebar,
@@ -102,12 +123,15 @@ function HeaderActions({
   messages: ReturnType<typeof useChat>["messages"];
   isLoading: boolean;
   onTriggerPipeline: () => void;
+  onForkToStory: () => void;
+  forkInProgress: boolean;
   configSidebarOpen: boolean;
   onToggleConfigSidebar: () => void;
   onOpenMobileSidebar: () => void;
   mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
   onClearChat: () => void;
 }) {
+  const hasContent = conv.systemPrompt.trim() || conv.storyState.trim();
   return (
     <div className="flex items-center gap-1 lg:gap-2">
       <Button
@@ -122,6 +146,19 @@ function HeaderActions({
           <span className="hidden lg:inline">Stories</span>
         </Link>
       </Button>
+      {!conv.storyProjectId && hasContent && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onForkToStory}
+          disabled={forkInProgress}
+          title="Fork to Story Project"
+          className="app-toolbar-button"
+        >
+          <GitFork className="h-4 w-4 lg:mr-1" />
+          <span className="hidden lg:inline">Fork</span>
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="sm"
@@ -203,10 +240,49 @@ export function ChatHeader({
   mobileSidebarTriggerRef: React.RefObject<HTMLButtonElement | null>;
   onClearChat: () => void;
 }) {
+  const router = useRouter();
+  const [forkInProgress, setForkInProgress] = useState(false);
   const modelLabel = useMemo(
     () => getModelEntry(conv.settings.model)?.label ?? conv.settings.model,
     [conv.settings.model],
   );
+
+  const handleForkToStory = useCallback(async () => {
+    setForkInProgress(true);
+    try {
+      const createRes = await fetch("/api/story-projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: conv.settings.model
+            ? `Fork - ${new Date().toLocaleDateString()}`
+            : "Forked Story",
+          description: "Created from conversation",
+        }),
+      });
+      if (!createRes.ok) throw new Error("Failed to create story project");
+      const project = (await createRes.json()) as { id: string };
+
+      const importRes = await fetch(
+        `/api/story-projects/${project.id}/import`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemPromptMarkdown: conv.systemPrompt,
+            storyStateMarkdown: conv.storyState,
+          }),
+        },
+      );
+      if (!importRes.ok) throw new Error("Failed to import conversation data");
+
+      router.push(`/stories/${project.id}`);
+    } catch (err) {
+      console.error("Fork to story failed:", err);
+    } finally {
+      setForkInProgress(false);
+    }
+  }, [conv.systemPrompt, conv.storyState, conv.settings.model, router]);
 
   return (
     <header className="app-panel-header h-14 px-3 lg:h-16 lg:px-4">
@@ -217,6 +293,8 @@ export function ChatHeader({
           lastPipelineTurn={conv.lastPipelineTurn}
           autoSummarizeInterval={conv.settings.autoSummarizeInterval}
           modelLabel={modelLabel}
+          storyProjectId={conv.storyProjectId}
+          storyProjectName={conv.storyProjectName}
         />
       </div>
       <HeaderActions
@@ -224,6 +302,8 @@ export function ChatHeader({
         messages={messages}
         isLoading={isLoading}
         onTriggerPipeline={onTriggerPipeline}
+        onForkToStory={handleForkToStory}
+        forkInProgress={forkInProgress}
         configSidebarOpen={configSidebarOpen}
         onToggleConfigSidebar={onToggleConfigSidebar}
         onOpenMobileSidebar={onOpenMobileSidebar}

@@ -19,6 +19,18 @@ import {
 export type { Settings };
 
 // ---------------------------------------------------------------------------
+// Candidate fact staging (fast-lane refresh)
+// ---------------------------------------------------------------------------
+
+export interface CandidateFact {
+  id: string;
+  content: string;
+  confidence: number;
+  sourceMessageId: string;
+  extractedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Conversation data model
 // ---------------------------------------------------------------------------
 
@@ -27,11 +39,12 @@ export interface ConversationMeta {
   title: string;
   createdAt: string;
   updatedAt: string;
+  storyProjectId: string | null;
+  storyProjectName: string | null;
 }
 
 export interface Conversation extends ConversationMeta {
   messages: UIMessage[];
-  storyProjectId: string | null;
   systemPrompt: string;
   storyState: string;
   previousStoryState: string | null;
@@ -101,6 +114,7 @@ function createConversationSnapshot(title = "New Chat"): Conversation {
     updatedAt: now,
     messages: [],
     storyProjectId: null,
+    storyProjectName: null,
     systemPrompt: segmentsToMarkdown(segments),
     storyState: "",
     previousStoryState: null,
@@ -158,6 +172,7 @@ function migrateConversation(conv: Conversation): Conversation {
   if (conv.customSegments === undefined) conv.customSegments = null;
   if (conv.structuredState === undefined) conv.structuredState = null;
   if (conv.storyProjectId === undefined) conv.storyProjectId = null;
+  if (conv.storyProjectName === undefined) conv.storyProjectName = null;
   applyTurnDefaults(conv);
   recoverMissingPromptAndState(conv);
   normalizeStructuredState(conv);

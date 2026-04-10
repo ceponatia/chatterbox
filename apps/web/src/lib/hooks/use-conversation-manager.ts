@@ -40,6 +40,8 @@ export function useConversationManager({
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [convDrawerOpen, setConvDrawerOpen] = useState(false);
+  const [storyProjectId, setStoryProjectId] = useState<string | null>(null);
+  const [storyProjectName, setStoryProjectName] = useState<string | null>(null);
   const activeConvRef = useRef<Conversation | null>(null);
   const activeConvPersistedRef = useRef(false);
 
@@ -52,6 +54,8 @@ export function useConversationManager({
       activeConvRef.current = conv;
       activeConvPersistedRef.current = persisted;
       setActiveConvId(conv.id);
+      setStoryProjectId(conv.storyProjectId ?? null);
+      setStoryProjectName(conv.storyProjectName ?? null);
       persistActiveConvId(conv.id);
       setMessages(conv.messages);
       hydrateFields(fieldsRef.current, conv);
@@ -97,6 +101,8 @@ export function useConversationManager({
     activeConvId,
     convDrawerOpen,
     setConvDrawerOpen,
+    storyProjectId,
+    storyProjectName,
     ...fields,
     ...syncStatus,
     ...actions,

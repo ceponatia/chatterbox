@@ -6,6 +6,8 @@ import { Settings as SettingsIcon, BookOpen, ScrollText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { StoryStateEditor } from "@/components/sidebar/story-state-editor";
+import { RefreshStatusIndicator } from "@/components/sidebar/refresh-status";
+import type { RefreshStatus } from "@/lib/hooks/use-state-refresh";
 import { SystemPromptEditor } from "@/components/sidebar/system-prompt-editor";
 import { SettingsPanel } from "@/components/sidebar/settings-panel";
 import { SyncDot } from "@/components/sidebar/sync-dot";
@@ -20,6 +22,9 @@ export const HomeSidebarContent = memo(function HomeSidebarContent({
   recentlyUpdated,
   stateHistory,
   messages,
+  refreshStatus,
+  lastRefreshAt,
+  onManualRefresh,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -27,6 +32,9 @@ export const HomeSidebarContent = memo(function HomeSidebarContent({
   recentlyUpdated: boolean;
   stateHistory: StateHistoryEntry[];
   messages: ReturnType<typeof useChat>["messages"];
+  refreshStatus: RefreshStatus;
+  lastRefreshAt: Date | null;
+  onManualRefresh: () => void;
 }) {
   const modelLabel =
     getModelEntry(conv.settings.model)?.label ?? conv.settings.model;
@@ -63,6 +71,11 @@ export const HomeSidebarContent = memo(function HomeSidebarContent({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="story-state" className="mt-4">
+          <RefreshStatusIndicator
+            status={refreshStatus}
+            lastRefreshAt={lastRefreshAt}
+            onManualRefresh={onManualRefresh}
+          />
           <StoryStateEditor
             value={conv.storyState}
             onChange={conv.handleStoryStateChange}

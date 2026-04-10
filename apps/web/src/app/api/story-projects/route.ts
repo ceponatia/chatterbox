@@ -60,6 +60,9 @@ export async function POST(request: Request) {
           generatedStructuredState:
             source.generatedStructuredState ?? undefined,
           segmentOverrides: source.segmentOverrides ?? undefined,
+          mainEntityId: source.mainEntityId,
+          promptBlueprint: source.promptBlueprint ?? undefined,
+          runtimeSeed: source.runtimeSeed ?? undefined,
         },
       });
 

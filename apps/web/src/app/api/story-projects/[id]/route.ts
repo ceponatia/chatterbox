@@ -48,6 +48,17 @@ export async function PUT(
           segmentOverrides:
             body.segmentOverrides as unknown as Prisma.InputJsonValue,
         }),
+        ...(body.mainEntityId !== undefined && {
+          mainEntityId: body.mainEntityId ?? null,
+        }),
+        ...(body.promptBlueprint !== undefined && {
+          promptBlueprint:
+            (body.promptBlueprint as unknown as Prisma.InputJsonValue) ?? null,
+        }),
+        ...(body.runtimeSeed !== undefined && {
+          runtimeSeed:
+            (body.runtimeSeed as unknown as Prisma.InputJsonValue) ?? null,
+        }),
       },
     });
     return regenerateStoryProject(tx, userId, id);

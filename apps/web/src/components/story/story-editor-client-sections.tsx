@@ -1,12 +1,22 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft, Play, RefreshCw, Save } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  FileDown,
+  Play,
+  RefreshCw,
+  Save,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { StoryCharacterSummaryCard } from "@/components/story/story-character-card";
 import { StoryReadonlyBlock } from "@/components/story/story-readonly-block";
+import type { ImportReviewInput } from "@/components/story/import-review-modal";
 import type { StoryProjectDetail } from "@/lib/story-project-types";
 
 export function StoryLoadingState() {
@@ -214,6 +224,197 @@ export function StoryGeneratedOutputCard({
         value={project.generatedStoryState}
         placeholder="Generated state will appear here."
       />
+    </div>
+  );
+}
+
+export function MainEntitySelector({
+  characters,
+  value,
+  onChange,
+}: {
+  characters: StoryProjectDetail["characters"];
+  value: string | null;
+  onChange: (entityId: string | null) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      Main character
+      <select
+        className="app-editor-small-select"
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value || null)}
+      >
+        <option value="">None</option>
+        {characters.map((character) => (
+          <option key={character.entityId} value={character.entityId}>
+            {character.name}
+            {character.isPlayer ? " (player)" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function ExportDownloadButton({
+  busy,
+  onExport,
+}: {
+  busy: boolean;
+  onExport: () => void;
+}) {
+  return (
+    <Button variant="outline" size="sm" disabled={busy} onClick={onExport}>
+      <Download className="mr-1 h-4 w-4" />
+      Download Export
+    </Button>
+  );
+}
+
+export function StoryImportCard({
+  busy,
+  onImport,
+}: {
+  busy: boolean;
+  onImport: (input: ImportReviewInput) => void;
+}) {
+  const systemPromptRef = useRef<HTMLInputElement>(null);
+  const storyStateRef = useRef<HTMLInputElement>(null);
+
+  function handleFiles() {
+    const input: ImportReviewInput = {};
+    const systemFile = systemPromptRef.current?.files?.[0];
+    const stateFile = storyStateRef.current?.files?.[0];
+
+    const readers: Promise<void>[] = [];
+
+    if (systemFile) {
+      readers.push(
+        systemFile.text().then((text) => {
+          input.systemPromptMarkdown = text;
+        }),
+      );
+    }
+    if (stateFile) {
+      readers.push(
+        stateFile.text().then((text) => {
+          input.storyStateMarkdown = text;
+        }),
+      );
+    }
+
+    if (readers.length === 0) return;
+
+    void Promise.all(readers).then(() => {
+      onImport(input);
+      if (systemPromptRef.current) systemPromptRef.current.value = "";
+      if (storyStateRef.current) storyStateRef.current.value = "";
+    });
+  }
+
+  return (
+    <div className="app-story-card app-story-stack">
+      <div>
+        <h2 className="text-sm font-semibold">Import Markdown</h2>
+        <p className="app-editor-summary">
+          Upload system prompt and/or story state markdown files.
+        </p>
+      </div>
+      <label className="flex flex-col gap-1 text-xs">
+        System prompt (.md)
+        <input
+          ref={systemPromptRef}
+          type="file"
+          accept=".md,.txt"
+          className="text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:text-foreground"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs">
+        Story state (.md)
+        <input
+          ref={storyStateRef}
+          type="file"
+          accept=".md,.txt"
+          className="text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:text-foreground"
+        />
+      </label>
+      <Button variant="outline" size="sm" disabled={busy} onClick={handleFiles}>
+        <Upload className="mr-1 h-4 w-4" />
+        Review Import
+      </Button>
+    </div>
+  );
+}
+
+export function MarkdownExportButtons({
+  project,
+  onDownload,
+}: {
+  project: StoryProjectDetail;
+  onDownload: (filename: string, content: string) => void;
+}) {
+  const baseName = project.name.replace(/[^a-zA-Z0-9_-]/g, "_") || "story";
+
+  return (
+    <div className="app-story-card app-story-stack">
+      <div>
+        <h2 className="text-sm font-semibold">Markdown Exports</h2>
+        <p className="app-editor-summary">
+          Download individual files as markdown.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!project.generatedSystemPrompt}
+          onClick={() =>
+            onDownload(
+              `${baseName}-system-prompt.md`,
+              project.generatedSystemPrompt,
+            )
+          }
+        >
+          <FileDown className="mr-1 h-4 w-4" />
+          System Prompt
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!project.generatedStoryState}
+          onClick={() =>
+            onDownload(
+              `${baseName}-story-state.md`,
+              project.generatedStoryState,
+            )
+          }
+        >
+          <FileDown className="mr-1 h-4 w-4" />
+          Story State
+        </Button>
+        {project.characters.map((character) => {
+          const content = character.importedMarkdown ?? null;
+          const charSlug =
+            character.name.replace(/[^a-zA-Z0-9_-]/g, "_") || character.id;
+          return (
+            <Button
+              key={character.id}
+              variant="outline"
+              size="sm"
+              disabled={!content}
+              onClick={() => {
+                if (content) {
+                  onDownload(`${baseName}-${charSlug}.md`, content);
+                }
+              }}
+            >
+              <FileDown className="mr-1 h-4 w-4" />
+              {character.name}
+            </Button>
+          );
+        })}
+      </div>
     </div>
   );
 }

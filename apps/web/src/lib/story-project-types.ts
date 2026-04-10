@@ -6,6 +6,29 @@ import type {
 
 export type StoryAuthoringMode = "form" | "imported" | "hybrid";
 
+export interface PromptBlueprintSection {
+  id: string;
+  label: string;
+  content: string;
+  order: number;
+}
+
+export interface PromptBlueprint {
+  coreRulesAdditions: string;
+  outputFormat: string;
+  settingScenario: string;
+  npcFraming: string;
+  interactionGuidelines: string;
+  customSections: PromptBlueprintSection[];
+}
+
+export interface RuntimeSeed {
+  openingScene: string;
+  openThreads: string[];
+  hardFacts: string[];
+  customState: string;
+}
+
 export interface DialogueExample {
   text: string;
   tag: string;
@@ -100,6 +123,9 @@ export interface StoryProjectDetail extends StoryProjectSummary {
   generatedSegments: SerializedSegment[] | null;
   generatedStructuredState: StructuredStoryState | null;
   segmentOverrides: SegmentOverrides | null;
+  mainEntityId: string | null;
+  promptBlueprint: PromptBlueprint | null;
+  runtimeSeed: RuntimeSeed | null;
   characters: StoryCharacterRecord[];
   relationships: StoryRelationshipRecord[];
 }
@@ -108,6 +134,9 @@ export interface StoryProjectInput {
   name: string;
   description: string;
   segmentOverrides?: SegmentOverrides | null;
+  mainEntityId?: string | null;
+  promptBlueprint?: PromptBlueprint | null;
+  runtimeSeed?: RuntimeSeed | null;
 }
 
 export interface StoryProjectDuplicateInput {
@@ -121,10 +150,13 @@ export interface StoryProjectImportCharacterInput {
   markdown: string;
 }
 
+export type ImportMode = "replace" | "merge";
+
 export interface StoryProjectImportInput {
   systemPromptMarkdown?: string;
   storyStateMarkdown?: string;
   characters?: StoryProjectImportCharacterInput[];
+  mode?: ImportMode;
 }
 
 export interface StoryProjectCharacterInput {
@@ -158,6 +190,9 @@ export interface StoryProjectExportPayload {
   importedStoryState: string | null;
   generatedSystemPrompt: string;
   generatedStoryState: string;
+  mainEntityId: string | null;
+  promptBlueprint: PromptBlueprint | null;
+  runtimeSeed: RuntimeSeed | null;
   characters: Array<{
     id: string;
     entityId: string;

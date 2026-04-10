@@ -20,9 +20,14 @@ import {
   parseMarkdownToStructured,
   remapEntityIds,
   structuredToMarkdown,
+  type CustomSection,
+  type HardFact,
+  type StoryThread,
   type StructuredStoryState,
 } from "@chatterbox/state-model";
 import type {
+  PromptBlueprint,
+  RuntimeSeed,
   SegmentOverrides,
   StoryAuthoringMode,
   StoryCharacterRecord,
@@ -39,6 +44,8 @@ interface StoryProjectGenerationSource {
   characters: StoryCharacterRecord[];
   relationships: StoryRelationshipRecord[];
   segmentOverrides: SegmentOverrides | null;
+  promptBlueprint: PromptBlueprint | null;
+  runtimeSeed: RuntimeSeed | null;
 }
 
 export function createStoryCharacterEntityId(): string {
@@ -195,6 +202,58 @@ function applyRelationshipsToState(
   };
 }
 
+function applyRuntimeSeedToState(
+  state: StructuredStoryState,
+  seed: RuntimeSeed | null,
+): StructuredStoryState {
+  if (!seed) return state;
+
+  let next = { ...state };
+
+  if (seed.openingScene.trim()) {
+    next = {
+      ...next,
+      scene: { ...next.scene, atmosphere: seed.openingScene.trim() },
+    };
+  }
+
+  if (seed.openThreads.length > 0) {
+    const threads: StoryThread[] = seed.openThreads
+      .filter((t) => t.trim())
+      .map((description) => ({
+        id: crypto.randomUUID(),
+        description,
+        resolutionHint: "",
+        status: "active" as const,
+      }));
+    if (threads.length > 0) {
+      next = { ...next, openThreads: [...next.openThreads, ...threads] };
+    }
+  }
+
+  if (seed.hardFacts.length > 0) {
+    const facts: HardFact[] = seed.hardFacts
+      .filter((f) => f.trim())
+      .map((fact) => ({
+        fact,
+        superseded: false,
+      }));
+    if (facts.length > 0) {
+      next = { ...next, hardFacts: [...next.hardFacts, ...facts] };
+    }
+  }
+
+  if (seed.customState.trim()) {
+    const customSection: CustomSection = {
+      heading: "Initial State",
+      content: seed.customState.trim(),
+    };
+    next = { ...next, custom: [...next.custom, customSection] };
+  }
+
+  return next;
+}
+
 function buildGeneratedStructuredState(
   source: StoryProjectGenerationSource,
 ): StructuredStoryState {
@@ -210,7 +269,11 @@ function buildGeneratedStructuredState(
     withAlignedEntities,
     source.characters,
   );
-  return applyRelationshipsToState(withCharacters, source.relationships);
+  const withRelationships = applyRelationshipsToState(
+    withCharacters,
+    source.relationships,
+  );
+  return applyRuntimeSeedToState(withRelationships, source.runtimeSeed);
 }
 
 function upsertCharacterSegments(
@@ -249,13 +312,119 @@ function applySegmentOverrides(
   });
 }
 
+function hasBlueprintContent(blueprint: PromptBlueprint): boolean {
+  return (
+    Boolean(blueprint.coreRulesAdditions.trim()) ||
+    Boolean(blueprint.outputFormat.trim()) ||
+    Boolean(blueprint.settingScenario.trim()) ||
+    Boolean(blueprint.npcFraming.trim()) ||
+    Boolean(blueprint.interactionGuidelines.trim()) ||
+    blueprint.customSections.some((s) => Boolean(s.content.trim()))
+  );
+}
+
+function buildBlueprintSegments(
+  blueprint: PromptBlueprint,
+): SerializedSegment[] {
+  const segments: SerializedSegment[] = [];
+  let order = 10;
+
+  if (blueprint.coreRulesAdditions.trim()) {
+    segments.push({
+      id: "core_rules_additions",
+      label: "Core Rules Additions",
+      content: blueprint.coreRulesAdditions,
+      policy: { type: "always" },
+      priority: "critical",
+      order: order++,
+      category: "rules",
+      tokenEstimate: Math.ceil(blueprint.coreRulesAdditions.length / 4),
+    });
+  }
+
+  if (blueprint.outputFormat.trim()) {
+    segments.push({
+      id: "output_format_custom",
+      label: "Output Format",
+      content: blueprint.outputFormat,
+      policy: { type: "always" },
+      priority: "high",
+      order: order++,
+      category: "rules",
+      tokenEstimate: Math.ceil(blueprint.outputFormat.length / 4),
+    });
+  }
+
+  if (blueprint.settingScenario.trim()) {
+    segments.push({
+      id: "setting_scenario",
+      label: "Setting / Scenario",
+      content: blueprint.settingScenario,
+      policy: { type: "always" },
+      priority: "high",
+      order: order++,
+      category: "world",
+      tokenEstimate: Math.ceil(blueprint.settingScenario.length / 4),
+    });
+  }
+
+  if (blueprint.npcFraming.trim()) {
+    segments.push({
+      id: "npc_framing_custom",
+      label: "NPC Framing",
+      content: blueprint.npcFraming,
+      policy: { type: "always" },
+      priority: "high",
+      order: order++,
+      category: "character",
+      tokenEstimate: Math.ceil(blueprint.npcFraming.length / 4),
+    });
+  }
+
+  if (blueprint.interactionGuidelines.trim()) {
+    segments.push({
+      id: "interaction_guidelines",
+      label: "Interaction Guidelines",
+      content: blueprint.interactionGuidelines,
+      policy: { type: "every_n", n: 3 },
+      priority: "normal",
+      order: order++,
+      category: "rules",
+      tokenEstimate: Math.ceil(blueprint.interactionGuidelines.length / 4),
+    });
+  }
+
+  for (const section of blueprint.customSections) {
+    if (!section.content.trim()) continue;
+    segments.push({
+      id: section.id,
+      label: section.label || section.id,
+      content: section.content,
+      policy: { type: "always" },
+      priority: "normal",
+      order: order++,
+      category: "custom",
+      tokenEstimate: Math.ceil(section.content.length / 4),
+    });
+  }
+
+  return segments;
+}
+
 export function generateStoryProjectArtifacts(
   source: StoryProjectGenerationSource,
 ): StoryProjectArtifacts {
-  const basePrompt = source.importedSystemPrompt?.trim()
-    ? source.importedSystemPrompt
-    : DEFAULT_SYSTEM_PROMPT;
-  const baseSegments = parseSystemPromptToSegments(basePrompt);
+  let baseSegments: SerializedSegment[];
+
+  if (source.promptBlueprint && hasBlueprintContent(source.promptBlueprint)) {
+    baseSegments = buildBlueprintSegments(source.promptBlueprint);
+  } else {
+    const basePrompt = source.importedSystemPrompt?.trim()
+      ? source.importedSystemPrompt
+      : DEFAULT_SYSTEM_PROMPT;
+    baseSegments = parseSystemPromptToSegments(basePrompt);
+  }
+
   const withOverrides = applySegmentOverrides(
     baseSegments,
     source.segmentOverrides,
@@ -379,6 +548,9 @@ export function buildStoryProjectExport(
     importedStoryState: project.importedStoryState,
     generatedSystemPrompt: project.generatedSystemPrompt,
     generatedStoryState: project.generatedStoryState,
+    mainEntityId: project.mainEntityId,
+    promptBlueprint: project.promptBlueprint,
+    runtimeSeed: project.runtimeSeed,
     characters: project.characters.map((character) => ({
       id: character.id,
       entityId: character.entityId,

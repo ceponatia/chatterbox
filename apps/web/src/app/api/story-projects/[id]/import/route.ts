@@ -12,8 +12,14 @@ import {
   getStoryProjectRow,
   regenerateStoryProject,
 } from "@/lib/story-project-db";
-import { parseMarkdownToStructured } from "@chatterbox/state-model";
-import type { StoryProjectImportInput } from "@/lib/story-project-types";
+import {
+  parseMarkdownToStructured,
+  structuredToMarkdown,
+} from "@chatterbox/state-model";
+import type {
+  ImportMode,
+  StoryProjectImportInput,
+} from "@/lib/story-project-types";
 
 function hasImportPayload(body: StoryProjectImportInput | null): boolean {
   return Boolean(
@@ -35,6 +41,38 @@ async function replaceImportedRelationships(
 
   await tx.storyRelationship.createMany({
     data: structured.relationships.map((relationship) => ({
+      storyProjectId,
+      fromEntityId: relationship.fromEntityId,
+      toEntityId: relationship.toEntityId,
+      description: relationship.description,
+      details: relationship.details as unknown as Prisma.InputJsonValue,
+      tone: relationship.tone ?? null,
+    })),
+  });
+}
+
+async function mergeImportedRelationships(
+  tx: Prisma.TransactionClient,
+  storyProjectId: string,
+  storyStateMarkdown: string,
+) {
+  const structured = parseMarkdownToStructured(storyStateMarkdown);
+  if (structured.relationships.length === 0) return;
+
+  const existing = await tx.storyRelationship.findMany({
+    where: { storyProjectId },
+  });
+  const existingPairs = new Set(
+    existing.map((r) => `${r.fromEntityId}::${r.toEntityId}`),
+  );
+
+  const newRelationships = structured.relationships.filter(
+    (r) => !existingPairs.has(`${r.fromEntityId}::${r.toEntityId}`),
+  );
+  if (newRelationships.length === 0) return;
+
+  await tx.storyRelationship.createMany({
+    data: newRelationships.map((relationship) => ({
       storyProjectId,
       fromEntityId: relationship.fromEntityId,
       toEntityId: relationship.toEntityId,
@@ -111,10 +149,75 @@ function getImportedSourceUpdate(
   };
 }
 
+function getMergedSourceUpdate(
+  project: NonNullable<Awaited<ReturnType<typeof getStoryProjectRow>>>,
+  body: StoryProjectImportInput,
+) {
+  const nextSystemPrompt = body.systemPromptMarkdown?.trim() || undefined;
+  const nextStoryState = body.storyStateMarkdown?.trim() || undefined;
+  if (nextSystemPrompt === undefined && nextStoryState === undefined)
+    return null;
+
+  let mergedSystemPrompt = project.importedSystemPrompt;
+  if (nextSystemPrompt) {
+    mergedSystemPrompt = mergedSystemPrompt
+      ? `${mergedSystemPrompt}\n\n${nextSystemPrompt}`
+      : nextSystemPrompt;
+  }
+
+  let mergedStoryState = project.importedStoryState;
+  if (nextStoryState) {
+    if (mergedStoryState?.trim()) {
+      const existing = parseMarkdownToStructured(mergedStoryState);
+      const incoming = parseMarkdownToStructured(nextStoryState);
+
+      const existingEntityNames = new Set(
+        existing.entities.map((e) => e.name.trim().toLowerCase()),
+      );
+      const newEntities = incoming.entities.filter(
+        (e) => !existingEntityNames.has(e.name.trim().toLowerCase()),
+      );
+
+      const existingFactTexts = new Set(
+        existing.hardFacts.map((f) => f.fact.trim().toLowerCase()),
+      );
+      const newFacts = incoming.hardFacts.filter(
+        (f) => !existingFactTexts.has(f.fact.trim().toLowerCase()),
+      );
+
+      const existingThreadDescs = new Set(
+        existing.openThreads.map((t) => t.description.trim().toLowerCase()),
+      );
+      const newThreads = incoming.openThreads.filter(
+        (t) => !existingThreadDescs.has(t.description.trim().toLowerCase()),
+      );
+
+      const merged = {
+        ...existing,
+        entities: [...existing.entities, ...newEntities],
+        hardFacts: [...existing.hardFacts, ...newFacts],
+        openThreads: [...existing.openThreads, ...newThreads],
+      };
+      mergedStoryState = structuredToMarkdown(merged);
+    } else {
+      mergedStoryState = nextStoryState;
+    }
+  }
+
+  return {
+    importedSystemPrompt: mergedSystemPrompt,
+    importedStoryState: mergedStoryState,
+    nextStoryState: nextStoryState
+      ? (mergedStoryState ?? undefined)
+      : undefined,
+  };
+}
+
 async function applyImportedSourceUpdate(
   tx: Prisma.TransactionClient,
   storyProjectId: string,
   sourceUpdate: ReturnType<typeof getImportedSourceUpdate>,
+  mode: ImportMode,
 ) {
   if (!sourceUpdate) return;
 
@@ -127,11 +230,19 @@ async function applyImportedSourceUpdate(
   });
 
   if (sourceUpdate.nextStoryState !== undefined) {
-    await replaceImportedRelationships(
-      tx,
-      storyProjectId,
-      sourceUpdate.nextStoryState,
-    );
+    if (mode === "merge") {
+      await mergeImportedRelationships(
+        tx,
+        storyProjectId,
+        sourceUpdate.nextStoryState,
+      );
+    } else {
+      await replaceImportedRelationships(
+        tx,
+        storyProjectId,
+        sourceUpdate.nextStoryState,
+      );
+    }
   }
 }
 
@@ -157,11 +268,15 @@ async function importStoryProjectSource(
   storyProjectId: string,
   body: StoryProjectImportInput,
 ) {
+  const mode: ImportMode = body.mode === "merge" ? "merge" : "replace";
   const project = await getStoryProjectRow(tx, userId, storyProjectId);
   if (!project) return null;
 
-  const sourceUpdate = getImportedSourceUpdate(project, body);
-  await applyImportedSourceUpdate(tx, storyProjectId, sourceUpdate);
+  const sourceUpdate =
+    mode === "merge"
+      ? getMergedSourceUpdate(project, body)
+      : getImportedSourceUpdate(project, body);
+  await applyImportedSourceUpdate(tx, storyProjectId, sourceUpdate, mode);
 
   const characterResult = await upsertImportedCharacters(
     tx,

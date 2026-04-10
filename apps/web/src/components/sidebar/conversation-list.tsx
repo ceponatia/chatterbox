@@ -52,6 +52,11 @@ function ConversationItem({
         <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <div className="flex w-0 min-w-0 flex-1 flex-col pr-5">
           <span className="truncate text-xs font-medium">{conv.title}</span>
+          {conv.storyProjectName && (
+            <span className="truncate text-[10px] text-primary/60">
+              {conv.storyProjectName}
+            </span>
+          )}
           <span className="text-[10px] text-muted-foreground">
             {formatDate(conv.updatedAt)}
           </span>

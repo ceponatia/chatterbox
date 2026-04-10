@@ -226,6 +226,7 @@ export function useStatePipeline({
           headers: { "Content-Type": "application/json" },
           // Stale-section hint asks the LLM to re-review long-unupdated sections.
           body: JSON.stringify({
+            conversationId,
             messages,
             currentStoryState: storyStateRef.current,
             turnNumber,

@@ -31,13 +31,20 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 
 - Story state is entity-centric (`StructuredStoryState`) defined in `@chatterbox/state-model` with stable entity IDs. All types, parsing, serialization, entity operations, lifecycle reconciliation, presence scanning, and effective state resolution live in the package.
 - Pipeline runs through `/api/state-update`: message windowing, LLM update, lifecycle validation, deterministic validation, auto-accept, and cascade resets.
+- `/api/state-update` accepts an optional `sinceMessageId` parameter to window messages for incremental (fast-lane) refresh.
 - Presence scanning via `@chatterbox/state-model` updates `scene.presentEntityIds` for `on_presence` segment behavior.
 - State history is persisted via `/api/conversations/[id]/state-history` and surfaced in sidebar history views.
+- Live state refresh: `use-state-refresh` polls `/api/conversations/[id]/refresh-check` every 45 seconds while the tab is visible. When eligible, it triggers a fast-lane pipeline run and marks the checkpoint. Lease-based coordination prevents duplicate refreshes across tabs.
+- Candidate facts (`CandidateFact[]`) are staged in `Conversation.candidateFacts` (JSON field) for eventual slow-lane promotion. Slow-lane reconciliation is deferred.
 
 ### Conversation and persistence
 
 - Conversation CRUD is DB-backed through `/api/conversations` and `/api/conversations/[id]`.
 - Conversations may optionally link back to a reusable story definition via nullable `storyProjectId`; unlinked conversations must keep legacy behavior.
+- `ConversationMeta` includes `storyProjectId` and `storyProjectName` (derived via Prisma join to `StoryProject.name`, not stored as a column).
+- The chat header shows a clickable provenance badge (BookOpen icon + story name) linking to `/stories/{id}` when `storyProjectId` is present.
+- The conversation list/drawer shows the source story name under the conversation title.
+- A "Fork to Story" action in the chat header creates a new story project from the current conversation's system prompt and story state via the existing create+import API flow.
 - `src/lib/storage.ts` initializes conversations with empty structured state and parsed default segments.
 - `src/lib/storage.ts` also reconstructs missing `customSegments` and `structuredState` from saved markdown when loading legacy conversations, then normalizes lifecycle defaults.
 - `use-conversation-manager` handles hydration, switching, and auto-save.
@@ -56,6 +63,10 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/lib/character-derivation.ts` derives entities, appearance, demeanor, and on-presence behavior segments from structured character fields. `src/lib/story-project-core.ts` should prefer these structured derivations and fall back to `importedMarkdown` only when structured behavior data is absent.
 - Character records support optional `dialogueExamples: DialogueExample[]` -- an array of `{ text, tag }` objects with predefined tags. `deriveBehaviorSegment` in `character-derivation.ts` appends tagged dialogue examples to the character behavior segment when present.
 - Launching a story project creates a new conversation snapshot from generated artifacts and persists `storyProjectId` on that conversation.
+- Import supports `replace` (default) and `merge` modes via `StoryProjectImportInput.mode`. Replace overwrites imported data; merge appends new entities/facts/threads and concatenates prompts without removing existing content.
+- The story editor overview tab includes a file-upload import card that triggers an `ImportReviewModal` before executing the import API call. The modal previews parsed segments and state sections and lets the user choose Replace or Merge.
+- The segment inspector shows provenance badges (`imported`, `form`, `override`) on each segment row based on whether a blueprint, imported prompt, or segment override is the source.
+- The preview/export tab offers per-file markdown download buttons for system prompt, story state, and individual character markdown files.
 
 ### Truncate and rollback
 
@@ -94,6 +105,10 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/app/stories/[id]/characters/[charId]/page.tsx` - route-backed character builder entry
 - `src/proxy.ts` - request proxy for auth gating and user ID header injection
 - `src/app/api/story-projects/**` - story project CRUD/action routes
+- `src/components/story/import-review-modal.tsx` - import review/preview dialog with merge/replace actions
+- `src/components/story/story-editor-client.tsx` - story editor shell with 6-tab layout and import modal wiring
+- `src/components/story/story-editor-client-sections.tsx` - editor cards, import card, per-file export buttons
+- `src/components/story/segment-inspector.tsx` - segment list with provenance badges
 - `src/components/story/character-builder-client.tsx` - character builder shell for mobile/desktop layouts
 - `src/components/story/character-builder-tabs.tsx` - tab content for identity, appearance, behavior, demeanor, and source sections
 - `src/components/story/character-form-field.tsx` - shared schema-driven field renderer for character builder controls
@@ -112,11 +127,14 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/app/api/chat/stream-telemetry.ts` - tool call telemetry collection and stream callbacks
 - `src/app/api/state-update/route.ts` - automatic state update pipeline
 - `src/app/api/state-rollback/route.ts` - rollback after message truncation
+- `src/app/api/conversations/[id]/refresh-check/route.ts` - refresh eligibility, lease, and completion
 - `src/lib/hooks/use-state-pipeline.ts` - client trigger and cascade reset integration
+- `src/lib/hooks/use-state-refresh.ts` - background polling for live state refresh
 - `src/lib/hooks/use-conversation-manager.ts` - hydration, save lifecycle, switching
 - `src/lib/state-pipeline/pipeline-socket.ts` - pipeline orchestration
 - `src/components/sidebar/story-state-editor.tsx` - typed state editor container
 - `src/components/sidebar/story-state-sections.tsx` - section-level state editors
+- `src/components/sidebar/refresh-status.tsx` - refresh status indicator in story-state tab
 
 ## Guardrails and boundaries
 

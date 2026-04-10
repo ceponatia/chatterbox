@@ -29,6 +29,13 @@ import {
 } from "@/lib/message-embeddings";
 import { getUserId } from "@/lib/get-user-id";
 import { parseStateFields } from "@/lib/state-utils";
+import { prisma } from "@/lib/prisma";
+import {
+  parseMarkdownToStructured,
+  structuredToMarkdown,
+  type StructuredStoryState,
+} from "@chatterbox/state-model";
+import { resolveEffectiveStateWithTiers } from "@/lib/effective-state-enhanced";
 import { openrouter, openrouterPlainText } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 import { createChatTools } from "./chat-tools";
@@ -60,6 +67,28 @@ import {
 } from "./chat-helpers";
 
 const defaultAssembler = createDefaultAssembler();
+
+// ---------------------------------------------------------------------------
+// Baseline lookup for story-project-linked conversations
+// ---------------------------------------------------------------------------
+
+async function loadBaselineState(
+  conversationId: string | null | undefined,
+): Promise<StructuredStoryState | null> {
+  if (!conversationId) return null;
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { storyProjectId: true },
+  });
+  if (!conv?.storyProjectId) return null;
+  const project = await prisma.storyProject.findUnique({
+    where: { id: conv.storyProjectId },
+    select: { generatedStructuredState: true },
+  });
+  return (
+    (project?.generatedStructuredState as StructuredStoryState | null) ?? null
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Assembly context
@@ -360,11 +389,35 @@ export async function POST(req: Request) {
 
   const windowed = windowMessages(messages);
   const elapsed = startTimer();
-  const entityIds = presentEntityIds ?? [];
+
+  // Resolve effective state for story-project-linked conversations
+  const baseline = await loadBaselineState(conversationId);
+  let effectiveStoryState = storyState;
+  let effectiveEntityIds = presentEntityIds ?? [];
+  if (baseline) {
+    const runtime = storyState.trim()
+      ? parseMarkdownToStructured(storyState)
+      : null;
+    const effective = resolveEffectiveStateWithTiers({
+      baseline,
+      runtime,
+    });
+    effectiveStoryState = structuredToMarkdown(effective);
+    effectiveEntityIds =
+      effective.scene.presentEntityIds.length > 0
+        ? effective.scene.presentEntityIds
+        : effectiveEntityIds;
+    log(
+      `  \x1b[2m\u{1f504} effective state: baseline + runtime merged\x1b[0m`,
+      "info",
+    );
+  }
+  const entityIds = effectiveEntityIds;
+
   const prompt = await preparePrompt(
     messages,
     _rawSystemPrompt,
-    storyState,
+    effectiveStoryState,
     settings,
     entityIds,
     lastIncludedAt,
@@ -373,7 +426,7 @@ export async function POST(req: Request) {
   logRequest("/api/chat", {
     conversationId,
     messages: windowed,
-    storyState,
+    storyState: effectiveStoryState,
     settings,
   });
 
@@ -384,7 +437,7 @@ export async function POST(req: Request) {
       windowed,
       conversationId ?? undefined,
       prompt.ctx.currentUserMessage,
-      storyState,
+      effectiveStoryState,
       entityIds,
     );
 

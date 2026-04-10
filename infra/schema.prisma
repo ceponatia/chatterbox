@@ -34,6 +34,10 @@ model Conversation {
   customSegments        Json?
   structuredState       Json?
   lastPipelineTurn      Int      @default(0)
+  lastStateUpdateAt              DateTime?  @db.Timestamptz(6)
+  lastStateCheckpointMessageId   String?
+  stateRefreshLeaseExpiresAt     DateTime?  @db.Timestamptz(6)
+  candidateFacts                 Json?
   stateHistoryEntries StateHistoryEntry[]
   storyProject         StoryProject? @relation(fields: [storyProjectId], references: [id])
   user                 User     @relation(fields: [userId], references: [id])
@@ -55,6 +59,9 @@ model StoryProject {
   generatedSegments      Json?
   generatedStructuredState Json?
   segmentOverrides       Json?
+  mainEntityId           String?
+  promptBlueprint        Json?
+  runtimeSeed            Json?
   createdAt              DateTime @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime @updatedAt @db.Timestamptz(6)
   characters             StoryCharacter[]

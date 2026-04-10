@@ -8,12 +8,16 @@ function toMeta(row: {
   title: string;
   createdAt: Date;
   updatedAt: Date;
+  storyProjectId: string | null;
+  storyProject: { name: string } | null;
 }): ConversationMeta {
   return {
     id: row.id,
     title: row.title,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    storyProjectId: row.storyProjectId,
+    storyProjectName: row.storyProject?.name ?? null,
   };
 }
 
@@ -21,7 +25,14 @@ export async function GET(request: Request) {
   const userId = getUserId(request);
   const rows = await prisma.conversation.findMany({
     where: { userId },
-    select: { id: true, title: true, createdAt: true, updatedAt: true },
+    select: {
+      id: true,
+      title: true,
+      createdAt: true,
+      updatedAt: true,
+      storyProjectId: true,
+      storyProject: { select: { name: true } },
+    },
     orderBy: { updatedAt: "desc" },
   });
   return NextResponse.json(rows.map(toMeta));

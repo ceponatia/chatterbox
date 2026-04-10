@@ -18,6 +18,7 @@ function toConversation(row: {
   createdAt: Date;
   updatedAt: Date;
   storyProjectId: string | null;
+  storyProject?: { name: string } | null;
   messages: unknown;
   systemPrompt: string;
   storyState: string;
@@ -37,6 +38,7 @@ function toConversation(row: {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     storyProjectId: row.storyProjectId,
+    storyProjectName: row.storyProject?.name ?? null,
     messages: asJsonField(row.messages, []) as Conversation["messages"],
     systemPrompt: row.systemPrompt ?? "",
     storyState: row.storyState ?? "",
@@ -69,6 +71,7 @@ export async function GET(
   const { id } = await params;
   const row = await prisma.conversation.findFirst({
     where: { id, userId },
+    include: { storyProject: { select: { name: true } } },
   });
   if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
