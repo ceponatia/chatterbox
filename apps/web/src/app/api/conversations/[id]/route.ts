@@ -29,7 +29,6 @@ function toConversation(row: {
   lastIncludedAt: unknown;
   customSegments: unknown | null;
   structuredState: unknown | null;
-  lastSummarizedTurn: number | null;
   lastPipelineTurn: number | null;
 }): Conversation {
   return {
@@ -58,7 +57,6 @@ function toConversation(row: {
       row.structuredState,
       null,
     ) as Conversation["structuredState"],
-    lastSummarizedTurn: row.lastSummarizedTurn ?? 0,
     lastPipelineTurn: row.lastPipelineTurn ?? 0,
   };
 }
@@ -110,7 +108,6 @@ export async function PUT(
       (body.customSegments as unknown as Prisma.InputJsonValue) ?? undefined,
     structuredState:
       (body.structuredState as unknown as Prisma.InputJsonValue) ?? undefined,
-    lastSummarizedTurn: body.lastSummarizedTurn ?? 0,
     lastPipelineTurn: body.lastPipelineTurn ?? 0,
   };
   const row = await prisma.conversation.upsert({

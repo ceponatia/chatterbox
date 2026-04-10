@@ -413,7 +413,6 @@ export function buildConversationSnapshot(project: StoryProjectDetail) {
     lastIncludedAt: {},
     customSegments: project.generatedSegments ?? [],
     structuredState: project.generatedStructuredState,
-    lastSummarizedTurn: 0,
     lastPipelineTurn: 0,
   };
 }

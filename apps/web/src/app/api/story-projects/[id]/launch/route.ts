@@ -63,7 +63,6 @@ export async function POST(
             snapshot.customSegments as unknown as Prisma.InputJsonValue,
           structuredState:
             snapshot.structuredState as unknown as Prisma.InputJsonValue,
-          lastSummarizedTurn: snapshot.lastSummarizedTurn,
           lastPipelineTurn: snapshot.lastPipelineTurn,
         },
         select: { id: true },
