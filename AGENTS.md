@@ -125,10 +125,6 @@ Do not use any typographic or "smart" punctuation.
 
 `liveConfig` in `page.tsx` is a module-scope mutable object read by the chat transport at request time. This is **intentional** — do not refactor it into React state or add it to any dependency array.
 
-### Dead code kept for reference
-
-`use-summarization.ts`, `fact-processing.ts`, `section-merge.ts`, and `/api/summarize` are legacy dead code kept intentionally. Do not delete them.
-
 ### Dev-docs naming
 
 `{type}{number}-{slug}.md` — types: `PL` (plan), `IM` (implementation). Completed docs move to `completed/` with `(COMP)` or `(DEP)` prefix. Docs use YAML frontmatter with Status and Last Updated.

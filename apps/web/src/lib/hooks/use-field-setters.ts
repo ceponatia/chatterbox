@@ -142,7 +142,6 @@ function usePromptAssemblyState() {
   const [customSegments, setCustomSegments] = useState<
     SerializedSegment[] | null
   >(null);
-  const [lastSummarizedTurn, setLastSummarizedTurn] = useState(0);
   const [lastPipelineTurn, setLastPipelineTurn] = useState(0);
 
   const handleSystemPromptChange = useCallback((value: string) => {
@@ -227,8 +226,6 @@ function usePromptAssemblyState() {
     setLastIncludedAt,
     customSegments,
     setCustomSegments,
-    lastSummarizedTurn,
-    setLastSummarizedTurn,
     lastPipelineTurn,
     setLastPipelineTurn,
     handleSystemPromptChange,

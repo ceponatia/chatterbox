@@ -33,7 +33,6 @@ model Conversation {
   lastIncludedAt        Json     @default("{}")
   customSegments        Json?
   structuredState       Json?
-  lastSummarizedTurn    Int      @default(0)
   lastPipelineTurn      Int      @default(0)
   stateHistoryEntries StateHistoryEntry[]
   storyProject         StoryProject? @relation(fields: [storyProjectId], references: [id])

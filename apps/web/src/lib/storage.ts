@@ -45,8 +45,6 @@ export interface Conversation extends ConversationMeta {
   customSegments: SerializedSegment[] | null;
   /** Structured story state (parsed from markdown). null = legacy flat string mode. */
   structuredState: StructuredStoryState | null;
-  /** Last user-turn number when summarization ran (persisted for cross-device consistency) */
-  lastSummarizedTurn: number;
   /** Last user-turn number when state pipeline ran (persisted for cross-device consistency) */
   lastPipelineTurn: number;
 }
@@ -113,7 +111,6 @@ function createConversationSnapshot(title = "New Chat"): Conversation {
     lastIncludedAt: {},
     customSegments: segments,
     structuredState: emptyStructuredState(),
-    lastSummarizedTurn: 0,
     lastPipelineTurn: 0,
   };
 }
@@ -124,10 +121,7 @@ export function createConversationDraft(title = "New Chat"): Conversation {
 
 /** Fill in turn-tracking fields that may be absent on older conversations. */
 function applyTurnDefaults(conv: Conversation): void {
-  const raw = conv as Partial<
-    Pick<Conversation, "lastSummarizedTurn" | "lastPipelineTurn">
-  >;
-  if (raw.lastSummarizedTurn === undefined) conv.lastSummarizedTurn = 0;
+  const raw = conv as Partial<Pick<Conversation, "lastPipelineTurn">>;
   if (raw.lastPipelineTurn === undefined) conv.lastPipelineTurn = 0;
 }
 

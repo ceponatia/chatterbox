@@ -65,7 +65,6 @@ function hydratePipelineFields(
   f: ReturnType<typeof useFieldSetters>,
   conv: Conversation,
 ) {
-  f.setLastSummarizedTurn(withDefault(conv.lastSummarizedTurn, 0));
   f.setLastPipelineTurn(withDefault(conv.lastPipelineTurn, 0));
 }
 
@@ -196,7 +195,6 @@ function buildSnapshot(
     lastIncludedAt: Record<string, number>;
     customSegments: ReturnType<typeof useFieldSetters>["customSegments"];
     structuredState: ReturnType<typeof useFieldSetters>["structuredState"];
-    lastSummarizedTurn: number;
     lastPipelineTurn: number;
   },
 ): Partial<Conversation> {
@@ -212,7 +210,6 @@ function buildSnapshot(
     lastIncludedAt: fields.lastIncludedAt,
     customSegments: fields.customSegments,
     structuredState: fields.structuredState,
-    lastSummarizedTurn: fields.lastSummarizedTurn,
     lastPipelineTurn: fields.lastPipelineTurn,
   };
 }
@@ -261,7 +258,6 @@ interface RunAutoSaveArgs {
   lastIncludedAt: Record<string, number>;
   customSegments: ReturnType<typeof useFieldSetters>["customSegments"];
   structuredState: ReturnType<typeof useFieldSetters>["structuredState"];
-  lastSummarizedTurn: number;
   lastPipelineTurn: number;
   onStoryPending: () => void;
   onPromptPending: () => void;
@@ -316,7 +312,6 @@ function runAutoSaveCycle(args: RunAutoSaveArgs): boolean {
     lastIncludedAt: args.lastIncludedAt,
     customSegments: args.customSegments,
     structuredState: args.structuredState,
-    lastSummarizedTurn: args.lastSummarizedTurn,
     lastPipelineTurn: args.lastPipelineTurn,
   });
   schedulePersist(
@@ -367,7 +362,6 @@ function buildRunAutoSaveArgs(
     lastIncludedAt: fields.lastIncludedAt,
     customSegments: fields.customSegments,
     structuredState: fields.structuredState,
-    lastSummarizedTurn: fields.lastSummarizedTurn,
     lastPipelineTurn: fields.lastPipelineTurn,
     onStoryPending,
     onPromptPending,
@@ -424,7 +418,6 @@ export function useAutoSave(
     fields.structuredState,
     fields.lastIncludedAt,
     fields.lastPipelineTurn,
-    fields.lastSummarizedTurn,
     activeConvId,
     activeConvRef,
     activeConvPersistedRef,
