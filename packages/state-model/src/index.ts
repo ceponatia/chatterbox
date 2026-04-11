@@ -44,3 +44,16 @@ export { scanPresenceFromAssistantMessage } from "./presence-scanner";
 // Effective state resolver
 export { resolveEffectiveState } from "./effective-state";
 export type { EffectiveStateInput } from "./effective-state";
+
+// Structural validation
+export {
+  validateStructuralIntegrity,
+  applyStructuralRepairs,
+} from "./structural-validation";
+export type {
+  IntegrityIssue,
+  IntegrityIssueKind,
+  IntegrityReport,
+  IntegrityRepairResult,
+  IssueSeverity,
+} from "./structural-validation";

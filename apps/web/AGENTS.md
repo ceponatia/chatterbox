@@ -35,7 +35,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - Presence scanning via `@chatterbox/state-model` updates `scene.presentEntityIds` for `on_presence` segment behavior.
 - State history is persisted via `/api/conversations/[id]/state-history` and surfaced in sidebar history views.
 - Live state refresh: `use-state-refresh` polls `/api/conversations/[id]/refresh-check` every 45 seconds while the tab is visible. When eligible, it triggers a fast-lane pipeline run and marks the checkpoint. Lease-based coordination prevents duplicate refreshes across tabs.
-- Candidate facts (`CandidateFact[]`) are staged in `Conversation.candidateFacts` (JSON field) for eventual slow-lane promotion. Slow-lane reconciliation is deferred.
+- Candidate facts (`CandidateFact[]`) are staged in `Conversation.candidateFacts` (JSON field) and reconciled by `src/app/api/conversations/[id]/slow-lane/route.ts` on the slower background cadence.
 
 ### Conversation and persistence
 
@@ -103,7 +103,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/app/stories/page.tsx` - story library route
 - `src/app/stories/[id]/page.tsx` - story project editor route
 - `src/app/stories/[id]/characters/[charId]/page.tsx` - route-backed character builder entry
-- `src/proxy.ts` - request proxy for auth gating and user ID header injection
+- `src/middleware.ts` - request middleware for auth gating and user ID header injection
 - `src/app/api/story-projects/**` - story project CRUD/action routes
 - `src/components/story/import-review-modal.tsx` - import review/preview dialog with merge/replace actions
 - `src/components/story/story-editor-client.tsx` - story editor shell with 6-tab layout and import modal wiring
@@ -128,6 +128,7 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/app/api/state-update/route.ts` - automatic state update pipeline
 - `src/app/api/state-rollback/route.ts` - rollback after message truncation
 - `src/app/api/conversations/[id]/refresh-check/route.ts` - refresh eligibility, lease, and completion
+- `src/app/api/conversations/[id]/slow-lane/route.ts` - slow-lane reconciliation, structural validation, repair, and persistence
 - `src/lib/hooks/use-state-pipeline.ts` - client trigger and cascade reset integration
 - `src/lib/hooks/use-state-refresh.ts` - background polling for live state refresh
 - `src/lib/hooks/use-conversation-manager.ts` - hydration, save lifecycle, switching

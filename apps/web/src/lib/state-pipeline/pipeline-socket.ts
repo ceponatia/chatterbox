@@ -26,7 +26,7 @@ import {
   startTimer,
 } from "@/lib/api-logger";
 import { openrouter } from "@/lib/openrouter";
-import type { StatePipelineChange } from "@chatterbox/sockets";
+import type { StatePipelineChange, CandidateFact } from "@chatterbox/sockets";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 import {
   parseMarkdownToStructured,
@@ -41,6 +41,48 @@ import {
   type LifecycleRejection,
 } from "./lifecycle-validation";
 import { STATE_UPDATE_INSTRUCTION } from "./pipeline-prompt";
+
+// ---------------------------------------------------------------------------
+// Candidate fact splitting
+// ---------------------------------------------------------------------------
+
+const CANDIDATE_CONFIDENCE_THRESHOLD = 0.6;
+const FACT_CHANGE_TYPES = new Set([
+  "hard_fact",
+  "hard_fact_new",
+  "hard_fact_superseded",
+  "hard_fact_correction",
+  "new_hard_fact",
+]);
+
+function splitCandidateFacts(
+  changes: StatePipelineChange[],
+  messages: readonly SocketMessage[],
+): { confirmed: StatePipelineChange[]; candidates: CandidateFact[] } {
+  const confirmed: StatePipelineChange[] = [];
+  const candidates: CandidateFact[] = [];
+  const lastMessageId =
+    messages.length > 0 ? messages[messages.length - 1]!.id : "unknown";
+  const now = new Date().toISOString().slice(0, 10);
+
+  for (const change of changes) {
+    const isFact =
+      FACT_CHANGE_TYPES.has(change.type) || change.type.includes("fact");
+    if (isFact && change.confidence < CANDIDATE_CONFIDENCE_THRESHOLD) {
+      candidates.push({
+        id: `cf-${Date.now()}-${candidates.length}`,
+        content: change.detail,
+        confidence: change.confidence,
+        sourceMessageId: lastMessageId,
+        extractedAt: now,
+      });
+    } else {
+      confirmed.push(change);
+    }
+  }
+
+  return { confirmed, candidates };
+}
 
 // ---------------------------------------------------------------------------
 // Message windowing
@@ -475,6 +517,7 @@ export const statePipelineAdapter: StatePipelineSocket = {
         disposition: "auto_accepted" as StatePipelineDisposition,
         cascadeResets: computeCascadeResets(changes),
         turnNumber: request.turnNumber,
+        candidateFacts: [],
       };
     }
 
@@ -528,10 +571,11 @@ export const statePipelineAdapter: StatePipelineSocket = {
       }
     }
 
-    const cascadeResets = computeCascadeResets(changes);
+    const { confirmed, candidates } = splitCandidateFacts(changes, windowed);
+    const cascadeResets = computeCascadeResets(confirmed);
     log(
       `  \x1b[2m\u2705 state-update: ${disposition}, diff ${validation.diffPercentage}%, ` +
-        `${changes.length} changes` +
+        `${confirmed.length} changes, ${candidates.length} candidates` +
         (cascadeResets.length > 0
           ? `, cascade: ${cascadeResets.join(", ")}`
           : "") +
@@ -541,11 +585,12 @@ export const statePipelineAdapter: StatePipelineSocket = {
 
     return {
       newState: updatedState,
-      changes,
+      changes: confirmed,
       validation,
       disposition,
       cascadeResets,
       turnNumber: request.turnNumber,
+      candidateFacts: candidates,
     };
   },
 };

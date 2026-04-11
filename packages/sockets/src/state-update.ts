@@ -53,6 +53,7 @@ export const defaultStatePipeline: StatePipelineSocket = {
       disposition: "auto_accepted" as StatePipelineDisposition,
       cascadeResets: [],
       turnNumber: request.turnNumber,
+      candidateFacts: [],
     };
   },
 };

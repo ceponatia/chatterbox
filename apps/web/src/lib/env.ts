@@ -3,6 +3,7 @@ export const env = {
   OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || "z-ai/glm-5",
   FACT_EXTRACTION_MODEL:
     process.env.FACT_EXTRACTION_MODEL || "google/gemini-2.0-flash-001",
+  SLOW_LANE_MODEL: process.env.SLOW_LANE_MODEL ?? "google/gemini-2.0-flash-001",
   DATABASE_URL:
     process.env.DATABASE_URL ||
     "postgresql://chatterbox:chatterbox@localhost:55432/chatterbox",

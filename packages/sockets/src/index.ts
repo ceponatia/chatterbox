@@ -9,6 +9,7 @@
 export type {
   SocketMessage,
   AssemblyContext,
+  CandidateFact,
   StatePipelineRequest,
   StatePipelineValidation,
   StatePipelineChange,
@@ -35,3 +36,16 @@ export { defaultStatePipeline } from "./state-update";
 // Post-Response Hook
 export type { PostResponseSocket } from "./post-response";
 export { defaultPostResponse } from "./post-response";
+
+// Slow-Lane Reconciliation
+export type {
+  SlowLaneReconciliationSocket,
+  SlowLaneRequest,
+  SlowLaneResult,
+  CandidateFactDecision,
+  CandidateVerdict,
+  SupersessionUpdate,
+  ThreadReconciliation,
+  ThreadReconciliationAction,
+} from "./slow-lane.js";
+export { defaultSlowLaneReconciliation } from "./slow-lane.js";

@@ -113,6 +113,16 @@ Do not use any typographic or "smart" punctuation.
 - Docker Compose: `pgvector/pgvector:pg16` (Postgres 16 + pgvector), default creds `chatterbox/chatterbox`, host port 55432 mapped to container port 5432.
 - `globalThis` caching pattern prevents PrismaClient re-instantiation in dev hot-reload.
 
+### Migration workflow
+
+- Never use `prisma migrate dev` - it detects drift from raw-SQL tables (`MessageEmbedding`/pgvector) and resets the database.
+- Use `pnpm db:migrate` (`prisma migrate deploy`) to apply pending migrations safely.
+- Create migration SQL files manually in `infra/migrations/` with naming convention `YYYYMMDDNNNN_description/migration.sql`.
+- Always use deterministic UUIDs in seed data (never `gen_random_uuid()` for seed rows).
+- After creating a new migration, run `pnpm db:generate` to sync the Prisma client.
+- Use `pnpm db:status` to check which migrations have been applied.
+- Only use `pnpm db:reset` when you intentionally want to drop and recreate everything.
+
 ## Conventions
 
 ### Code style

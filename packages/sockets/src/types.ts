@@ -69,6 +69,14 @@ export interface StatePipelineValidation {
 
 export type StatePipelineDisposition = "auto_accepted" | "flagged" | "retried";
 
+export interface CandidateFact {
+  readonly id: string;
+  readonly content: string;
+  readonly confidence: number;
+  readonly sourceMessageId: string;
+  readonly extractedAt: string;
+}
+
 export interface StatePipelineRequest {
   readonly messages: readonly SocketMessage[];
   readonly currentStoryState: string;
@@ -83,6 +91,7 @@ export interface StatePipelineResult {
   readonly disposition: StatePipelineDisposition;
   readonly cascadeResets: readonly string[];
   readonly turnNumber: number;
+  readonly candidateFacts?: readonly CandidateFact[];
 }
 
 // ---------------------------------------------------------------------------

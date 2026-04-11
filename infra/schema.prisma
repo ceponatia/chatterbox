@@ -38,6 +38,7 @@ model Conversation {
   lastStateCheckpointMessageId   String?
   stateRefreshLeaseExpiresAt     DateTime?  @db.Timestamptz(6)
   candidateFacts                 Json?
+  lastSlowLaneAt                 DateTime?  @db.Timestamptz(6)
   stateHistoryEntries StateHistoryEntry[]
   storyProject         StoryProject? @relation(fields: [storyProjectId], references: [id])
   user                 User     @relation(fields: [userId], references: [id])

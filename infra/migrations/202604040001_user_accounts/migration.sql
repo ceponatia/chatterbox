@@ -11,18 +11,19 @@ CREATE UNIQUE INDEX "User_username_key" ON "User" ("username");
 -- Seed admin user (password: yurikml2, bcrypt cost 10)
 INSERT INTO "User" ("id", "username", "passwordHash", "createdAt")
 VALUES (
-  gen_random_uuid(),
+  'a99685fa-2691-43b9-b0ac-fedbdba970a7',
   'admin',
   '$2b$10$j7cLAAzc0J0XSux9iNW6Ge76UEjX23R7O4zZtG1M/UUFWys35KpEC',
   now()
-);
+)
+ON CONFLICT ("id") DO NOTHING;
 
 -- Add userId to Conversation
 ALTER TABLE "Conversation" ADD COLUMN "userId" UUID;
 
 -- Backfill all existing conversations to admin
 UPDATE "Conversation"
-SET "userId" = (SELECT "id" FROM "User" WHERE "username" = 'admin');
+SET "userId" = 'a99685fa-2691-43b9-b0ac-fedbdba970a7';
 
 -- Make userId NOT NULL and add FK + index
 ALTER TABLE "Conversation" ALTER COLUMN "userId" SET NOT NULL;
@@ -36,7 +37,7 @@ ALTER TABLE "MessageEmbedding" ADD COLUMN "userId" UUID;
 
 -- Backfill existing embeddings to admin
 UPDATE "MessageEmbedding"
-SET "userId" = (SELECT "id" FROM "User" WHERE "username" = 'admin');
+SET "userId" = 'a99685fa-2691-43b9-b0ac-fedbdba970a7';
 
 -- Make NOT NULL and add FK
 ALTER TABLE "MessageEmbedding" ALTER COLUMN "userId" SET NOT NULL;

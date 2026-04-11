@@ -55,6 +55,11 @@ describe("defaultStatePipeline", () => {
     expect(result.turnNumber).toBe(BASE_REQUEST.turnNumber);
   });
 
+  it("returns empty candidateFacts", async () => {
+    const result = await defaultStatePipeline.run(BASE_REQUEST);
+    expect(result.candidateFacts).toEqual([]);
+  });
+
   it("works with empty state", async () => {
     const result = await defaultStatePipeline.run({
       ...BASE_REQUEST,

@@ -19,16 +19,10 @@ import {
 export type { Settings };
 
 // ---------------------------------------------------------------------------
-// Candidate fact staging (fast-lane refresh)
+// Candidate fact staging (re-export from socket boundary)
 // ---------------------------------------------------------------------------
 
-export interface CandidateFact {
-  id: string;
-  content: string;
-  confidence: number;
-  sourceMessageId: string;
-  extractedAt: string;
-}
+export type { CandidateFact } from "@chatterbox/sockets";
 
 // ---------------------------------------------------------------------------
 // Conversation data model

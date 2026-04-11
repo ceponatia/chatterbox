@@ -140,6 +140,7 @@ export async function POST(req: Request) {
     return Response.json({
       newState: result.newState,
       extractedFacts: result.changes,
+      candidateFacts: result.candidateFacts ?? [],
       validation: result.validation,
       disposition: result.disposition,
       cascadeResets: result.cascadeResets,

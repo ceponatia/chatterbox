@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
 import { logRequest, logError } from "@/lib/api-logger";
@@ -6,6 +7,8 @@ import type { UIMessage } from "ai";
 
 const COOLDOWN_MS = 60_000;
 const LEASE_DURATION_MS = 120_000;
+const SLOW_LANE_COOLDOWN_MS = 300_000;
+const MIN_CANDIDATE_FACTS_FOR_SLOW_LANE = 3;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,6 +37,7 @@ function hasNewMessages(
 async function handleComplete(
   id: string,
   checkpointMessageId: string | undefined,
+  newCandidateFacts?: unknown[],
 ) {
   if (!checkpointMessageId) {
     return NextResponse.json(
@@ -42,12 +46,36 @@ async function handleComplete(
     );
   }
   try {
+    // Merge new candidates with existing ones (dedup by content)
+    let mergedCandidates: unknown[] = [];
+    if (newCandidateFacts && newCandidateFacts.length > 0) {
+      const existing = await prisma.conversation.findUnique({
+        where: { id },
+        select: { candidateFacts: true },
+      });
+      const existingFacts = Array.isArray(existing?.candidateFacts)
+        ? (existing.candidateFacts as { content?: string }[])
+        : [];
+      const existingContents = new Set(
+        existingFacts.map((f) => (f.content ?? "").toLowerCase().trim()),
+      );
+      const deduped = newCandidateFacts.filter((f) => {
+        const content =
+          (f as { content?: string }).content?.toLowerCase().trim() ?? "";
+        return content.length > 0 && !existingContents.has(content);
+      });
+      mergedCandidates = [...existingFacts, ...deduped];
+    }
+
     await prisma.conversation.update({
       where: { id },
       data: {
         lastStateUpdateAt: new Date(),
         lastStateCheckpointMessageId: checkpointMessageId,
         stateRefreshLeaseExpiresAt: null,
+        ...(mergedCandidates.length > 0
+          ? { candidateFacts: mergedCandidates as Prisma.InputJsonValue }
+          : {}),
       },
     });
     return NextResponse.json({ ok: true });
@@ -116,6 +144,80 @@ async function handleCheck(
   return NextResponse.json({ eligible: false });
 }
 
+async function handleSlowLaneCheck(
+  id: string,
+  conv: {
+    lastSlowLaneAt: Date | null;
+    stateRefreshLeaseExpiresAt: Date | null;
+    candidateFacts: unknown;
+  },
+  manualBypass: boolean,
+) {
+  const now = new Date();
+
+  if (
+    conv.stateRefreshLeaseExpiresAt &&
+    conv.stateRefreshLeaseExpiresAt > now
+  ) {
+    return NextResponse.json({
+      eligible: false,
+      reason: "fast-lane lease active",
+    });
+  }
+
+  const cooldownOk =
+    manualBypass ||
+    !conv.lastSlowLaneAt ||
+    now.getTime() - conv.lastSlowLaneAt.getTime() > SLOW_LANE_COOLDOWN_MS;
+
+  if (!cooldownOk) {
+    return NextResponse.json({
+      eligible: false,
+      reason: "slow-lane cooldown active",
+    });
+  }
+
+  const candidates = Array.isArray(conv.candidateFacts)
+    ? conv.candidateFacts
+    : [];
+  const candidateCount = candidates.length;
+
+  if (!manualBypass && candidateCount < MIN_CANDIDATE_FACTS_FOR_SLOW_LANE) {
+    return NextResponse.json({
+      eligible: false,
+      reason: "insufficient candidate facts",
+      candidateCount,
+    });
+  }
+
+  return NextResponse.json({
+    eligible: true,
+    candidateCount,
+  });
+}
+
+async function handleSlowLaneComplete(
+  id: string,
+  remainingCandidates?: unknown[],
+) {
+  try {
+    await prisma.conversation.update({
+      where: { id },
+      data: {
+        lastSlowLaneAt: new Date(),
+        candidateFacts: (remainingCandidates ?? []) as Prisma.InputJsonValue,
+      },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    logError("refresh-check slow-lane-complete error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 },
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // POST handler -- dispatch on `action` field
 // ---------------------------------------------------------------------------
@@ -127,9 +229,12 @@ export async function POST(
   const userId = getUserId(request);
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "check" | "complete";
+    action?: "check" | "complete" | "slow-lane" | "slow-lane-complete";
     leaseRenew?: boolean;
+    manualBypass?: boolean;
     checkpointMessageId?: string;
+    candidateFacts?: unknown[];
+    remainingCandidates?: unknown[];
   };
   const action = body.action ?? "check";
 
@@ -146,6 +251,8 @@ export async function POST(
       lastStateUpdateAt: true,
       lastStateCheckpointMessageId: true,
       stateRefreshLeaseExpiresAt: true,
+      lastSlowLaneAt: true,
+      candidateFacts: true,
     },
   });
 
@@ -153,8 +260,16 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  if (action === "slow-lane") {
+    return handleSlowLaneCheck(id, conv, body.manualBypass ?? false);
+  }
+
+  if (action === "slow-lane-complete") {
+    return handleSlowLaneComplete(id, body.remainingCandidates);
+  }
+
   if (action === "complete") {
-    return handleComplete(id, body.checkpointMessageId);
+    return handleComplete(id, body.checkpointMessageId, body.candidateFacts);
   }
 
   return handleCheck(id, conv, body.leaseRenew ?? false);
