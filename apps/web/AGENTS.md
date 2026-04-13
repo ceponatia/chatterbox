@@ -96,17 +96,20 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 ### Model and routing notes
 
 - `src/lib/model-registry.ts` defines allowed model IDs and provider ordering.
-- Current registry includes `z-ai/glm-5`, `z-ai/glm-5.1`, `z-ai/glm-5-turbo`, `aion-labs/aion-2.0`, `google/gemini-3.1-pro-preview`, `qwen/qwen3.5-plus-02-15`, `deepseek/deepseek-v3.2`, `x-ai/grok-4.1-fast`, and `openai/gpt-oss-120b`.
+- Current registry includes `z-ai/glm-5`, `z-ai/glm-5.1`, `z-ai/glm-5-turbo`, `google/gemini-3.1-pro-preview`, `qwen/qwen3.5-plus-02-15`, `deepseek/deepseek-v3.2`, `x-ai/grok-4.1-fast`, and `openai/gpt-oss-120b`.
 - OpenRouter client config lives in `src/lib/openrouter.ts` (`extraBody.zdr = true`).
 - `SENSORY_INFERENCE_MODEL` env var controls the model for sensory inference (defaults to `z-ai/glm-5`).
 - Story authoring routes follow the flat `/api/story-projects` family: root CRUD, nested character CRUD, `relationships`, and the explicit `import`, `generate`, `export`, and `launch` action routes.
 - `/api/story-projects/[id]/locations` -- CRUD for story project locations (GET list, POST create)
 - `/api/story-projects/[id]/locations/[locationId]` -- single location (GET, PUT, DELETE)
 - `/api/story-projects/[id]/locations/[locationId]/connections` -- batch connection update (GET, PUT)
-- `/api/chat` exposes 11 tools (plus 3 conditional location tools) via `createChatTools()`, split across `chat-tools.ts` (core tools) and `chat-tools-extended.ts` (facts, relationships, threads, scene, entity, history, location tools). Uses `stepCountIs(3)` to preserve multi-character tool-call headroom. Keyword detection routes forced first calls to specific tools (`relationships` -> `get_relationships`, `threads` -> `get_threads`, `facts/recall/remember` -> `get_facts`).
+- `/api/chat` exposes 11 tools (plus 3 conditional location tools and 1 conditional `note_to_self` tool) via `createChatTools()`, split across `chat-tools.ts` (core tools), `chat-tools-extended.ts` (facts, relationships, threads, scene, entity, history, location tools), and `chat-tools-notes.ts` (working memory). Tool step count is dynamically capped: base 3, +1 when 3 or more entities are present, +1 when location tools are available, with a maximum of 6. A forced first tool call is still applied when keyword detection routes to a specific tool. Tool guidance in the system prompt is generated dynamically by `buildToolsInstruction()` based on registered tool names. `get_character_details` defaults to `fullDetail: true`, and the "Already in context" manifest distinguishes prompt-included segments from tool-retrievable data that should still be fetched when the turn procedure requires it.
+- `/api/chat/stream-telemetry.ts` logs every detected tool invocation through `tool-call-logger.ts`, including tool name, conversation ID, and a truncated argument summary for dev instrumentation.
 - When `structured.locations.length > 0`, three additional tools are registered: `get_location_details` (canonical location lookup with connections and entities present), `get_nearby_locations` (adjacency list from current position), and `move_to_location` (validate connectivity, update scene, rebuild presence). `move_to_location` mutates the parsed `StructuredStoryState` in place so post-response persistence captures the state change.
 - `get_scene_context` returns `locationId` and `connections` when the scene has a structured location set; otherwise these fields are `null`/empty (backward compatible).
-- `/api/chat` uses a two-phase draft flow when model is `aion-labs/aion-2.0` because that model does not support tool calls. Phase 1 runs GLM via `generateText` with full tool access to research context and produce a draft. Phase 2 streams Aion's final response with tool results and draft injected as system notes. The draft instruction tells GLM it is researching for another model; the Aion framing note establishes tool results as authoritative facts and the draft as structural guidance. See `src/app/api/chat/aion-draft.ts`.
+- `note_to_self` tool (`chat-tools-notes.ts`) persists working memory notes to `ConversationNote` table (cap 20, prunes oldest). Recent notes (last 10) are injected as a system message each turn via `getRecentNotes()`. The tool is registered when `conversationId` is present. System messages are built after tools are finalized so guidance reflects all available tools.
+- `get_backstory` supports optional `section` (string) and `keywords` (string[]) parameters for structured backstory retrieval. When provided, the tool queries `BackstorySection` rows (pgvector, raw SQL) parsed from the character's background field. Section lookup uses case-insensitive name matching (exact > prefix > substring). Keyword lookup embeds the keywords and performs cosine similarity search (threshold 0.3). When no match is found, available section names are returned. Falls back to segment text when no structured sections exist.
+- Backstory indexing: `src/lib/backstory-parser.ts` parses `StoryCharacter.background` by `###` headings into named sections, embeds each via `text-embedding-3-small`, and stores in the `BackstorySection` table. Indexing fires eagerly (fire-and-forget) on character create/update when the background field is present.
 - Message-pair embedding/retrieval lives in `src/lib/message-embeddings.ts` and uses `openai/text-embedding-3-small`.
 
 ## Key files
@@ -138,12 +141,13 @@ Next.js app runtime for Chatterbox. This package owns the chat UI, sidebar edito
 - `src/app/api/chat/route.ts` - POST handler, prompt preparation, assembly context
 - `src/app/api/chat/chat-tools.ts` - Core LLM tool definitions, shared helpers (compactText, buildStoryContext\*), and createChatTools factory
 - `src/app/api/chat/chat-tools-extended.ts` - Extended tool definitions (get_facts, get_relationships, get_threads, get_scene_context, lookup_entity, search_history, get_location_details, get_nearby_locations, move_to_location)
+- `src/app/api/chat/chat-tools-notes.ts` - Working memory tool (note_to_self) and note injection helper (getRecentNotes)
+- `src/lib/backstory-parser.ts` - Backstory section parser, pgvector indexer, name lookup, keyword search
 - `src/app/api/chat/history-compression.ts` - message windowing, scoring, tier assignment, summarization, digest fact extraction, RAG formatting
 - `src/app/api/chat/depth-note.ts` - depth-2 scene grounding note builder
-- `src/app/api/chat/aion-draft.ts` - Aion two-phase flow: GLM draft generation and Aion message assembly
-- `src/app/api/chat/tool-bypass.ts` - message sanitization for plain-text-only providers
 - `src/app/api/chat/system-prompt.ts` - system prompt construction, player control boundary, NPC guardrail
 - `src/app/api/chat/stream-telemetry.ts` - tool call telemetry collection and stream callbacks
+- `src/app/api/chat/tool-call-logger.ts` - shared dev logger for per-tool invocation summaries used by chat stream telemetry
 - `src/app/api/state-update/route.ts` - automatic state update pipeline
 - `src/app/api/state-rollback/route.ts` - rollback after message truncation
 - `src/app/api/conversations/[id]/refresh-check/route.ts` - refresh eligibility, lease, and completion

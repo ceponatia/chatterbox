@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
 import { logRequest } from "@/lib/api-logger";
+import { indexBackstorySections } from "@/lib/backstory-parser";
 import {
   getStoryProjectRow,
   regenerateStoryProject,
@@ -206,5 +207,11 @@ export async function POST(
   if (!created) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Fire-and-forget backstory indexing
+  if (created.background) {
+    void indexBackstorySections(created.id, created.background);
+  }
+
   return NextResponse.json(toStoryCharacterRecord(created));
 }

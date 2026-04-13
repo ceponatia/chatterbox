@@ -55,6 +55,7 @@ model Conversation {
   candidateFacts                 Json?
   lastSlowLaneAt                 DateTime?  @db.Timestamptz(6)
   stateHistoryEntries StateHistoryEntry[]
+  notes               ConversationNote[]
   storyProject         StoryProject? @relation(fields: [storyProjectId], references: [id])
   user                 User     @relation(fields: [userId], references: [id])
 
@@ -149,6 +150,17 @@ model StateHistoryEntry {
   @@index([conversationId, timestamp])
 }
 
+model ConversationNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @db.Uuid
+  content        String
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
 model StoryLocation {
   id              String   @id @default(uuid()) @db.Uuid
   storyProjectId  String   @db.Uuid
@@ -185,3 +197,7 @@ model LocationConnection {
 // MessageEmbedding table is managed via raw SQL migration (pgvector).
 // Not modeled here because Prisma does not support the `vector` column type.
 // See migration 202602260001_message_embeddings for the schema.
+
+// BackstorySection table is managed via raw SQL migration (pgvector).
+// Not modeled here because Prisma does not support the `vector` column type.
+// See migration 202604130002_backstory_sections for the schema.

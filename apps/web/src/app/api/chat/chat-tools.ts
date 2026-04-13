@@ -5,6 +5,12 @@ import {
 } from "@chatterbox/state-model";
 import type { PromptSegment } from "@chatterbox/prompt-assembly";
 import {
+  findBackstorySectionByName,
+  searchBackstoryByKeywords,
+  getAvailableSectionNames,
+  resolveBackstoryCharacterId,
+} from "@/lib/backstory-parser";
+import {
   createFactsTool,
   createLocationDetailsTool,
   createLookupEntityTool,
@@ -120,11 +126,6 @@ type StoryContextInput = {
   >;
 };
 
-type CheckRelationshipInput = {
-  fromName: string;
-  toName: string;
-};
-
 function getCharacterDetailSegmentIds(
   aspects: CharacterDetailsInput["aspects"],
 ): string[] {
@@ -171,7 +172,7 @@ function createCharacterDetailsTool(allSegments: readonly PromptSegment[]) {
     execute: async ({
       characterName,
       aspects,
-      fullDetail = false,
+      fullDetail = true,
     }: CharacterDetailsInput) => ({
       characterName: characterName ?? null,
       details: filterSegmentsByIds(
@@ -225,7 +226,7 @@ export function buildStoryContextRelationships(
     .map((relationship) => ({
       from: resolveEntityName(structured.entities, relationship.fromEntityId),
       to: resolveEntityName(structured.entities, relationship.toEntityId),
-      tone: relationship.tone ?? "neutral",
+      relationship_tone: relationship.tone ?? "neutral",
       description: includeDetails
         ? relationship.description
         : compactText(relationship.description, 280),
@@ -342,76 +343,74 @@ function createStoryContextTool(
 
 type BackstoryInput = {
   fullDetail?: boolean;
+  section?: string;
+  keywords?: string[];
 };
 
-function createBackstoryTool(allSegments: readonly PromptSegment[]) {
+async function retrieveStructuredBackstory(
+  conversationId: string,
+  section?: string,
+  keywords?: string[],
+): Promise<Record<string, unknown> | null> {
+  const charId = await resolveBackstoryCharacterId(conversationId);
+  if (!charId) return null;
+
+  if (section) {
+    const results = await findBackstorySectionByName(charId, section);
+    if (results.length > 0) return { found: true, sections: results };
+  }
+  if (keywords && keywords.length > 0) {
+    const results = await searchBackstoryByKeywords(charId, keywords);
+    if (results.length > 0) return { found: true, sections: results };
+  }
+  const available = await getAvailableSectionNames(charId);
+  if (available.length > 0)
+    return { found: false, availableSections: available };
+  return null;
+}
+
+function createBackstoryTool(
+  allSegments: readonly PromptSegment[],
+  conversationId?: string | null,
+) {
   return tool({
-    description: "Retrieve backstory context details.",
+    description:
+      "Retrieve backstory context details. Use section for a specific backstory section by name, or keywords for semantic search.",
     inputSchema: jsonSchema<BackstoryInput>({
       type: "object",
       properties: {
         fullDetail: { type: "boolean" },
+        section: {
+          type: "string",
+          description:
+            "Specific backstory section name (e.g., Early Life, Education, Key Events)",
+        },
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Search backstory by topic keywords",
+        },
       },
       additionalProperties: false,
     }),
-    execute: async ({ fullDetail = false }: BackstoryInput) => {
+    execute: async ({
+      fullDetail = false,
+      section,
+      keywords,
+    }: BackstoryInput) => {
+      if ((section || keywords) && conversationId) {
+        const result = await retrieveStructuredBackstory(
+          conversationId,
+          section,
+          keywords,
+        );
+        if (result) return result;
+      }
+
       const text = getSegmentText(allSegments, [BACKSTORY_SEGMENT_ID]);
       return {
         content: fullDetail ? text : compactText(text, 420),
       };
-    },
-  });
-}
-
-function createCheckRelationshipTool(
-  structured: ReturnType<typeof parseMarkdownToStructured>,
-) {
-  return tool({
-    description:
-      "Check relationship context between two named characters from current state.",
-    inputSchema: jsonSchema<CheckRelationshipInput>({
-      type: "object",
-      properties: {
-        fromName: { type: "string" },
-        toName: { type: "string" },
-      },
-      required: ["fromName", "toName"],
-      additionalProperties: false,
-    }),
-    execute: async ({ fromName, toName }: CheckRelationshipInput) => {
-      const normalize = (value: string) => value.trim().toLowerCase();
-      const from = normalize(fromName);
-      const to = normalize(toName);
-
-      const relationships = structured.relationships
-        .filter((relationship) => {
-          const resolvedFrom = resolveEntityName(
-            structured.entities,
-            relationship.fromEntityId,
-          ).toLowerCase();
-          const resolvedTo = resolveEntityName(
-            structured.entities,
-            relationship.toEntityId,
-          ).toLowerCase();
-          return (
-            (resolvedFrom === from && resolvedTo === to) ||
-            (resolvedFrom === to && resolvedTo === from)
-          );
-        })
-        .map((relationship) => ({
-          from: resolveEntityName(
-            structured.entities,
-            relationship.fromEntityId,
-          ),
-          to: resolveEntityName(structured.entities, relationship.toEntityId),
-          tone: relationship.tone ?? "neutral",
-          description: compactText(relationship.description, 180),
-          details: relationship.details
-            .slice(0, 2)
-            .map((entry) => compactText(entry, 100)),
-        }));
-
-      return { fromName, toName, relationships };
     },
   });
 }
@@ -454,8 +453,7 @@ export function createChatTools(
     get_facts: createFactsTool(structured),
     get_relationships: createRelationshipsTool(structured),
     get_threads: createThreadsTool(structured),
-    get_backstory: createBackstoryTool(allSegments),
-    check_relationship: createCheckRelationshipTool(structured),
+    get_backstory: createBackstoryTool(allSegments, conversationId),
     get_interaction_guidelines: createInteractionGuidelinesTool(allSegments),
     get_scene_context: createSceneContextTool(structured),
     lookup_entity: createLookupEntityTool(structured),

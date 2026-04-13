@@ -5,11 +5,13 @@ import {
   logWarn,
   logError,
 } from "@/lib/api-logger";
+import { logToolCall } from "./tool-call-logger";
 
 export interface ToolTelemetryMeta {
   route: string;
   modelId: string;
   turnNumber: number;
+  conversationId?: string | null;
   compression: {
     windowedMessages: number;
     windowedChars: number;
@@ -55,10 +57,8 @@ function getToolName(toolCall: Record<string, unknown>): string {
   return "unknown_tool";
 }
 
-function collectToolTelemetry(telemetry: ToolTelemetry, stepResult: unknown) {
-  if (!stepResult || typeof stepResult !== "object") return;
-  telemetry.stepCount += 1;
-
+function getStepToolCalls(stepResult: unknown): Record<string, unknown>[] {
+  if (!stepResult || typeof stepResult !== "object") return [];
   const step = stepResult as Record<string, unknown>;
   const staticCalls = Array.isArray(step.toolCalls)
     ? (step.toolCalls as unknown[])
@@ -66,7 +66,15 @@ function collectToolTelemetry(telemetry: ToolTelemetry, stepResult: unknown) {
   const dynamicCalls = Array.isArray(step.dynamicToolCalls)
     ? (step.dynamicToolCalls as unknown[])
     : [];
-  const calls = [...staticCalls, ...dynamicCalls];
+  return [...staticCalls, ...dynamicCalls].filter(
+    (toolCall): toolCall is Record<string, unknown> =>
+      Boolean(toolCall) && typeof toolCall === "object",
+  );
+}
+
+function getStepToolResults(stepResult: unknown): unknown[] {
+  if (!stepResult || typeof stepResult !== "object") return [];
+  const step = stepResult as Record<string, unknown>;
 
   const staticResults = Array.isArray(step.toolResults)
     ? (step.toolResults as unknown[])
@@ -74,15 +82,33 @@ function collectToolTelemetry(telemetry: ToolTelemetry, stepResult: unknown) {
   const dynamicResults = Array.isArray(step.dynamicToolResults)
     ? (step.dynamicToolResults as unknown[])
     : [];
-  const results = [...staticResults, ...dynamicResults];
+  return [...staticResults, ...dynamicResults];
+}
+
+function getToolArgs(toolCall: Record<string, unknown>): Record<string, unknown> {
+  const args = toolCall.args;
+  if (args && typeof args === "object" && !Array.isArray(args)) {
+    return args as Record<string, unknown>;
+  }
+  const input = toolCall.input;
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    return input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function collectToolTelemetry(telemetry: ToolTelemetry, stepResult: unknown) {
+  if (!stepResult || typeof stepResult !== "object") return;
+  telemetry.stepCount += 1;
+
+  const calls = getStepToolCalls(stepResult);
+  const results = getStepToolResults(stepResult);
 
   telemetry.toolCallCount += calls.length;
   for (const toolCall of calls) {
-    if (!toolCall || typeof toolCall !== "object") continue;
-    const record = toolCall as Record<string, unknown>;
-    const toolName = getToolName(record);
+    const toolName = getToolName(toolCall);
     telemetry.byTool.set(toolName, (telemetry.byTool.get(toolName) ?? 0) + 1);
-    telemetry.inputBytes += estimateJsonSize(record);
+    telemetry.inputBytes += estimateJsonSize(toolCall);
   }
   for (const toolResult of results) {
     telemetry.outputBytes += estimateJsonSize(toolResult);
@@ -119,6 +145,13 @@ export function streamCallbacks(
     },
     onStepFinish(stepResult: unknown) {
       collectToolTelemetry(telemetry, stepResult);
+      for (const toolCall of getStepToolCalls(stepResult)) {
+        logToolCall(
+          getToolName(toolCall),
+          getToolArgs(toolCall),
+          meta.conversationId,
+        );
+      }
     },
     onFinish({
       text,
@@ -142,6 +175,7 @@ export function streamCallbacks(
           route: meta.route,
           modelId: meta.modelId,
           turnNumber: meta.turnNumber,
+          conversationId: meta.conversationId ?? null,
           elapsedMs,
           textChars: text.length,
           stepCount: telemetry.stepCount,

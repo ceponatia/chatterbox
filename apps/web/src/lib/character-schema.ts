@@ -178,9 +178,9 @@ export const CHARACTER_TABS: TabDefinition[] = [
             defaultValue: "",
             required: false,
             tooltip:
-              "Past history that explains the character's worldview and habits.",
+              "Past history that explains the character's worldview and habits. Use ### headings to structure sections (e.g., ### Early Life, ### Key Events) for targeted retrieval during chat.",
             placeholder:
-              "Former navy mechanic who disappeared after a failed mutiny.",
+              "### Early Life\nBorn in a small coastal town...\n\n### Key Events\nAt 16, witnessed the harbor fire...",
           },
         ],
       },

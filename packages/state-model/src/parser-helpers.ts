@@ -1,8 +1,5 @@
 import type { StructuredStoryState } from "./types";
-import {
-  parseLocationsRaw,
-  type RawLocationEntry,
-} from "./parser-locations";
+import { parseLocationsRaw, type RawLocationEntry } from "./parser-locations";
 
 const SECTION_MAP: Record<string, keyof Omit<StructuredStoryState, "custom">> =
   {
@@ -297,11 +294,7 @@ function classifySceneKey(
     return "location";
   }
   if (lower.includes("present") || lower.includes("who")) return "present";
-  if (
-    lower.includes("atmosphere") ||
-    lower.includes("mood") ||
-    lower.includes("vibe")
-  ) {
+  if (lower.includes("atmosphere") || lower.includes("mood")) {
     return "atmosphere";
   }
   return null;

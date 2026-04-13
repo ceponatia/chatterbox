@@ -6,19 +6,104 @@ export type SystemPromptMessage = {
   providerOptions?: Record<string, Record<string, unknown>>;
 };
 
-const TOOLS_INSTRUCTION = [
-  "## Tool Usage",
-  "- Use tools to retrieve specific missing detail needed for the current turn.",
-  "- Use get_facts, get_relationships, or get_threads for targeted retrieval of story context.",
-  "- Use get_story_context when you need facts, relationships, and threads together.",
-  "- Use get_scene_context to check current scene, location, and who is present.",
-  "- Use lookup_entity when you need details about a specific character.",
-  "- Use search_history to recall specific past events or earlier conversation details.",
-  "- Use check_relationship for a quick bidirectional relationship lookup between two characters.",
-  "- You may call multiple tools per turn when the scene demands it.",
-  "- Prefer compact retrieval first; request fullDetail only when compact results show [truncated].",
-  "- If details are not needed for the current turn, respond without calling tools.",
-].join("\n");
+const TOOL_GUIDANCE_ENTRIES: Array<{
+  tools: readonly string[];
+  matchAny?: boolean;
+  text: string;
+}> = [
+  // Retrieval tools
+  {
+    tools: ["get_facts", "get_threads"],
+    matchAny: true,
+    text: "- Use get_facts or get_threads for targeted retrieval of story context.",
+  },
+  {
+    tools: ["get_relationships"],
+    text: "- Use get_relationships to retrieve character relationships. Pass fromName/toName for a specific pair, one name for all involving that character, or no names for all. Use compact=true for quick checks.",
+  },
+  {
+    tools: ["get_story_context"],
+    text: "- Use get_story_context when you need facts, relationships, and threads together.",
+  },
+  {
+    tools: ["get_backstory"],
+    text: "- Use get_backstory to retrieve character background. Use section or keywords params for targeted lookup.",
+  },
+  {
+    tools: ["get_character_details"],
+    text: "- Use get_character_details for each present character's appearance, voice, mannerisms, and personality. Full detail is returned by default.",
+  },
+  {
+    tools: ["get_interaction_guidelines"],
+    text: "- Use get_interaction_guidelines for interaction style and approach guidance.",
+  },
+  // Scene & entity tools
+  {
+    tools: ["get_scene_context"],
+    text: "- Use get_scene_context to check current scene, location, and who is present.",
+  },
+  {
+    tools: ["lookup_entity"],
+    text: "- Use lookup_entity when you need details about a specific character.",
+  },
+  {
+    tools: ["search_history"],
+    text: "- Use search_history to recall specific past events or earlier conversation details.",
+  },
+  // Location tools
+  {
+    tools: ["get_location_details"],
+    text: "- Use get_location_details for information about a specific location.",
+  },
+  {
+    tools: ["get_nearby_locations"],
+    text: "- Use get_nearby_locations to see reachable locations from the current position.",
+  },
+  {
+    tools: ["move_to_location"],
+    text: "- Use move_to_location to transition the scene to a different location.",
+  },
+  // Working memory tools
+  {
+    tools: ["note_to_self"],
+    text: "- Use note_to_self to persist important inferences, hypotheses, or tracking details across turns.",
+  },
+];
+
+export function buildToolsInstruction(
+  toolNames: readonly string[],
+  includedSegmentIds?: readonly string[],
+): string {
+  const nameSet = new Set(toolNames);
+  const lines: string[] = ["## Tool Usage"];
+
+  for (const entry of TOOL_GUIDANCE_ENTRIES) {
+    const matches = entry.matchAny
+      ? entry.tools.some((t) => nameSet.has(t))
+      : nameSet.has(entry.tools[0]!);
+    if (matches) lines.push(entry.text);
+  }
+
+  // General guidance
+  lines.push(
+    "- Follow the Turn Procedure checkpoints to determine which tools to call each turn.",
+    "- get_character_details returns full detail by default. Call it for each present character as the procedure directs.",
+    "- If details are not needed for the current turn, respond without calling tools.",
+  );
+
+  // Assembly manifest
+  if (includedSegmentIds && includedSegmentIds.length > 0) {
+    lines.push(
+      "",
+      "## Already in context",
+      `Prompt segments included this turn: ${includedSegmentIds.join(", ")}`,
+      "- The segments above are already in your instructions. Do not use tools to re-retrieve content covered by these segments.",
+      "- Tool-retrievable data (character details, relationships, facts, scene context, history) is always available via tools. Call tools when the Turn Procedure directs you to, even if a related segment is listed above.",
+    );
+  }
+
+  return lines.join("\n");
+}
 
 const NPC_ONLY_GUARDRAIL = [
   "## Response Boundary (Critical)",
@@ -50,9 +135,15 @@ export function buildSystemPrompt(
   storyState: string,
   runtimeBoundary: string,
   toolUseEnabled: boolean,
+  toolNames?: readonly string[],
+  includedSegmentIds?: readonly string[],
 ): SystemPromptMessage[] {
-  const promptContent = toolUseEnabled
-    ? `${assemblyPrompt}\n\n${TOOLS_INSTRUCTION}`
+  const toolGuidance =
+    toolUseEnabled && toolNames
+      ? buildToolsInstruction(toolNames, includedSegmentIds)
+      : null;
+  const promptContent = toolGuidance
+    ? `${assemblyPrompt}\n\n${toolGuidance}`
     : assemblyPrompt;
   const messages: SystemPromptMessage[] = [
     createSystemMessage(promptContent, true),

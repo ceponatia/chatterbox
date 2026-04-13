@@ -20,8 +20,6 @@ export interface ChatSettings {
   tokenBudget?: number;
 }
 
-export const AION_NO_TOOL_USE_MODEL_ID = "aion-labs/aion-2.0";
-
 export const SETTING_DEFAULTS = {
   temperature: 0.85,
   maxTokens: 1024,

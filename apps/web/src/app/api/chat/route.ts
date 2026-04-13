@@ -37,10 +37,11 @@ import {
   type StructuredStoryState,
 } from "@chatterbox/state-model";
 import { resolveEffectiveStateWithTiers } from "@/lib/effective-state-enhanced";
-import { openrouter, openrouterPlainText } from "@/lib/openrouter";
+import { openrouter } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 import { createChatTools } from "./chat-tools";
 import { createMoveToLocationTool } from "./chat-tools-location";
+import { createNoteToSelfTool, getRecentNotes } from "./chat-tools-notes";
 import {
   getMessageText,
   windowMessages,
@@ -53,15 +54,14 @@ import {
 import { buildDepthNote } from "./depth-note";
 import {
   buildSystemPrompt,
+  createSystemMessage,
   extractPlayerFromSegments,
   extractPrimaryUserFromCast,
   buildRuntimePlayerBoundary,
 } from "./system-prompt";
 import { streamCallbacks } from "./stream-telemetry";
-import { generateGlmDraft, buildAionMessages } from "./aion-draft";
 import {
   type ChatSettings,
-  AION_NO_TOOL_USE_MODEL_ID,
   resolveSettings,
   logAssembly,
   logCompression,
@@ -254,42 +254,56 @@ function detectForcedTool(message: string): string | null {
   return null;
 }
 
+function computeMaxToolSteps(
+  entityCount: number,
+  hasLocationTools: boolean,
+): number {
+  let steps = 3;
+  if (entityCount >= 3) steps += 1;
+  if (hasLocationTools) steps += 1;
+  return Math.min(steps, 6);
+}
+
 function buildToolConfig(
   toolUseEnabled: boolean,
   tools: ToolSet,
   forcedToolName: string | null,
+  entityCount: number,
+  hasLocationTools: boolean,
 ) {
   if (!toolUseEnabled) return {};
-  const maxToolSteps = 3;
+  const maxSteps = computeMaxToolSteps(entityCount, hasLocationTools);
   return {
     tools,
-    stopWhen: stepCountIs(maxToolSteps),
-    prepareStep: ({ stepNumber }: { stepNumber: number }) => {
-      const opts: Record<string, unknown> = {};
-      if (forcedToolName && stepNumber === 0) {
-        opts.toolChoice = {
-          type: "tool" as const,
-          toolName: forcedToolName,
-        };
-      }
-      if (stepNumber >= maxToolSteps - 1) {
-        opts.activeTools = [];
-      }
-      return opts;
-    },
+    stopWhen: stepCountIs(maxSteps),
+    ...(forcedToolName
+      ? {
+          prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+            if (stepNumber === 0) {
+              return {
+                toolChoice: {
+                  type: "tool" as const,
+                  toolName: forcedToolName,
+                },
+              };
+            }
+            return {};
+          },
+        }
+      : {}),
   };
 }
-
 // ---------------------------------------------------------------------------
 // Prompt preparation
 // ---------------------------------------------------------------------------
 
 interface PromptContext {
   ctx: AssemblyContext;
-  systemMessages: ReturnType<typeof buildSystemPrompt>;
+  assemblyPrompt: string;
+  includedSegmentIds: readonly string[];
+  runtimeBoundary: string;
   tools: ReturnType<typeof createChatTools>;
   modelId: string;
-  toolUseEnabled: boolean;
 }
 
 async function preparePrompt(
@@ -328,14 +342,6 @@ async function preparePrompt(
     extractPrimaryUserFromCast(storyState);
   const runtimeBoundary = buildRuntimePlayerBoundary(primaryUserAlias);
   const modelId = settings.model ?? DEFAULT_MODEL_ID;
-  const toolUseEnabled = modelId !== AION_NO_TOOL_USE_MODEL_ID;
-
-  const systemMessages = buildSystemPrompt(
-    assembly.systemPrompt,
-    storyState,
-    runtimeBoundary,
-    toolUseEnabled,
-  );
 
   logAssembly(assembly, ctx);
   if (primaryUserAlias) {
@@ -344,7 +350,14 @@ async function preparePrompt(
     logWarn("/api/chat: could not resolve primary user from Cast[2]");
   }
 
-  return { ctx, systemMessages, tools, modelId, toolUseEnabled };
+  return {
+    ctx,
+    assemblyPrompt: assembly.systemPrompt,
+    includedSegmentIds: assembly.included,
+    runtimeBoundary,
+    tools,
+    modelId,
+  };
 }
 
 function getProviderOrder(modelId: string): string[] {
@@ -439,13 +452,24 @@ export async function POST(req: Request) {
   // Pre-parse structured state for mutable location tool
   const preStreamStructured = parseMarkdownToStructured(effectiveStoryState);
   const originalLocationId = preStreamStructured.scene.locationId;
-  const streamTools =
+  const locationTools: ToolSet =
     preStreamStructured.locations.length > 0
-      ? {
-          ...prompt.tools,
-          move_to_location: createMoveToLocationTool(preStreamStructured),
-        }
-      : prompt.tools;
+      ? { move_to_location: createMoveToLocationTool(preStreamStructured) }
+      : {};
+  const noteTools: ToolSet = conversationId
+    ? { note_to_self: createNoteToSelfTool(conversationId) }
+    : {};
+  const streamTools = { ...prompt.tools, ...locationTools, ...noteTools };
+
+  // Build system messages after tools are finalized so guidance lists all tools
+  const systemMessages = buildSystemPrompt(
+    prompt.assemblyPrompt,
+    effectiveStoryState,
+    prompt.runtimeBoundary,
+    true,
+    Object.keys(streamTools),
+    prompt.includedSegmentIds,
+  );
 
   logRequest("/api/chat", {
     conversationId,
@@ -475,6 +499,11 @@ export async function POST(req: Request) {
 
     const forcedToolName = detectForcedTool(prompt.ctx.currentUserMessage);
 
+    const workingMemory = await getRecentNotes(conversationId);
+    const fullSystemMessages = workingMemory
+      ? [...systemMessages, createSystemMessage(workingMemory, false)]
+      : systemMessages;
+
     const compressionMeta = {
       windowedMessages: windowed.length,
       windowedChars: convCtx.windowedChars,
@@ -491,62 +520,8 @@ export async function POST(req: Request) {
       compressionRatio: convCtx.compressionRatio,
     };
 
-    // -----------------------------------------------------------------------
-    // Aion two-phase flow: GLM draft with tools -> Aion final response
-    // -----------------------------------------------------------------------
-    if (!prompt.toolUseEnabled) {
-      const draft = await generateGlmDraft(
-        prompt.systemMessages,
-        convCtx.modelMessages,
-        streamTools,
-        resolveSettings(settings),
-        forcedToolName,
-      );
-
-      log(
-        `  \x1b[2m\u{1f501} Aion two-phase: draft=${draft.draftText.length} chars, ` +
-          `tools=${draft.toolCallCount}, steps=${draft.stepCount}, ` +
-          `${draft.elapsedMs}ms\x1b[0m`,
-        "info",
-      );
-
-      const aionMessages = buildAionMessages(
-        prompt.systemMessages,
-        convCtx.modelMessages,
-        convCtx.historySummaryMessage,
-        convCtx.ragSummaryMessage,
-        draft,
-      );
-
-      const aionResult = streamText({
-        model: openrouterPlainText(prompt.modelId),
-        messages: aionMessages,
-        ...resolveSettings(settings),
-        providerOptions: {
-          openrouter: {
-            reasoning: { effort: "high" },
-            ...(providerOrder.length > 0
-              ? { provider: { order: providerOrder } }
-              : {}),
-          },
-        },
-        ...streamCallbacks(elapsed, {
-          route: "/api/chat",
-          modelId: prompt.modelId,
-          turnNumber: prompt.ctx.turnNumber,
-          compression: compressionMeta,
-        }),
-      });
-
-      logStreamStart("/api/chat (Aion two-phase)");
-      return aionResult.toUIMessageStreamResponse();
-    }
-
-    // -----------------------------------------------------------------------
-    // Normal flow: direct tool-calling model
-    // -----------------------------------------------------------------------
     const requestMessages = [
-      ...prompt.systemMessages,
+      ...fullSystemMessages,
       ...convCtx.historySummaryMessage,
       ...convCtx.ragSummaryMessage,
       ...convCtx.modelMessages,
@@ -555,7 +530,13 @@ export async function POST(req: Request) {
     const result = streamText({
       model: openrouter(prompt.modelId),
       messages: requestMessages,
-      ...buildToolConfig(prompt.toolUseEnabled, streamTools, forcedToolName),
+      ...buildToolConfig(
+        true,
+        streamTools,
+        forcedToolName,
+        entityIds.length,
+        preStreamStructured.locations.length > 0,
+      ),
       ...resolveSettings(settings),
       providerOptions: {
         openrouter: {
@@ -569,6 +550,7 @@ export async function POST(req: Request) {
         route: "/api/chat",
         modelId: prompt.modelId,
         turnNumber: prompt.ctx.turnNumber,
+        conversationId,
         compression: compressionMeta,
       }),
     });

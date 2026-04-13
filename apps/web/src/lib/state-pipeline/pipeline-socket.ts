@@ -489,15 +489,7 @@ function resolveModelAndProviders(appRequest: AppPipelineRequest): {
   model: string;
   providerOrder: readonly string[];
 } {
-  const requestedModel = appRequest.model ?? DEFAULT_MODEL_ID;
-  const model =
-    requestedModel === "aion-labs/aion-2.0" ? DEFAULT_MODEL_ID : requestedModel;
-  if (model !== requestedModel) {
-    log(
-      `  \x1b[2mstate-update: model fallback ${requestedModel} -> ${model}\x1b[0m`,
-      "info",
-    );
-  }
+  const model = appRequest.model ?? DEFAULT_MODEL_ID;
   const providerOrder =
     getModelEntry(model)?.providers ??
     getModelEntry(DEFAULT_MODEL_ID)?.providers ??

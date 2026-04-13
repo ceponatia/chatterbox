@@ -126,7 +126,7 @@ describe("DEFAULT_SEGMENTS", () => {
       expect(coreRulesSegment.category).toBe("rules");
       expect(coreRulesSegment.order).toBe(0);
       expect(coreRulesSegment.priority).toBe("critical");
-      expect(coreRulesSegment.tokenEstimate).toBe(320);
+      expect(coreRulesSegment.tokenEstimate).toBe(250);
     });
   });
 

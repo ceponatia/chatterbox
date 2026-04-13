@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RotateCcw, Info, Star, Save, Trash2 } from "lucide-react";
+import { RotateCcw, Star, Save, Trash2 } from "lucide-react";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/defaults";
 import { MODEL_REGISTRY } from "@/lib/model-registry";
 import { usePresets } from "@/lib/hooks/use-presets";
@@ -97,12 +97,6 @@ function ModelField({
           ))}
         </SelectContent>
       </Select>
-      {model === "aion-labs/aion-2.0" && (
-        <p className="app-warning-note">
-          <Info className="h-3 w-3 shrink-0" />
-          Tools provided by GLM 5
-        </p>
-      )}
     </div>
   );
 }

@@ -74,6 +74,7 @@ export function createFactsTool(
 export type RelationshipsInput = {
   maxRelationships?: number;
   includeDetails?: boolean;
+  compact?: boolean;
   fromName?: string;
   toName?: string;
 };
@@ -83,12 +84,13 @@ export function createRelationshipsTool(
 ) {
   return tool({
     description:
-      "Retrieve character relationships from story state. Optionally filter by character name.",
+      "Retrieve character relationships from story state. Pass fromName and toName to look up a specific pair (bidirectional). Pass only one name to get all relationships involving that character. Pass neither to get all relationships. Set compact=true for a brief overview with tighter truncation, or includeDetails=true for full untruncated content.",
     inputSchema: jsonSchema<RelationshipsInput>({
       type: "object",
       properties: {
         maxRelationships: { type: "number" },
         includeDetails: { type: "boolean" },
+        compact: { type: "boolean" },
         fromName: { type: "string" },
         toName: { type: "string" },
       },
@@ -97,6 +99,7 @@ export function createRelationshipsTool(
     execute: async ({
       maxRelationships,
       includeDetails = false,
+      compact = false,
       fromName,
       toName,
     }: RelationshipsInput) => {
@@ -125,14 +128,27 @@ export function createRelationshipsTool(
         });
         source = { ...structured, relationships: filteredRelationships };
       }
-      return {
-        relationships: buildStoryContextRelationships(
-          source,
-          true,
-          includeDetails,
-          maxRelationships,
-        ),
-      };
+
+      const relationships = buildStoryContextRelationships(
+        source,
+        true,
+        includeDetails,
+        maxRelationships,
+      );
+
+      if (compact && !includeDetails) {
+        return {
+          relationships: relationships.map((r) => ({
+            ...r,
+            description: compactText(r.description, 180),
+            details: r.details
+              .slice(0, 2)
+              .map((entry) => compactText(String(entry), 100)),
+          })),
+        };
+      }
+
+      return { relationships };
     },
   });
 }
@@ -248,7 +264,7 @@ export function createLookupEntityTool(
         .map((r) => ({
           from: resolveEntityName(structured.entities, r.fromEntityId),
           to: resolveEntityName(structured.entities, r.toEntityId),
-          tone: r.tone ?? "neutral",
+          relationship_tone: r.tone ?? "neutral",
         }));
       const relatedAppearance = structured.appearance
         .filter((a) => a.entityId === entity.id)

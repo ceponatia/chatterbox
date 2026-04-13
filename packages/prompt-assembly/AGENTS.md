@@ -120,11 +120,13 @@ Two-tier detection for `on_topic` segments:
 ### Default segment content
 
 All default segments in `src/segments/` are **story-agnostic** — they use `{{ char }}`/`{{ user }}` placeholders and `[customize]` markers. They serve as a template when no custom segments are provided. No character-specific, plot-specific, or user-specific content should exist in these files.
+The `turn_procedure` segment is a 10-step procedural directive evaluated before each response. It references specific tool names and uses imperative phrasing. It is injected as `always`/`critical` at order 5 (between `core_rules` and `output_format`).
 
 ### Segment policy assignments
 
 | Segment                                                                | Policy                             | Priority      |
 | ---------------------------------------------------------------------- | ---------------------------------- | ------------- |
+| `turn_procedure`                                                       | `always`                           | critical      |
 | `core_rules`, `output_format`, `setting_premise`, `character_identity` | `always`                           | critical/high |
 | `narration_guidelines`                                                 | `every_n(3)`                       | normal        |
 | `speech_patterns`                                                      | `every_n(2)`                       | high          |

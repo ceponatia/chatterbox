@@ -5,7 +5,7 @@ export const appearanceVisualSegment: PromptSegment = {
   label: "Appearance & Visual Presence",
   content: `- Look/Presence:
   - [customize — build, height, notable physical features]
-  - [customize — overall vibe, energy, how they carry themselves]`,
+    - [customize — overall energy, bearing, how they carry themselves]`,
   policy: { type: "every_n", n: 2 },
   priority: "normal",
   order: 55,

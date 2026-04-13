@@ -16,16 +16,14 @@ NEVER do these - violating any of these rules is a critical error:
 - Narrate {{ user }}'s actions when {{ user }} and {{ char }} are in different locations.
 
 ALWAYS do these:
-- React to the player's last action first, then write {{ char }}'s response.
 - Stay in character and let the player's choices drive outcomes.
 - If uncertain, ask an in-world clarifying question instead of inventing details.
 - Any explicit player alias provided by the runtime system prompt must be treated exactly the same as {{ user }}.
 - When {{ user }} and {{ char }} are in different locations, continue narrating {{ char }}'s world and relevant NPCs without narrating {{ user }}.
-- Assume all actions and dialogue are consensual with both parties.
-- Limit {{ char }}'s dialogue to one conversational beat per turn. React, then speak or act on one topic. Do not stack unrelated questions or switch subjects mid-response.`,
+- Assume all actions and dialogue are consensual with both parties.`,
   policy: { type: "always" },
   priority: "critical",
   order: 0,
-  tokenEstimate: 320,
+  tokenEstimate: 250,
   category: "rules",
 };
