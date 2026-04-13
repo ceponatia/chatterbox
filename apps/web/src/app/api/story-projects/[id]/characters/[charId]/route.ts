@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { logRequest } from "@/lib/api-logger";
 import { getUserId } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
-import { resolveProjectAuthoringModeFromSource } from "@/lib/story-project-core";
 import {
   getStoryProjectRow,
   regenerateStoryProject,
@@ -13,12 +12,17 @@ import type {
   CharacterAppearanceEntry,
   CharacterBehavioralProfile,
   CharacterIdentity,
-  CharacterProvenance,
   DialogueExample,
   StoryProjectCharacterInput,
 } from "@/lib/story-project-types";
 
-const IDENTITY_KEYS = ["age", "role", "situation", "pronouns", "species"] as const;
+const IDENTITY_KEYS = [
+  "age",
+  "role",
+  "situation",
+  "pronouns",
+  "species",
+] as const;
 const PROFILE_KEYS = [
   "overview",
   "speechPatterns",
@@ -30,10 +34,19 @@ const PROFILE_KEYS = [
 ] as const;
 
 const DIALOGUE_TAGS = new Set([
-  "general", "angry", "casual", "formal", "playful", "sad", "excited", "sarcastic",
+  "general",
+  "angry",
+  "casual",
+  "formal",
+  "playful",
+  "sad",
+  "excited",
+  "sarcastic",
 ]);
 
-type StoryProjectRow = NonNullable<Awaited<ReturnType<typeof getStoryProjectRow>>>;
+type StoryProjectRow = NonNullable<
+  Awaited<ReturnType<typeof getStoryProjectRow>>
+>;
 type StoryCharacterRow = StoryProjectRow["characters"][number];
 type PutResult = StoryCharacterRow | "player-conflict" | null;
 
@@ -41,12 +54,12 @@ interface NormalizedCharacterInput {
   name: string;
   role: string;
   isPlayer: boolean;
-  importedMarkdown: string | null | undefined;
   identity: CharacterIdentity | null | undefined;
   background: string | null | undefined;
   appearance: CharacterAppearanceEntry[] | null | undefined;
   behavioralProfile: CharacterBehavioralProfile | null | undefined;
   dialogueExamples: DialogueExample[] | null | undefined;
+  sensoryProfile: StoryProjectCharacterInput["sensoryProfile"] | undefined;
   startingDemeanor: string | null | undefined;
 }
 
@@ -58,16 +71,22 @@ function normalizeText(value: string | null | undefined): string | null {
 function normalizeStringRecord<T extends string>(
   keys: readonly T[],
   value: Partial<Record<T, string | null | undefined>> | null | undefined,
-  transform?: (key: T, entry: string | null | undefined) => string | null | undefined,
+  transform?: (
+    key: T,
+    entry: string | null | undefined,
+  ) => string | null | undefined,
 ): Record<T, string> | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
 
-  const normalized = keys.reduce<Record<T, string>>((result, key) => {
-    const rawValue = transform ? transform(key, value[key]) : value[key];
-    result[key] = normalizeText(rawValue) ?? "";
-    return result;
-  }, {} as Record<T, string>);
+  const normalized = keys.reduce<Record<T, string>>(
+    (result, key) => {
+      const rawValue = transform ? transform(key, value[key]) : value[key];
+      result[key] = normalizeText(rawValue) ?? "";
+      return result;
+    },
+    {} as Record<T, string>,
+  );
 
   return Object.values(normalized).every(
     (entry) => typeof entry === "string" && entry.length === 0,
@@ -109,9 +128,7 @@ function normalizeBehavioralProfile(
     | undefined;
 }
 
-function normalizeDialogueExamples(
-  value: unknown,
-): DialogueExample[] | null {
+function normalizeDialogueExamples(value: unknown): DialogueExample[] | null {
   if (!Array.isArray(value)) return null;
 
   const normalized = value
@@ -121,7 +138,8 @@ function normalizeDialogueExamples(
     )
     .map((entry) => {
       const text = typeof entry.text === "string" ? entry.text.trim() : "";
-      const rawTag = typeof entry.tag === "string" ? entry.tag.trim().toLowerCase() : "";
+      const rawTag =
+        typeof entry.tag === "string" ? entry.tag.trim().toLowerCase() : "";
       const tag = DIALOGUE_TAGS.has(rawTag) ? rawTag : "general";
       return { text, tag };
     })
@@ -136,19 +154,19 @@ function normalizeCharacterInput(
   return {
     name: body.name.trim(),
     role: body.role?.trim() || "supporting",
-    isPlayer: Boolean(body.isPlayer),
-    importedMarkdown:
-      body.importedMarkdown !== undefined
-        ? normalizeText(body.importedMarkdown)
-        : undefined,
+    isPlayer: body.role === "player",
     identity: normalizeIdentity(body.identity),
     background:
-      body.background !== undefined ? normalizeText(body.background) : undefined,
+      body.background !== undefined
+        ? normalizeText(body.background)
+        : undefined,
     appearance: normalizeAppearance(body.appearance),
     behavioralProfile: normalizeBehavioralProfile(body.behavioralProfile),
-    dialogueExamples: body.dialogueExamples !== undefined
-      ? normalizeDialogueExamples(body.dialogueExamples)
-      : undefined,
+    dialogueExamples:
+      body.dialogueExamples !== undefined
+        ? normalizeDialogueExamples(body.dialogueExamples)
+        : undefined,
+    sensoryProfile: body.sensoryProfile,
     startingDemeanor:
       body.startingDemeanor !== undefined
         ? normalizeText(body.startingDemeanor)
@@ -158,49 +176,6 @@ function normalizeCharacterInput(
 
 function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
-}
-
-function withFormProvenance(
-  provenance: CharacterProvenance | null | undefined,
-  key: keyof CharacterProvenance,
-): CharacterProvenance {
-  return {
-    ...(provenance ?? {}),
-    [key]: "form",
-  };
-}
-
-function applyTextUpdate(
-  data: Prisma.StoryCharacterUpdateInput,
-  field: "background" | "startingDemeanor",
-  nextValue: string | null | undefined,
-  currentValue: string | null,
-  provenance: CharacterProvenance | null,
-  provenanceKey: keyof CharacterProvenance,
-): CharacterProvenance | null {
-  if (nextValue === undefined || nextValue === currentValue) return provenance;
-  data[field] = nextValue;
-  return withFormProvenance(provenance, provenanceKey);
-}
-
-function applyJsonUpdate(
-  data: Prisma.StoryCharacterUpdateInput,
-  field: "identity" | "appearance" | "behavioralProfile",
-  nextValue:
-    | CharacterIdentity
-    | CharacterAppearanceEntry[]
-    | CharacterBehavioralProfile
-    | null
-    | undefined,
-  currentValue: unknown,
-  provenance: CharacterProvenance | null,
-  provenanceKey: keyof CharacterProvenance,
-): CharacterProvenance | null {
-  if (nextValue === undefined || sameValue(nextValue, currentValue)) return provenance;
-  data[field] = nextValue
-    ? (nextValue as unknown as Prisma.InputJsonValue)
-    : Prisma.DbNull;
-  return withFormProvenance(provenance, provenanceKey);
 }
 
 function buildCharacterUpdateData(
@@ -214,58 +189,44 @@ function buildCharacterUpdateData(
   };
 
   if (
-    input.importedMarkdown !== undefined &&
-    input.importedMarkdown !== existing.importedMarkdown
+    input.identity !== undefined &&
+    !sameValue(input.identity, existing.identity)
   ) {
-    data.importedMarkdown = input.importedMarkdown;
+    data.identity = input.identity
+      ? (input.identity as unknown as Prisma.InputJsonValue)
+      : Prisma.DbNull;
   }
 
-  let nextProvenance = (existing.provenance as CharacterProvenance | null) ?? null;
-  nextProvenance = applyJsonUpdate(
-    data,
-    "identity",
-    input.identity,
-    existing.identity,
-    nextProvenance,
-    "identity",
-  );
-  nextProvenance = applyTextUpdate(
-    data,
-    "background",
-    input.background,
-    existing.background ?? null,
-    nextProvenance,
-    "background",
-  );
-  nextProvenance = applyJsonUpdate(
-    data,
-    "appearance",
-    input.appearance,
-    existing.appearance,
-    nextProvenance,
-    "appearance",
-  );
-  nextProvenance = applyJsonUpdate(
-    data,
-    "behavioralProfile",
-    input.behavioralProfile,
-    existing.behavioralProfile,
-    nextProvenance,
-    "behavioralProfile",
-  );
-  nextProvenance = applyTextUpdate(
-    data,
-    "startingDemeanor",
-    input.startingDemeanor,
-    existing.startingDemeanor ?? null,
-    nextProvenance,
-    "startingDemeanor",
-  );
+  if (
+    input.background !== undefined &&
+    input.background !== (existing.background ?? null)
+  ) {
+    data.background = input.background;
+  }
 
-  if (!sameValue(nextProvenance, existing.provenance)) {
-    data.provenance = nextProvenance
-      ? (nextProvenance as unknown as Prisma.InputJsonValue)
+  if (
+    input.appearance !== undefined &&
+    !sameValue(input.appearance, existing.appearance)
+  ) {
+    data.appearance = input.appearance
+      ? (input.appearance as unknown as Prisma.InputJsonValue)
       : Prisma.DbNull;
+  }
+
+  if (
+    input.behavioralProfile !== undefined &&
+    !sameValue(input.behavioralProfile, existing.behavioralProfile)
+  ) {
+    data.behavioralProfile = input.behavioralProfile
+      ? (input.behavioralProfile as unknown as Prisma.InputJsonValue)
+      : Prisma.DbNull;
+  }
+
+  if (
+    input.startingDemeanor !== undefined &&
+    input.startingDemeanor !== (existing.startingDemeanor ?? null)
+  ) {
+    data.startingDemeanor = input.startingDemeanor;
   }
 
   if (
@@ -277,18 +238,16 @@ function buildCharacterUpdateData(
       : Prisma.DbNull;
   }
 
-  return data;
-}
+  if (
+    input.sensoryProfile !== undefined &&
+    !sameValue(input.sensoryProfile, existing.sensoryProfile)
+  ) {
+    data.sensoryProfile = input.sensoryProfile
+      ? (input.sensoryProfile as unknown as Prisma.InputJsonValue)
+      : Prisma.DbNull;
+  }
 
-function hasStructuredCharacterData(input: NormalizedCharacterInput): boolean {
-  return Boolean(
-    input.isPlayer ||
-      input.identity ||
-      input.background ||
-      input.appearance ||
-      input.behavioralProfile ||
-      input.startingDemeanor,
-  );
+  return data;
 }
 
 function findCharacter(project: StoryProjectRow | null, charId: string) {
@@ -323,13 +282,7 @@ async function updateCharacter(
   const refreshed = await getStoryProjectRow(tx, userId, projectId);
   if (!refreshed) return null;
 
-  const authoringMode = resolveProjectAuthoringModeFromSource({
-    importedSystemPrompt: refreshed.importedSystemPrompt,
-    importedStoryState: refreshed.importedStoryState,
-    characters: refreshed.characters,
-    hasStructuredEdits: hasStructuredCharacterData(input),
-  });
-  await regenerateStoryProject(tx, userId, projectId, authoringMode);
+  await regenerateStoryProject(tx, userId, projectId);
   return findCharacter(refreshed, charId);
 }
 
@@ -411,12 +364,7 @@ export async function DELETE(
     const refreshed = await getStoryProjectRow(tx, userId, id);
     if (!refreshed) return false;
 
-    const authoringMode = resolveProjectAuthoringModeFromSource({
-      importedSystemPrompt: refreshed.importedSystemPrompt,
-      importedStoryState: refreshed.importedStoryState,
-      characters: refreshed.characters,
-    });
-    await regenerateStoryProject(tx, userId, id, authoringMode);
+    await regenerateStoryProject(tx, userId, id);
     return true;
   });
 

@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   CHARACTER_TABS,
   DIALOGUE_EXAMPLE_TAGS,
   type SectionDefinition,
@@ -14,7 +21,7 @@ import {
 import type {
   CharacterAppearanceEntry,
   DialogueExample,
-  StoryCharacterRecord,
+  StoryLocationRecord,
 } from "@/lib/story-project-types";
 import { CharacterFormField } from "./character-form-field";
 import type { CharacterBuilderDraft } from "./use-character-builder";
@@ -118,21 +125,23 @@ function IdentitySection({
 
 export function IdentityTab({
   draft,
+  locations,
   onNameChange,
   onRoleChange,
-  onPlayerChange,
   onBackgroundChange,
   onIdentityFieldChange,
+  onDefaultLocationChange,
 }: {
   draft: CharacterBuilderDraft;
+  locations: StoryLocationRecord[];
   onNameChange: (value: string) => void;
   onRoleChange: (value: string) => void;
-  onPlayerChange: (value: boolean) => void;
   onBackgroundChange: (value: string) => void;
   onIdentityFieldChange: (
     key: keyof CharacterBuilderDraft["identity"],
     value: string,
   ) => void;
+  onDefaultLocationChange: (locationId: string | null) => void;
 }) {
   const tab = CHARACTER_TABS.find((entry) => entry.id === "identity");
   if (!tab) return null;
@@ -146,18 +155,6 @@ export function IdentityTab({
             Core story role, in-world identity, and baseline context.
           </p>
         </div>
-        <label className="flex items-center gap-3 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.isPlayer}
-            onChange={(event) => onPlayerChange(event.target.checked)}
-            className="h-4 w-4 rounded border-border bg-input"
-          />
-          <span>Player character</span>
-          <span className="app-editor-summary">
-            Only one player character can exist per story.
-          </span>
-        </label>
         {tab.sections.map((section) => (
           <IdentitySection
             key={section.id}
@@ -169,6 +166,31 @@ export function IdentityTab({
             onIdentityFieldChange={onIdentityFieldChange}
           />
         ))}
+        {locations.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium">
+              Default Location
+            </label>
+            <Select
+              value={draft.defaultLocationId ?? "none"}
+              onValueChange={(v) =>
+                onDefaultLocationChange(v === "none" ? null : v)
+              }
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {locations.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -441,38 +463,6 @@ export function DemeanorTab({
         field={field}
         value={draft.startingDemeanor}
         onChange={onChange}
-      />
-    </div>
-  );
-}
-
-export function SourceTab({
-  character,
-  draft,
-}: {
-  character: StoryCharacterRecord;
-  draft: CharacterBuilderDraft;
-}) {
-  return (
-    <div className="app-story-card app-story-stack">
-      <div>
-        <h2 className="text-sm font-semibold">Source</h2>
-        <p className="app-editor-summary">
-          Imported markdown is preserved as a source snapshot. Structured edits
-          live beside it.
-        </p>
-      </div>
-      <div className="app-story-meta">
-        <span>Entity: {character.entityId}</span>
-        <span>{draft.isPlayer ? "Player character" : "NPC"}</span>
-        <span>Created {new Date(character.createdAt).toLocaleString()}</span>
-        <span>Updated {new Date(character.updatedAt).toLocaleString()}</span>
-      </div>
-      <Textarea
-        value={draft.importedMarkdown}
-        readOnly={true}
-        className="min-h-80 font-mono text-xs leading-relaxed"
-        placeholder="No imported markdown source for this character."
       />
     </div>
   );

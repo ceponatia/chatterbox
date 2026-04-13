@@ -111,11 +111,6 @@ export function StoryCharacterSummaryCard({
           </p>
           <div className="app-story-meta">
             <span>Entity: {character.entityId}</span>
-            <span>
-              {character.importedMarkdown?.trim()
-                ? "Imported source available"
-                : "No imported source"}
-            </span>
           </div>
         </Link>
         <ConfirmDeleteButton

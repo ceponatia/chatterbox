@@ -1,8 +1,7 @@
-import { generateText, type ModelMessage, stepCountIs } from "ai";
+import { generateText, type ModelMessage, type ToolSet, stepCountIs } from "ai";
 import { log, logWarn } from "@/lib/api-logger";
 import { openrouter } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
-import type { createChatTools } from "./chat-tools";
 import type { SystemPromptMessage } from "./system-prompt";
 import { createSystemMessage } from "./system-prompt";
 import { sanitizeMessagesForPlainText } from "./tool-bypass";
@@ -52,7 +51,7 @@ export interface DraftResult {
 export async function generateGlmDraft(
   systemMessages: SystemPromptMessage[],
   conversationMessages: ModelMessage[],
-  tools: ReturnType<typeof createChatTools>,
+  tools: ToolSet,
   resolvedSettings: {
     temperature: number;
     maxOutputTokens: number;
@@ -60,7 +59,7 @@ export async function generateGlmDraft(
     frequencyPenalty: number;
     presencePenalty: number;
   },
-  mustUseStoryContext: boolean,
+  forcedToolName: string | null,
 ): Promise<DraftResult> {
   const start = performance.now();
 
@@ -80,15 +79,14 @@ export async function generateGlmDraft(
     tools,
     stopWhen: stepCountIs(3),
     prepareStep: ({ stepNumber }: { stepNumber: number }) => {
-      if (mustUseStoryContext && stepNumber === 0) {
-        return {
-          toolChoice: {
-            type: "tool" as const,
-            toolName: "get_story_context" as const,
-          },
+      const opts: Record<string, unknown> = {};
+      if (forcedToolName && stepNumber === 0) {
+        opts.toolChoice = {
+          type: "tool" as const,
+          toolName: forcedToolName,
         };
       }
-      return {};
+      return opts;
     },
     ...resolvedSettings,
     maxOutputTokens: DRAFT_MAX_OUTPUT_TOKENS,

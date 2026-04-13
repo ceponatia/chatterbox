@@ -23,12 +23,13 @@ describe("emptyStructuredState", () => {
     expect(state.hardFacts).toEqual([]);
     expect(state.style).toEqual([]);
     expect(state.custom).toEqual([]);
+    expect(state.locations).toEqual([]);
     expect(state.sectionMeta).toEqual(emptySectionMeta());
   });
 });
 
 describe("emptySectionMeta", () => {
-  it("returns record with all 9 section keys, each with defaults", () => {
+  it("returns record with all 10 section keys, each with defaults", () => {
     const meta = emptySectionMeta();
     const expectedKeys = [
       "cast",
@@ -40,6 +41,7 @@ describe("emptySectionMeta", () => {
       "hardFacts",
       "style",
       "custom",
+      "locations",
     ];
     expect(Object.keys(meta).sort()).toEqual(expectedKeys.sort());
     for (const key of expectedKeys) {

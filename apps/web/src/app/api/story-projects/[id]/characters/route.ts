@@ -8,12 +8,8 @@ import {
   regenerateStoryProject,
   toStoryCharacterRecord,
 } from "@/lib/story-project-db";
-import {
-  createStoryCharacterEntityId,
-  resolveProjectAuthoringModeFromSource,
-} from "@/lib/story-project-core";
+import { createStoryCharacterEntityId } from "@/lib/story-project-core";
 import type {
-  CharacterProvenance,
   DialogueExample,
   StoryProjectCharacterInput,
 } from "@/lib/story-project-types";
@@ -22,7 +18,14 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const DIALOGUE_TAGS = new Set([
-  "general", "angry", "casual", "formal", "playful", "sad", "excited", "sarcastic",
+  "general",
+  "angry",
+  "casual",
+  "formal",
+  "playful",
+  "sad",
+  "excited",
+  "sarcastic",
 ]);
 
 function normalizeText(value: string | null | undefined): string | null {
@@ -78,9 +81,7 @@ function normalizeBehavioralProfile(input: StoryProjectCharacterInput) {
   return Object.values(normalized).some(Boolean) ? normalized : null;
 }
 
-function normalizeDialogueExamples(
-  value: unknown,
-): DialogueExample[] | null {
+function normalizeDialogueExamples(value: unknown): DialogueExample[] | null {
   if (!Array.isArray(value)) return null;
 
   const normalized = value
@@ -90,7 +91,8 @@ function normalizeDialogueExamples(
     )
     .map((entry) => {
       const text = typeof entry.text === "string" ? entry.text.trim() : "";
-      const rawTag = typeof entry.tag === "string" ? entry.tag.trim().toLowerCase() : "";
+      const rawTag =
+        typeof entry.tag === "string" ? entry.tag.trim().toLowerCase() : "";
       const tag = DIALOGUE_TAGS.has(rawTag) ? rawTag : "general";
       return { text, tag };
     })
@@ -99,33 +101,16 @@ function normalizeDialogueExamples(
   return normalized.length > 0 ? normalized : null;
 }
 
-function buildProvenance(
-  input: StoryProjectCharacterInput,
-): CharacterProvenance | null {
-  const provenance: CharacterProvenance = {};
-
-  if (normalizeIdentity(input)) provenance.identity = "form";
-  if (normalizeText(input.background)) provenance.background = "form";
-  if (normalizeAppearance(input)) provenance.appearance = "form";
-  if (normalizeBehavioralProfile(input)) provenance.behavioralProfile = "form";
-  if (normalizeText(input.startingDemeanor)) {
-    provenance.startingDemeanor = "form";
-  }
-
-  return Object.keys(provenance).length > 0 ? provenance : null;
-}
-
 function buildCharacterData(input: StoryProjectCharacterInput, name: string) {
   const identity = normalizeIdentity(input);
   const appearance = normalizeAppearance(input);
   const behavioralProfile = normalizeBehavioralProfile(input);
-  const provenance = buildProvenance(input);
   const normalizedExamples = normalizeDialogueExamples(input.dialogueExamples);
 
   return {
     name,
     role: normalizeText(input.role) ?? "supporting",
-    isPlayer: Boolean(input.isPlayer),
+    isPlayer: input.role === "player",
     identity:
       identity === null
         ? Prisma.DbNull
@@ -139,30 +124,16 @@ function buildCharacterData(input: StoryProjectCharacterInput, name: string) {
       behavioralProfile === null
         ? Prisma.DbNull
         : (behavioralProfile as unknown as Prisma.InputJsonValue),
+    sensoryProfile:
+      input.sensoryProfile == null
+        ? Prisma.DbNull
+        : (input.sensoryProfile as unknown as Prisma.InputJsonValue),
     dialogueExamples:
       normalizedExamples === null
         ? Prisma.DbNull
         : (normalizedExamples as unknown as Prisma.InputJsonValue),
     startingDemeanor: normalizeText(input.startingDemeanor),
-    importedMarkdown: normalizeText(input.importedMarkdown),
-    provenance:
-      provenance === null
-        ? Prisma.DbNull
-        : (provenance as unknown as Prisma.InputJsonValue),
   };
-}
-
-function hasStructuredCharacterData(
-  input: StoryProjectCharacterInput,
-): boolean {
-  return Boolean(
-    input.isPlayer ||
-    normalizeIdentity(input) ||
-    normalizeText(input.background) ||
-    normalizeAppearance(input) ||
-    normalizeBehavioralProfile(input) ||
-    normalizeText(input.startingDemeanor),
-  );
 }
 
 export async function GET(
@@ -200,7 +171,7 @@ export async function POST(
     const project = await getStoryProjectRow(tx, userId, id);
     if (!project) return null;
     if (
-      body.isPlayer &&
+      body.role === "player" &&
       project.characters.some((character) => character.isPlayer)
     ) {
       return "player-conflict" as const;
@@ -220,13 +191,7 @@ export async function POST(
     });
     const refreshed = await getStoryProjectRow(tx, userId, id);
     if (!refreshed) return null;
-    const authoringMode = resolveProjectAuthoringModeFromSource({
-      importedSystemPrompt: refreshed.importedSystemPrompt,
-      importedStoryState: refreshed.importedStoryState,
-      characters: refreshed.characters,
-      hasStructuredEdits: hasStructuredCharacterData(body),
-    });
-    await regenerateStoryProject(tx, userId, id, authoringMode);
+    await regenerateStoryProject(tx, userId, id);
     return (
       refreshed.characters.find((item) => item.id === character.id) ?? null
     );

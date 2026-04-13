@@ -3,6 +3,7 @@ import {
   emptyStructuredState,
   type CustomSection,
   type Entity,
+  type LocationInfo,
   type StructuredStoryState,
 } from "./types";
 import { findEntityByName, findOrCreateEntity } from "./entities";
@@ -77,11 +78,62 @@ function resolveEntityId(entities: Entity[], name: string): string {
   );
 }
 
+function buildLocations(raw: RawSections): LocationInfo[] {
+  const locations: LocationInfo[] = raw.locations.map((rawLoc) => ({
+    id: generateStoryItemId("loc", rawLoc.name),
+    name: rawLoc.name,
+    description: rawLoc.description,
+    tags: rawLoc.tags,
+    atmosphere: rawLoc.atmosphere,
+    connectedTo: [],
+  }));
+
+  for (let i = 0; i < raw.locations.length; i++) {
+    const rawLoc = raw.locations[i]!;
+    const loc = locations[i]!;
+    loc.connectedTo = rawLoc.connections.map((conn) => {
+      const target = locations.find(
+        (l) => l.name.toLowerCase() === conn.targetName.toLowerCase(),
+      );
+      return {
+        locationId: target?.id ?? "",
+        locationName: conn.targetName,
+        description: conn.description,
+        traversalHint: conn.traversalHint,
+      };
+    });
+  }
+
+  return locations;
+}
+
+function resolveSceneLocationId(
+  raw: RawSections,
+  locations: LocationInfo[],
+): string | undefined {
+  if (raw.scene.locationName) {
+    const match = locations.find(
+      (l) => l.name.toLowerCase() === raw.scene.locationName!.toLowerCase(),
+    );
+    if (match) return match.id;
+  }
+  if (raw.scene.location) {
+    const fallback = locations.find(
+      (l) => l.name.toLowerCase() === raw.scene.location.toLowerCase(),
+    );
+    if (fallback) return fallback.id;
+  }
+  return undefined;
+}
+
 function resolveRawToState(
   raw: RawSections,
   entities: Entity[],
   custom: CustomSection[],
 ): StructuredStoryState {
+  const locations = buildLocations(raw);
+  const sceneLocationId = resolveSceneLocationId(raw, locations);
+
   return {
     entities,
     relationships: raw.relationships.map((relationship) => ({
@@ -105,6 +157,7 @@ function resolveRawToState(
         resolveEntityId(entities, name),
       ),
       atmosphere: raw.scene.atmosphere,
+      locationId: sceneLocationId,
     },
     demeanor: raw.demeanor.map((entry) => ({
       entityId: entry.character
@@ -135,6 +188,7 @@ function resolveRawToState(
     })),
     style: raw.style,
     custom,
+    locations,
     sectionMeta: emptySectionMeta(),
   };
 }

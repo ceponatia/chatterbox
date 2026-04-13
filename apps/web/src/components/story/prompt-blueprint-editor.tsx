@@ -1,45 +1,83 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { getDefaultBlueprintContent } from "@/lib/blueprint-defaults";
+import { generateId } from "@/lib/storage";
 import type {
   PromptBlueprint,
   PromptBlueprintSection,
 } from "@/lib/story-project-types";
 
-const EMPTY_BLUEPRINT: PromptBlueprint = {
-  coreRulesAdditions: "",
-  outputFormat: "",
-  settingScenario: "",
-  npcFraming: "",
-  interactionGuidelines: "",
-  customSections: [],
-};
-
 interface BlueprintFieldProps {
   label: string;
   description: string;
   value: string;
+  defaultValue: string;
+  isCustomized: boolean;
   onChange: (value: string) => void;
+  onReset: () => void;
+  syncNote?: string;
+  placeholder?: string;
 }
+
+type GuidedBlueprintField = keyof Omit<
+  PromptBlueprint,
+  "customSections" | "customizedFields"
+>;
 
 function BlueprintField({
   label,
   description,
   value,
+  defaultValue,
+  isCustomized,
   onChange,
+  onReset,
+  syncNote,
+  placeholder,
 }: BlueprintFieldProps) {
+  const showReset = value !== defaultValue;
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium">{label}</label>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium">{label}</label>
+          {isCustomized && (
+            <Badge variant="outline" className="text-[10px] uppercase">
+              Customized
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {showReset && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-1.5 text-[10px] text-muted-foreground"
+              onClick={onReset}
+              title="Reset to default"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset to default
+            </Button>
+          )}
+        </div>
+      </div>
       <p className="text-[10px] text-muted-foreground">{description}</p>
       <Textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="min-h-28 font-mono text-xs leading-relaxed"
+        placeholder={placeholder}
       />
+      {syncNote ? (
+        <p className="text-[10px] text-muted-foreground">{syncNote}</p>
+      ) : null}
     </div>
   );
 }
@@ -126,10 +164,26 @@ export function PromptBlueprintEditor({
   blueprint: PromptBlueprint | null;
   onChange: (blueprint: PromptBlueprint) => void;
 }) {
-  const bp = blueprint ?? EMPTY_BLUEPRINT;
+  const defaults = getDefaultBlueprintContent();
+  const bp = blueprint ?? defaults;
+  const customized = bp.customizedFields ?? {};
 
-  function updateField(field: keyof Omit<PromptBlueprint, "customSections">) {
-    return (value: string) => onChange({ ...bp, [field]: value });
+  function handleFieldChange(field: GuidedBlueprintField) {
+    return (value: string) =>
+      onChange({
+        ...bp,
+        [field]: value,
+        customizedFields: { ...customized, [field]: true },
+      });
+  }
+
+  function handleFieldReset(field: GuidedBlueprintField) {
+    return () =>
+      onChange({
+        ...bp,
+        [field]: defaults[field],
+        customizedFields: { ...customized, [field]: false },
+      });
   }
 
   function updateCustomSection(index: number, section: PromptBlueprintSection) {
@@ -148,7 +202,7 @@ export function PromptBlueprintEditor({
       customSections: [
         ...bp.customSections,
         {
-          id: `custom_${crypto.randomUUID().slice(0, 8)}`,
+          id: `custom_${generateId().slice(0, 8)}`,
           label: "",
           content: "",
           order: nextOrder,
@@ -186,39 +240,87 @@ export function PromptBlueprintEditor({
         </p>
       </div>
 
+      <div className="app-editor-card flex flex-col gap-4 p-4">
+        <div>
+          <h3 className="text-xs font-semibold">Story Context</h3>
+          <p className="text-[10px] text-muted-foreground">
+            Setting and themes that frame the story for the model.
+          </p>
+        </div>
+
+        <BlueprintField
+          label="Setting"
+          description="The story's world, setting, and scenario description."
+          value={bp.setting}
+          defaultValue={defaults.setting}
+          isCustomized={customized.setting === true}
+          onChange={handleFieldChange("setting")}
+          onReset={handleFieldReset("setting")}
+          syncNote={
+            customized.setting ? undefined : "Synced from Overview description"
+          }
+        />
+
+        <BlueprintField
+          label="Themes"
+          description="Narrative themes the model should keep in view."
+          value={bp.themes}
+          defaultValue={defaults.themes}
+          isCustomized={customized.themes === true}
+          onChange={handleFieldChange("themes")}
+          onReset={handleFieldReset("themes")}
+          placeholder="Narrative themes the model should keep in view. Example: romance, adventure, slow-burn tension, comedy."
+        />
+      </div>
+
       <BlueprintField
-        label="Core Rules Additions"
-        description="Additional rules layered on top of the default core rules."
-        value={bp.coreRulesAdditions}
-        onChange={updateField("coreRulesAdditions")}
+        label="Core Rules"
+        description="Fundamental rules the model must follow."
+        value={bp.coreRules}
+        defaultValue={defaults.coreRules}
+        isCustomized={customized.coreRules ?? false}
+        onChange={handleFieldChange("coreRules")}
+        onReset={handleFieldReset("coreRules")}
       />
 
       <BlueprintField
         label="Output Format"
         description="Instructions for how the model should format its responses."
         value={bp.outputFormat}
-        onChange={updateField("outputFormat")}
-      />
-
-      <BlueprintField
-        label="Setting / Scenario"
-        description="The story's world, setting, and scenario description."
-        value={bp.settingScenario}
-        onChange={updateField("settingScenario")}
+        defaultValue={defaults.outputFormat}
+        isCustomized={customized.outputFormat ?? false}
+        onChange={handleFieldChange("outputFormat")}
+        onReset={handleFieldReset("outputFormat")}
       />
 
       <BlueprintField
         label="NPC Framing"
         description="How NPCs should be introduced, voiced, and framed."
         value={bp.npcFraming}
-        onChange={updateField("npcFraming")}
+        defaultValue={defaults.npcFraming}
+        isCustomized={customized.npcFraming ?? false}
+        onChange={handleFieldChange("npcFraming")}
+        onReset={handleFieldReset("npcFraming")}
+      />
+
+      <BlueprintField
+        label="Narration Guidelines"
+        description="Guidelines for pacing, narration style, and scene progression."
+        value={bp.narrationGuidelines}
+        defaultValue={defaults.narrationGuidelines}
+        isCustomized={customized.narrationGuidelines ?? false}
+        onChange={handleFieldChange("narrationGuidelines")}
+        onReset={handleFieldReset("narrationGuidelines")}
       />
 
       <BlueprintField
         label="Interaction Guidelines"
         description="How the character should interact with the player."
         value={bp.interactionGuidelines}
-        onChange={updateField("interactionGuidelines")}
+        defaultValue={defaults.interactionGuidelines}
+        isCustomized={customized.interactionGuidelines ?? false}
+        onChange={handleFieldChange("interactionGuidelines")}
+        onReset={handleFieldReset("interactionGuidelines")}
       />
 
       <div className="flex flex-col gap-3">

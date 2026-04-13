@@ -13,11 +13,9 @@ import {
   createEmptyBehavioralProfile,
   createEmptyCharacterIdentity,
 } from "@/lib/character-schema";
-import { parseCharacterMarkdown } from "@/lib/character-markdown-parser";
-import type { ParsedCharacterMarkdown } from "@/lib/character-markdown-parser";
+import { emptySensoryProfile, type SensoryProfile } from "@/lib/sensory-schema";
 import {
   loadStoryCharacter,
-  parseCharacterIntoStructured,
   updateStoryCharacter,
 } from "@/lib/story-project-client";
 import type {
@@ -33,21 +31,21 @@ export interface CharacterBuilderDraft {
   name: string;
   role: string;
   isPlayer: boolean;
-  importedMarkdown: string;
   identity: CharacterIdentity;
   background: string;
   appearance: CharacterAppearanceEntry[];
   behavioralProfile: CharacterBehavioralProfile;
   startingDemeanor: string;
   dialogueExamples: DialogueExample[];
+  sensoryProfile: SensoryProfile;
+  defaultLocationId: string | null;
 }
 
 function createDraft(record: StoryCharacterRecord): CharacterBuilderDraft {
   return {
     name: record.name,
-    role: record.role || "supporting",
+    role: record.isPlayer ? "player" : record.role || "supporting",
     isPlayer: record.isPlayer,
-    importedMarkdown: record.importedMarkdown ?? "",
     identity: record.identity ?? createEmptyCharacterIdentity(),
     background: record.background ?? "",
     appearance: record.appearance ?? createDefaultAppearanceEntries(),
@@ -55,6 +53,19 @@ function createDraft(record: StoryCharacterRecord): CharacterBuilderDraft {
       record.behavioralProfile ?? createEmptyBehavioralProfile(),
     startingDemeanor: record.startingDemeanor ?? "",
     dialogueExamples: record.dialogueExamples ?? [],
+    sensoryProfile: record.sensoryProfile ?? emptySensoryProfile(),
+    defaultLocationId: record.defaultLocationId ?? null,
+  };
+}
+
+function normalizeDraft(
+  draft: Partial<CharacterBuilderDraft>,
+  fallback: CharacterBuilderDraft,
+): CharacterBuilderDraft {
+  return {
+    ...fallback,
+    ...draft,
+    sensoryProfile: draft.sensoryProfile ?? fallback.sensoryProfile,
   };
 }
 
@@ -91,7 +102,10 @@ function useLoadedCharacter(storyId: string, characterId: string) {
         const savedRaw = localStorage.getItem(draftKey(characterId));
         if (savedRaw && savedRaw !== serverSnapshot) {
           try {
-            const restored = JSON.parse(savedRaw) as CharacterBuilderDraft;
+            const restored = normalizeDraft(
+              JSON.parse(savedRaw) as Partial<CharacterBuilderDraft>,
+              serverDraft,
+            );
             setCharacter(record);
             setDraft(restored);
             setInitialSnapshot(serverSnapshot);
@@ -172,16 +186,20 @@ function useDraftActions(
       updateDraft((current) => ({ ...current, name }));
     },
     setRole(role: string) {
-      updateDraft((current) => ({ ...current, role }));
-    },
-    setIsPlayer(isPlayer: boolean) {
-      updateDraft((current) => ({ ...current, isPlayer }));
+      updateDraft((current) => ({
+        ...current,
+        role,
+        isPlayer: role === "player",
+      }));
     },
     setBackground(background: string) {
       updateDraft((current) => ({ ...current, background }));
     },
     setStartingDemeanor(startingDemeanor: string) {
       updateDraft((current) => ({ ...current, startingDemeanor }));
+    },
+    setDefaultLocationId(defaultLocationId: string | null) {
+      updateDraft((current) => ({ ...current, defaultLocationId }));
     },
     updateIdentityField(key: keyof CharacterIdentity, value: string) {
       updateDraft((current) => ({
@@ -258,6 +276,88 @@ function useDraftActions(
         ),
       }));
     },
+    setSensoryProfile(profile: SensoryProfile) {
+      updateDraft((current) => ({ ...current, sensoryProfile: profile }));
+    },
+    updateSensoryOverall(field: string, value: string) {
+      updateDraft((current) => ({
+        ...current,
+        sensoryProfile: {
+          ...current.sensoryProfile,
+          overall: { ...current.sensoryProfile.overall, [field]: value },
+        },
+      }));
+    },
+    toggleSensoryOverallLock(field: string) {
+      updateDraft((current) => {
+        const locked = current.sensoryProfile.overall.lockedFields ?? [];
+        const nextLocked = locked.includes(field)
+          ? locked.filter((entry) => entry !== field)
+          : [...locked, field];
+        return {
+          ...current,
+          sensoryProfile: {
+            ...current.sensoryProfile,
+            overall: {
+              ...current.sensoryProfile.overall,
+              lockedFields: nextLocked,
+            },
+          },
+        };
+      });
+    },
+    updateSensoryAttribute(attribute: string, field: string, value: string) {
+      updateDraft((current) => ({
+        ...current,
+        sensoryProfile: {
+          ...current.sensoryProfile,
+          attributes: current.sensoryProfile.attributes.map((note) =>
+            note.attribute === attribute ? { ...note, [field]: value } : note,
+          ),
+        },
+      }));
+    },
+    toggleSensoryAttributeLock(attribute: string, field: string) {
+      updateDraft((current) => ({
+        ...current,
+        sensoryProfile: {
+          ...current.sensoryProfile,
+          attributes: current.sensoryProfile.attributes.map((note) => {
+            if (note.attribute !== attribute) return note;
+            const locked = note.lockedFields ?? [];
+            const nextLocked = locked.includes(field)
+              ? locked.filter((entry) => entry !== field)
+              : [...locked, field];
+            return { ...note, lockedFields: nextLocked };
+          }),
+        },
+      }));
+    },
+    syncSensoryAttributesWithAppearance(appearanceAttributes: string[]) {
+      updateDraft((current) => {
+        const excluded = new Set(["voice"]);
+        const relevant = appearanceAttributes.filter(
+          (attribute) =>
+            attribute.trim() && !excluded.has(attribute.toLowerCase()),
+        );
+        const existing = new Map(
+          current.sensoryProfile.attributes.map((note) => [
+            note.attribute,
+            note,
+          ]),
+        );
+        const nextAttributes = relevant.map(
+          (attribute) => existing.get(attribute) ?? { attribute },
+        );
+        return {
+          ...current,
+          sensoryProfile: {
+            ...current.sensoryProfile,
+            attributes: nextAttributes,
+          },
+        };
+      });
+    },
   };
 }
 
@@ -305,8 +405,7 @@ export function useCharacterBuilder({
       const saved = await updateStoryCharacter(storyId, characterId, {
         name: loaded.draft.name,
         role: loaded.draft.role,
-        isPlayer: loaded.draft.isPlayer,
-        importedMarkdown: loaded.draft.importedMarkdown || null,
+        isPlayer: loaded.draft.role === "player",
         identity: loaded.draft.identity,
         background: loaded.draft.background || null,
         appearance: loaded.draft.appearance,
@@ -315,6 +414,8 @@ export function useCharacterBuilder({
         dialogueExamples: loaded.draft.dialogueExamples.filter(
           (ex) => ex.text.trim().length > 0,
         ),
+        sensoryProfile: loaded.draft.sensoryProfile,
+        defaultLocationId: loaded.draft.defaultLocationId,
       });
       const nextDraft = createDraft(saved);
       loaded.setCharacter(saved);
@@ -331,72 +432,6 @@ export function useCharacterBuilder({
     }
   }
 
-  async function parseFromImport() {
-    if (loaded.saving) return;
-
-    loaded.setSaving(true);
-    loaded.setError(null);
-    loaded.setStatus(null);
-    try {
-      const parsed = await parseCharacterIntoStructured(storyId, characterId);
-      const nextDraft = createDraft(parsed);
-      loaded.setCharacter(parsed);
-      loaded.setDraft(nextDraft);
-      loaded.setInitialSnapshot(serializeDraft(nextDraft));
-      localStorage.removeItem(draftKey(characterId));
-      loaded.setStatus("Imported markdown parsed into structured fields.");
-    } catch (nextError) {
-      loaded.setError(
-        nextError instanceof Error ? nextError.message : "Parse failed",
-      );
-    } finally {
-      loaded.setSaving(false);
-    }
-  }
-
-  function previewParse(): ParsedCharacterMarkdown | null {
-    if (!loaded.draft?.importedMarkdown) return null;
-    return parseCharacterMarkdown(loaded.draft.importedMarkdown);
-  }
-
-  function applySelectiveParse(
-    parsed: ParsedCharacterMarkdown,
-    selectedSections: Set<string>,
-  ) {
-    loaded.setDraft((current) => {
-      if (!current) return current;
-      let next = { ...current };
-
-      if (selectedSections.has("identity") && parsed.identity) {
-        next = { ...next, identity: parsed.identity };
-      }
-      if (selectedSections.has("background") && parsed.background !== null) {
-        next = { ...next, background: parsed.background };
-      }
-      if (selectedSections.has("appearance") && parsed.appearance) {
-        next = { ...next, appearance: parsed.appearance };
-      }
-      if (
-        selectedSections.has("behavioralProfile") &&
-        parsed.behavioralProfile
-      ) {
-        next = { ...next, behavioralProfile: parsed.behavioralProfile };
-      }
-      if (
-        selectedSections.has("startingDemeanor") &&
-        parsed.startingDemeanor !== null
-      ) {
-        next = { ...next, startingDemeanor: parsed.startingDemeanor };
-      }
-      if (parsed.name && selectedSections.has("identity")) {
-        next = { ...next, name: parsed.name };
-      }
-
-      return next;
-    });
-    loaded.setStatus("Applied selected sections from import.");
-  }
-
   return {
     character: loaded.character,
     draft: loaded.draft,
@@ -407,8 +442,5 @@ export function useCharacterBuilder({
     isDirty,
     ...actions,
     save,
-    parseFromImport,
-    previewParse,
-    applySelectiveParse,
   };
 }

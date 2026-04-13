@@ -3,6 +3,7 @@ export interface Entity {
   name: string;
   description: string;
   isPlayerCharacter: boolean;
+  locationId?: string;
 }
 
 export type AttributeCategory =
@@ -56,10 +57,27 @@ export interface AppearanceEntry {
   category?: AttributeCategory;
 }
 
+export interface LocationConnectionInfo {
+  locationId: string;
+  locationName: string;
+  description?: string;
+  traversalHint?: string;
+}
+
+export interface LocationInfo {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  atmosphere: string;
+  connectedTo: LocationConnectionInfo[];
+}
+
 export interface SceneInfo {
   location: string;
   presentEntityIds: string[];
   atmosphere: string;
+  locationId?: string;
 }
 
 export interface DemeanorEntry {
@@ -112,7 +130,8 @@ export type SectionMetaKey =
   | "openThreads"
   | "hardFacts"
   | "style"
-  | "custom";
+  | "custom"
+  | "locations";
 
 const SECTION_META_KEYS: readonly SectionMetaKey[] = [
   "cast",
@@ -124,6 +143,7 @@ const SECTION_META_KEYS: readonly SectionMetaKey[] = [
   "hardFacts",
   "style",
   "custom",
+  "locations",
 ];
 
 export interface StructuredStoryState {
@@ -136,6 +156,7 @@ export interface StructuredStoryState {
   hardFacts: HardFact[];
   style: string[];
   custom: CustomSection[];
+  locations: LocationInfo[];
   sectionMeta: Record<string, SectionMeta>;
 }
 
@@ -186,6 +207,7 @@ function sectionSnapshots(state: StructuredStoryState): SectionSnapshot {
     hardFacts: JSON.stringify(state.hardFacts),
     style: JSON.stringify(state.style),
     custom: JSON.stringify(state.custom),
+    locations: JSON.stringify(state.locations),
   };
 }
 
@@ -241,6 +263,7 @@ export function emptyStructuredState(): StructuredStoryState {
     hardFacts: [],
     style: [],
     custom: [],
+    locations: [],
     sectionMeta: emptySectionMeta(),
   };
 }

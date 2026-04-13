@@ -12,9 +12,16 @@ node_modules/
 
 # testing
 coverage/
+reports/
+.stryker-tmp/
+/apps/web/e2e/.auth/
+/apps/web/test-results/
+/apps/web/playwright-report/
+/apps/web/blob-report/
 
 # next.js
 .next/
+.next-e2e/
 out/
 
 # production

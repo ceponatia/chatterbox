@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -9,14 +8,12 @@ import {
   Play,
   RefreshCw,
   Save,
-  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { StoryCharacterSummaryCard } from "@/components/story/story-character-card";
 import { StoryReadonlyBlock } from "@/components/story/story-readonly-block";
-import type { ImportReviewInput } from "@/components/story/import-review-modal";
 import type { StoryProjectDetail } from "@/lib/story-project-types";
 
 export function StoryLoadingState() {
@@ -78,8 +75,7 @@ export function StoryEditorHeader({
             {project.name}
           </h1>
           <p className="app-editor-summary">
-            Mode: {project.authoringMode} · {project.characters.length}{" "}
-            characters
+            {project.characters.length} characters
           </p>
         </div>
       </div>
@@ -272,81 +268,6 @@ export function ExportDownloadButton({
   );
 }
 
-export function StoryImportCard({
-  busy,
-  onImport,
-}: {
-  busy: boolean;
-  onImport: (input: ImportReviewInput) => void;
-}) {
-  const systemPromptRef = useRef<HTMLInputElement>(null);
-  const storyStateRef = useRef<HTMLInputElement>(null);
-
-  function handleFiles() {
-    const input: ImportReviewInput = {};
-    const systemFile = systemPromptRef.current?.files?.[0];
-    const stateFile = storyStateRef.current?.files?.[0];
-
-    const readers: Promise<void>[] = [];
-
-    if (systemFile) {
-      readers.push(
-        systemFile.text().then((text) => {
-          input.systemPromptMarkdown = text;
-        }),
-      );
-    }
-    if (stateFile) {
-      readers.push(
-        stateFile.text().then((text) => {
-          input.storyStateMarkdown = text;
-        }),
-      );
-    }
-
-    if (readers.length === 0) return;
-
-    void Promise.all(readers).then(() => {
-      onImport(input);
-      if (systemPromptRef.current) systemPromptRef.current.value = "";
-      if (storyStateRef.current) storyStateRef.current.value = "";
-    });
-  }
-
-  return (
-    <div className="app-story-card app-story-stack">
-      <div>
-        <h2 className="text-sm font-semibold">Import Markdown</h2>
-        <p className="app-editor-summary">
-          Upload system prompt and/or story state markdown files.
-        </p>
-      </div>
-      <label className="flex flex-col gap-1 text-xs">
-        System prompt (.md)
-        <input
-          ref={systemPromptRef}
-          type="file"
-          accept=".md,.txt"
-          className="text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:text-foreground"
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs">
-        Story state (.md)
-        <input
-          ref={storyStateRef}
-          type="file"
-          accept=".md,.txt"
-          className="text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:text-foreground"
-        />
-      </label>
-      <Button variant="outline" size="sm" disabled={busy} onClick={handleFiles}>
-        <Upload className="mr-1 h-4 w-4" />
-        Review Import
-      </Button>
-    </div>
-  );
-}
-
 export function MarkdownExportButtons({
   project,
   onDownload,
@@ -393,27 +314,6 @@ export function MarkdownExportButtons({
           <FileDown className="mr-1 h-4 w-4" />
           Story State
         </Button>
-        {project.characters.map((character) => {
-          const content = character.importedMarkdown ?? null;
-          const charSlug =
-            character.name.replace(/[^a-zA-Z0-9_-]/g, "_") || character.id;
-          return (
-            <Button
-              key={character.id}
-              variant="outline"
-              size="sm"
-              disabled={!content}
-              onClick={() => {
-                if (content) {
-                  onDownload(`${baseName}-${charSlug}.md`, content);
-                }
-              }}
-            >
-              <FileDown className="mr-1 h-4 w-4" />
-              {character.name}
-            </Button>
-          );
-        })}
       </div>
     </div>
   );

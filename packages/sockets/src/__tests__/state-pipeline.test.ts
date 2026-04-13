@@ -21,6 +21,24 @@ const BASE_REQUEST: StatePipelineRequest = {
 };
 
 describe("defaultStatePipeline", () => {
+  it("returns the exact default pass-through result shape", async () => {
+    await expect(defaultStatePipeline.run(BASE_REQUEST)).resolves.toEqual({
+      newState: BASE_REQUEST.currentStoryState,
+      changes: [],
+      validation: {
+        schemaValid: true,
+        allHardFactsPreserved: true,
+        noUnknownFacts: true,
+        outputComplete: true,
+        diffPercentage: 0,
+      },
+      disposition: "auto_accepted",
+      cascadeResets: [],
+      turnNumber: BASE_REQUEST.turnNumber,
+      candidateFacts: [],
+    });
+  });
+
   it("returns current state unchanged", async () => {
     const result = await defaultStatePipeline.run(BASE_REQUEST);
     expect(result.newState).toBe(BASE_REQUEST.currentStoryState);

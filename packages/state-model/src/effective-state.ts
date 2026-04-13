@@ -28,12 +28,14 @@ export function resolveEffectiveState({
         baseline.scene.presentEntityIds,
       ),
       atmosphere: runtime.scene.atmosphere || baseline.scene.atmosphere,
+      locationId: runtime.scene.locationId ?? baseline.scene.locationId,
     },
     demeanor: pickList(runtime.demeanor, baseline.demeanor),
     openThreads: pickList(runtime.openThreads, baseline.openThreads),
     hardFacts: pickList(runtime.hardFacts, baseline.hardFacts),
     style: pickList(runtime.style, baseline.style),
     custom: pickList(runtime.custom, baseline.custom),
+    locations: pickList(runtime.locations, baseline.locations),
     sectionMeta: runtime.sectionMeta,
   };
 }

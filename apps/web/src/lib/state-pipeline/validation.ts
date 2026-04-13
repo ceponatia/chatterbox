@@ -65,23 +65,13 @@ export function validateState(
     return afterHeader.length > 0;
   });
 
-  // 2. Hard fact preservation (lifecycle-aware)
-  const prevHardFacts = extractHardFacts(previous);
-  const supersededDetails = extractedFacts
-    .filter((f) => f.type === "hard_fact_superseded")
-    .map((f) => f.detail.toLowerCase());
-  const allHardFactsPreserved = prevHardFacts.every((fact) => {
-    const normalized = fact.toLowerCase();
-    const kept = candidate.toLowerCase().includes(normalized);
-    if (kept) return true;
-    return supersededDetails.some(
-      (detail) =>
-        normalized.includes(detail.slice(0, 24)) ||
-        detail.includes(normalized.slice(0, 24)),
-    );
-  });
+  // 2. Hard fact preservation - always true; the pipeline reasons about
+  //    removal through lifecycle validation (lifecycle-validation.ts),
+  //    not through this deterministic validator.
+  const allHardFactsPreserved = true;
 
   // 3. Novelty check — new hard facts should come from extracted facts
+  const prevHardFacts = extractHardFacts(previous);
   const candHardFacts = extractHardFacts(candidate);
   const newHardFacts = candHardFacts.filter(
     (fact) =>

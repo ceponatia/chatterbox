@@ -6,17 +6,16 @@ import type {
   CharacterAppearanceEntry,
   CharacterBehavioralProfile,
   CharacterIdentity,
-  CharacterProvenance,
   DialogueExample,
   PromptBlueprint,
   RuntimeSeed,
-  SegmentOverrides,
-  StoryAuthoringMode,
   StoryCharacterRecord,
+  StoryLocationRecord,
   StoryProjectDetail,
   StoryProjectSummary,
   StoryRelationshipRecord,
 } from "@/lib/story-project-types";
+import type { SensoryProfile } from "@/lib/sensory-schema";
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -26,6 +25,14 @@ const storyProjectInclude = {
   },
   relationships: {
     orderBy: [{ createdAt: "asc" as const }],
+  },
+  locations: {
+    include: {
+      connectionsFrom: {
+        include: { toLocation: { select: { name: true } } },
+      },
+    },
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
   },
 } satisfies Prisma.StoryProjectInclude;
 
@@ -57,13 +64,13 @@ function asBehavioralProfile(
   return value as unknown as CharacterBehavioralProfile;
 }
 
-function asProvenance(
+function asSensoryProfile(
   value: Prisma.JsonValue | null,
-): CharacterProvenance | null {
+): SensoryProfile | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
-  return value as unknown as CharacterProvenance;
+  return value as unknown as SensoryProfile;
 }
 
 function asDialogueExamples(
@@ -88,12 +95,39 @@ export function toStoryCharacterRecord(
     behavioralProfile: asBehavioralProfile(
       row.behavioralProfile as Prisma.JsonValue | null,
     ),
+    sensoryProfile: asSensoryProfile(
+      row.sensoryProfile as Prisma.JsonValue | null,
+    ),
+    defaultLocationId: row.defaultLocationId ?? null,
     dialogueExamples: asDialogueExamples(
       row.dialogueExamples as Prisma.JsonValue | null,
     ),
     startingDemeanor: row.startingDemeanor ?? null,
-    importedMarkdown: row.importedMarkdown ?? null,
-    provenance: asProvenance(row.provenance as Prisma.JsonValue | null),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function toStoryLocationRecord(
+  row: StoryProjectRow["locations"][number],
+): StoryLocationRecord {
+  return {
+    id: row.id,
+    storyProjectId: row.storyProjectId,
+    name: row.name,
+    description: row.description,
+    tags: row.tags,
+    atmosphere: row.atmosphere,
+    sortOrder: row.sortOrder,
+    connections: row.connectionsFrom.map((conn) => ({
+      id: conn.id,
+      fromLocationId: conn.fromLocationId,
+      toLocationId: conn.toLocationId,
+      toLocationName: conn.toLocation.name,
+      description: conn.description,
+      bidirectional: conn.bidirectional,
+      traversalHint: conn.traversalHint,
+    })),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -122,31 +156,29 @@ export function toStoryProjectSummary(
     id: row.id,
     name: row.name,
     description: row.description,
-    authoringMode: row.authoringMode as StoryAuthoringMode,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     characterCount: row.characters.length,
     relationshipCount: row.relationships.length,
+    locationCount: row.locations.length,
   };
 }
 
 export function toStoryProjectDetail(row: StoryProjectRow): StoryProjectDetail {
   return {
     ...toStoryProjectSummary(row),
-    importedSystemPrompt: row.importedSystemPrompt ?? null,
-    importedStoryState: row.importedStoryState ?? null,
     generatedSystemPrompt: row.generatedSystemPrompt,
     generatedStoryState: row.generatedStoryState,
     generatedSegments:
       (row.generatedSegments as SerializedSegment[] | null) ?? null,
     generatedStructuredState:
       (row.generatedStructuredState as StructuredStoryState | null) ?? null,
-    segmentOverrides: (row.segmentOverrides as SegmentOverrides | null) ?? null,
     mainEntityId: row.mainEntityId ?? null,
     promptBlueprint: (row.promptBlueprint as PromptBlueprint | null) ?? null,
     runtimeSeed: (row.runtimeSeed as RuntimeSeed | null) ?? null,
     characters: row.characters.map(toStoryCharacterRecord),
     relationships: row.relationships.map(toStoryRelationshipRecord),
+    locations: row.locations.map(toStoryLocationRecord),
   };
 }
 
@@ -186,17 +218,15 @@ export async function regenerateStoryProject(
   db: DatabaseClient,
   userId: string,
   id: string,
-  authoringMode?: StoryAuthoringMode,
 ): Promise<StoryProjectDetail | null> {
   const row = await getStoryProjectRow(db, userId, id);
   if (!row) return null;
 
   const artifacts = generateStoryProjectArtifacts({
-    importedSystemPrompt: row.importedSystemPrompt,
     importedStoryState: row.importedStoryState,
     characters: row.characters.map(toStoryCharacterRecord),
     relationships: row.relationships.map(toStoryRelationshipRecord),
-    segmentOverrides: (row.segmentOverrides as SegmentOverrides | null) ?? null,
+    locations: row.locations.map(toStoryLocationRecord),
     promptBlueprint: (row.promptBlueprint as PromptBlueprint | null) ?? null,
     runtimeSeed: (row.runtimeSeed as RuntimeSeed | null) ?? null,
   });
@@ -204,7 +234,6 @@ export async function regenerateStoryProject(
   const updated = await db.storyProject.update({
     where: { id: row.id },
     data: {
-      authoringMode,
       generatedSystemPrompt: artifacts.generatedSystemPrompt,
       generatedStoryState: artifacts.generatedStoryState,
       generatedSegments:

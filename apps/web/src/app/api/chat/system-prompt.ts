@@ -8,10 +8,15 @@ export type SystemPromptMessage = {
 
 const TOOLS_INSTRUCTION = [
   "## Tool Usage",
-  "- Use tools only when specific missing detail is needed for this turn.",
-  "- If the user asks about relationships, hard facts, or unresolved threads, call get_story_context before answering.",
-  "- Prefer at most 1 tool call per turn; use a 2nd call only if strictly necessary.",
-  "- Prefer compact retrieval first; request broader detail only when needed.",
+  "- Use tools to retrieve specific missing detail needed for the current turn.",
+  "- Use get_facts, get_relationships, or get_threads for targeted retrieval of story context.",
+  "- Use get_story_context when you need facts, relationships, and threads together.",
+  "- Use get_scene_context to check current scene, location, and who is present.",
+  "- Use lookup_entity when you need details about a specific character.",
+  "- Use search_history to recall specific past events or earlier conversation details.",
+  "- Use check_relationship for a quick bidirectional relationship lookup between two characters.",
+  "- You may call multiple tools per turn when the scene demands it.",
+  "- Prefer compact retrieval first; request fullDetail only when compact results show [truncated].",
   "- If details are not needed for the current turn, respond without calling tools.",
 ].join("\n");
 

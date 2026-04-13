@@ -3,10 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
 import { logError, logRequest } from "@/lib/api-logger";
-import {
-  buildConversationSnapshot,
-  resolveProjectAuthoringModeFromSource,
-} from "@/lib/story-project-core";
+import { buildConversationSnapshot } from "@/lib/story-project-core";
+import type { Settings } from "@/lib/defaults";
 import {
   getStoryProjectDetail,
   getStoryProjectRow,
@@ -34,16 +32,19 @@ export async function POST(
         !project.generatedStructuredState;
 
       if (!project || needsGeneration) {
-        const authoringMode = resolveProjectAuthoringModeFromSource({
-          importedSystemPrompt: projectRow.importedSystemPrompt,
-          importedStoryState: projectRow.importedStoryState,
-          characters: projectRow.characters,
-        });
-        project = await regenerateStoryProject(tx, userId, id, authoringMode);
+        project = await regenerateStoryProject(tx, userId, id);
       }
       if (!project) return null;
 
-      const snapshot = buildConversationSnapshot(project);
+      const defaultPreset = await tx.settingsPreset.findFirst({
+        where: { userId, isDefault: true },
+        select: { settings: true },
+      });
+
+      const snapshot = buildConversationSnapshot(
+        project,
+        defaultPreset?.settings as Settings | undefined,
+      );
       const conversation = await tx.conversation.create({
         data: {
           userId,

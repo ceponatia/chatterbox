@@ -127,6 +127,34 @@ export function createConversationDraft(title = "New Chat"): Conversation {
   return createConversationSnapshot(title);
 }
 
+async function getDefaultPresetSettings(): Promise<Settings | null> {
+  try {
+    const res = await fetch("/api/presets", {
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) return null;
+    const presets = (await res.json()) as {
+      settings: Settings;
+      isDefault: boolean;
+    }[];
+    const defaultPreset = presets.find((p) => p.isDefault);
+    return defaultPreset?.settings ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createConversationDraftAsync(
+  title = "New Chat",
+): Promise<Conversation> {
+  const defaultSettings = await getDefaultPresetSettings();
+  const conv = createConversationSnapshot(title);
+  if (defaultSettings) {
+    conv.settings = { ...DEFAULT_SETTINGS, ...defaultSettings };
+  }
+  return conv;
+}
+
 /** Fill in turn-tracking fields that may be absent on older conversations. */
 function applyTurnDefaults(conv: Conversation): void {
   const raw = conv as Partial<Pick<Conversation, "lastPipelineTurn">>;

@@ -5,16 +5,16 @@ import {
   type SerializedSegment,
 } from "@chatterbox/prompt-assembly";
 import {
-  buildCharacterBehaviorSegment,
-  inferCharacterNameFromMarkdown,
-} from "@/lib/character-markdown";
-import {
-  deriveAppearanceEntries,
   deriveBehaviorSegment,
+  deriveAppearanceEntries,
   deriveDemeanorEntry,
   deriveEntity,
 } from "@/lib/character-derivation";
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT } from "@/lib/defaults";
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_SYSTEM_PROMPT,
+  type Settings,
+} from "@/lib/defaults";
 import {
   emptyStructuredState,
   parseMarkdownToStructured,
@@ -22,34 +22,34 @@ import {
   structuredToMarkdown,
   type CustomSection,
   type HardFact,
+  type LocationConnectionInfo,
+  type LocationInfo,
   type StoryThread,
   type StructuredStoryState,
 } from "@chatterbox/state-model";
 import type {
   PromptBlueprint,
   RuntimeSeed,
-  SegmentOverrides,
-  StoryAuthoringMode,
   StoryCharacterRecord,
+  StoryLocationRecord,
   StoryProjectArtifacts,
   StoryProjectDetail,
   StoryProjectExportPayload,
-  StoryProjectImportCharacterInput,
   StoryRelationshipRecord,
 } from "@/lib/story-project-types";
+import { generateId } from "@/lib/storage";
 
 interface StoryProjectGenerationSource {
-  importedSystemPrompt: string | null;
   importedStoryState: string | null;
   characters: StoryCharacterRecord[];
   relationships: StoryRelationshipRecord[];
-  segmentOverrides: SegmentOverrides | null;
+  locations: StoryLocationRecord[];
   promptBlueprint: PromptBlueprint | null;
   runtimeSeed: RuntimeSeed | null;
 }
 
 export function createStoryCharacterEntityId(): string {
-  return crypto.randomUUID();
+  return generateId();
 }
 
 function normalizeRole(role: string): string {
@@ -202,6 +202,64 @@ function applyRelationshipsToState(
   };
 }
 
+/** Deterministic ID matching the state-model parser's internal scheme. */
+function generateLocationId(name: string): string {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return `loc-${normalized || Date.now().toString()}`;
+}
+
+function applyLocationsToState(
+  state: StructuredStoryState,
+  locations: StoryLocationRecord[],
+  characters: StoryCharacterRecord[],
+): StructuredStoryState {
+  if (locations.length === 0) return state;
+
+  const locationInfos: LocationInfo[] = locations.map((loc) => ({
+    id: generateLocationId(loc.name),
+    name: loc.name,
+    description: loc.description || "",
+    tags: loc.tags ?? [],
+    atmosphere: loc.atmosphere || "",
+    connectedTo: (loc.connections ?? []).map(
+      (conn): LocationConnectionInfo => ({
+        locationId: generateLocationId(conn.toLocationName),
+        locationName: conn.toLocationName,
+        description: conn.description || "",
+        traversalHint: conn.traversalHint || "",
+      }),
+    ),
+  }));
+
+  const scene = { ...state.scene };
+  if (!scene.locationId && locationInfos.length > 0) {
+    const first = locationInfos[0];
+    if (first) {
+      scene.locationId = first.id;
+      scene.location = first.name;
+    }
+  }
+
+  const charByEntityId = new Map(
+    characters.map((c) => [c.entityId, c]),
+  );
+  const locationById = new Map(locations.map((l) => [l.id, l]));
+
+  const entities = state.entities.map((entity) => {
+    const char = charByEntityId.get(entity.id);
+    if (!char?.defaultLocationId) return entity;
+    const locRecord = locationById.get(char.defaultLocationId);
+    if (!locRecord) return entity;
+    return { ...entity, locationId: generateLocationId(locRecord.name) };
+  });
+
+  return { ...state, locations: locationInfos, scene, entities };
+}
+
 function applyRuntimeSeedToState(
   state: StructuredStoryState,
   seed: RuntimeSeed | null,
@@ -221,7 +279,7 @@ function applyRuntimeSeedToState(
     const threads: StoryThread[] = seed.openThreads
       .filter((t) => t.trim())
       .map((description) => ({
-        id: crypto.randomUUID(),
+        id: generateId(),
         description,
         resolutionHint: "",
         status: "active" as const,
@@ -273,7 +331,12 @@ function buildGeneratedStructuredState(
     withCharacters,
     source.relationships,
   );
-  return applyRuntimeSeedToState(withRelationships, source.runtimeSeed);
+  const withLocations = applyLocationsToState(
+    withRelationships,
+    source.locations,
+    source.characters,
+  );
+  return applyRuntimeSeedToState(withLocations, source.runtimeSeed);
 }
 
 function upsertCharacterSegments(
@@ -282,45 +345,11 @@ function upsertCharacterSegments(
 ): SerializedSegment[] {
   let next = [...segments];
   for (const character of characters) {
-    let segment = deriveBehaviorSegment(character);
-    if (!segment && character.importedMarkdown) {
-      segment = buildCharacterBehaviorSegment(
-        character.importedMarkdown,
-        character.entityId,
-        character.name,
-      );
-    }
+    const segment = deriveBehaviorSegment(character);
     if (!segment) continue;
     next = upsertSegment(next, segment);
   }
   return next;
-}
-
-function applySegmentOverrides(
-  segments: SerializedSegment[],
-  overrides: SegmentOverrides | null,
-): SerializedSegment[] {
-  if (!overrides) return segments;
-  return segments.map((segment) => {
-    const override = overrides[segment.id];
-    if (override === undefined) return segment;
-    return {
-      ...segment,
-      content: override,
-      tokenEstimate: estimateTokens(override),
-    };
-  });
-}
-
-function hasBlueprintContent(blueprint: PromptBlueprint): boolean {
-  return (
-    Boolean(blueprint.coreRulesAdditions.trim()) ||
-    Boolean(blueprint.outputFormat.trim()) ||
-    Boolean(blueprint.settingScenario.trim()) ||
-    Boolean(blueprint.npcFraming.trim()) ||
-    Boolean(blueprint.interactionGuidelines.trim()) ||
-    blueprint.customSections.some((s) => Boolean(s.content.trim()))
-  );
 }
 
 function buildBlueprintSegments(
@@ -329,22 +358,48 @@ function buildBlueprintSegments(
   const segments: SerializedSegment[] = [];
   let order = 10;
 
-  if (blueprint.coreRulesAdditions.trim()) {
+  if (blueprint.setting.trim()) {
     segments.push({
-      id: "core_rules_additions",
-      label: "Core Rules Additions",
-      content: blueprint.coreRulesAdditions,
+      id: "setting_premise",
+      label: "Setting",
+      content: blueprint.setting,
+      policy: { type: "always" },
+      priority: "high",
+      order: order++,
+      category: "world",
+      tokenEstimate: Math.ceil(blueprint.setting.length / 4),
+    });
+  }
+
+  if (blueprint.themes.trim()) {
+    segments.push({
+      id: "story_themes",
+      label: "Themes",
+      content: blueprint.themes,
+      policy: { type: "always" },
+      priority: "high",
+      order: order++,
+      category: "world",
+      tokenEstimate: Math.ceil(blueprint.themes.length / 4),
+    });
+  }
+
+  if (blueprint.coreRules.trim()) {
+    segments.push({
+      id: "core_rules",
+      label: "Core Rules",
+      content: blueprint.coreRules,
       policy: { type: "always" },
       priority: "critical",
       order: order++,
       category: "rules",
-      tokenEstimate: Math.ceil(blueprint.coreRulesAdditions.length / 4),
+      tokenEstimate: Math.ceil(blueprint.coreRules.length / 4),
     });
   }
 
   if (blueprint.outputFormat.trim()) {
     segments.push({
-      id: "output_format_custom",
+      id: "output_format",
       label: "Output Format",
       content: blueprint.outputFormat,
       policy: { type: "always" },
@@ -355,22 +410,9 @@ function buildBlueprintSegments(
     });
   }
 
-  if (blueprint.settingScenario.trim()) {
-    segments.push({
-      id: "setting_scenario",
-      label: "Setting / Scenario",
-      content: blueprint.settingScenario,
-      policy: { type: "always" },
-      priority: "high",
-      order: order++,
-      category: "world",
-      tokenEstimate: Math.ceil(blueprint.settingScenario.length / 4),
-    });
-  }
-
   if (blueprint.npcFraming.trim()) {
     segments.push({
-      id: "npc_framing_custom",
+      id: "npc_framing",
       label: "NPC Framing",
       content: blueprint.npcFraming,
       policy: { type: "always" },
@@ -381,9 +423,22 @@ function buildBlueprintSegments(
     });
   }
 
+  if (blueprint.narrationGuidelines.trim()) {
+    segments.push({
+      id: "narration_guidelines",
+      label: "Narration Guidelines",
+      content: blueprint.narrationGuidelines,
+      policy: { type: "every_n", n: 3 },
+      priority: "normal",
+      order: order++,
+      category: "rules",
+      tokenEstimate: Math.ceil(blueprint.narrationGuidelines.length / 4),
+    });
+  }
+
   if (blueprint.interactionGuidelines.trim()) {
     segments.push({
-      id: "interaction_guidelines",
+      id: "interaction_guide",
       label: "Interaction Guidelines",
       content: blueprint.interactionGuidelines,
       policy: { type: "every_n", n: 3 },
@@ -411,26 +466,59 @@ function buildBlueprintSegments(
   return segments;
 }
 
+function deriveLocationContextSegment(
+  locations: readonly LocationInfo[],
+): SerializedSegment | null {
+  if (locations.length === 0) return null;
+
+  const totalConnections = locations.reduce(
+    (sum, loc) => sum + loc.connectedTo.length,
+    0,
+  );
+
+  let content =
+    `## Location System\n\n` +
+    `This story has ${locations.length} authored locations connected by ${totalConnections} traversable paths.\n\n` +
+    `### Rules\n` +
+    `- Location descriptions are canonical. Do not contradict or embellish the stored description of a location.\n` +
+    `- Characters move through connected paths. Do not teleport characters between unconnected locations.\n` +
+    `- When {{ user }} indicates movement to a location, call move_to_location to execute the transition before narrating the arrival.\n` +
+    `- After moving, use the returned description and atmosphere to set the scene. Do not re-describe on subsequent turns at the same location unless narratively warranted.\n` +
+    `- Presence is derived from location. Only narrate characters as present if they are at the current location. Use get_location_details to verify.\n` +
+    `- When uncertain about surroundings or what is nearby, use get_location_details or get_nearby_locations before narrating spatial details.\n\n` +
+    `### Available Locations\n`;
+
+  for (const loc of locations) {
+    const tagSuffix = loc.tags.length > 0 ? ` (${loc.tags.join(", ")})` : "";
+    content += `- ${loc.name}${tagSuffix}\n`;
+  }
+
+  return {
+    id: "location_context",
+    label: "Location System Context",
+    content: content.trim(),
+    policy: { type: "always" },
+    priority: "high",
+    order: 20,
+    category: "world",
+    omittedSummary: "Location system rules and spatial awareness guide",
+    tokenEstimate: Math.ceil(content.length / 4),
+  };
+}
+
 export function generateStoryProjectArtifacts(
   source: StoryProjectGenerationSource,
 ): StoryProjectArtifacts {
   let baseSegments: SerializedSegment[];
 
-  if (source.promptBlueprint && hasBlueprintContent(source.promptBlueprint)) {
+  if (source.promptBlueprint) {
     baseSegments = buildBlueprintSegments(source.promptBlueprint);
   } else {
-    const basePrompt = source.importedSystemPrompt?.trim()
-      ? source.importedSystemPrompt
-      : DEFAULT_SYSTEM_PROMPT;
-    baseSegments = parseSystemPromptToSegments(basePrompt);
+    baseSegments = parseSystemPromptToSegments(DEFAULT_SYSTEM_PROMPT);
   }
 
-  const withOverrides = applySegmentOverrides(
-    baseSegments,
-    source.segmentOverrides,
-  );
   const characterSegments = upsertCharacterSegments(
-    withOverrides,
+    baseSegments,
     source.characters,
   );
   const generatedSegments = upsertPlayerIdentitySegment(
@@ -439,101 +527,19 @@ export function generateStoryProjectArtifacts(
   );
   const generatedStructuredState = buildGeneratedStructuredState(source);
 
+  const locationSegment = deriveLocationContextSegment(
+    generatedStructuredState.locations,
+  );
+  const finalSegments = locationSegment
+    ? upsertSegment(generatedSegments, locationSegment)
+    : generatedSegments;
+
   return {
-    generatedSegments,
-    generatedSystemPrompt: segmentsToMarkdown(generatedSegments),
+    generatedSegments: finalSegments,
+    generatedSystemPrompt: segmentsToMarkdown(finalSegments),
     generatedStructuredState,
     generatedStoryState: structuredToMarkdown(generatedStructuredState),
   };
-}
-
-export function inferImportedCharacter(
-  input: StoryProjectImportCharacterInput,
-): { name: string; role: string; markdown: string } | null {
-  const markdown = input.markdown.trim();
-  if (!markdown) return null;
-
-  const name = input.name?.trim() || inferCharacterNameFromMarkdown(markdown);
-  if (!name) return null;
-
-  return {
-    name,
-    role: normalizeRole(input.role ?? "supporting"),
-    markdown,
-  };
-}
-
-export function deriveAuthoringMode(options: {
-  currentMode: StoryAuthoringMode;
-  imported: boolean;
-  hasStructuredEdits: boolean;
-}): StoryAuthoringMode {
-  if (options.imported && options.hasStructuredEdits) return "hybrid";
-  if (options.imported) return "imported";
-  return options.currentMode === "imported" ? "hybrid" : "form";
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasNonEmptyString(value: string | null | undefined): boolean {
-  return Boolean(value?.trim());
-}
-
-function getProvenanceValues(value: unknown): unknown[] {
-  return isPlainObject(value) ? Object.values(value) : [];
-}
-
-function characterHasStructuredEdits(character: {
-  importedMarkdown: string | null;
-  isPlayer?: boolean;
-  identity?: unknown;
-  background?: string | null;
-  appearance?: unknown;
-  behavioralProfile?: unknown;
-  startingDemeanor?: string | null;
-  provenance?: unknown;
-}): boolean {
-  if (getProvenanceValues(character.provenance).includes("form")) return true;
-  if (!hasNonEmptyString(character.importedMarkdown)) return true;
-  if (character.isPlayer) return true;
-  if (hasNonEmptyString(character.background)) return true;
-  if (hasNonEmptyString(character.startingDemeanor)) return true;
-  if (isPlainObject(character.identity)) return true;
-  if (Array.isArray(character.appearance) && character.appearance.length > 0)
-    return true;
-  return isPlainObject(character.behavioralProfile);
-}
-
-export function resolveProjectAuthoringModeFromSource(options: {
-  importedSystemPrompt: string | null;
-  importedStoryState: string | null;
-  characters: Array<{
-    importedMarkdown: string | null;
-    isPlayer?: boolean;
-    identity?: unknown;
-    background?: string | null;
-    appearance?: unknown;
-    behavioralProfile?: unknown;
-    startingDemeanor?: string | null;
-    provenance?: unknown;
-  }>;
-  hasStructuredEdits?: boolean;
-}): StoryAuthoringMode {
-  const hasImportedSource =
-    Boolean(options.importedSystemPrompt?.trim()) ||
-    Boolean(options.importedStoryState?.trim()) ||
-    options.characters.some((character) =>
-      Boolean(character.importedMarkdown?.trim()),
-    );
-  const structuredEdits =
-    Boolean(options.hasStructuredEdits) ||
-    options.characters.some(characterHasStructuredEdits);
-
-  if (hasImportedSource && structuredEdits) return "hybrid";
-  if (hasImportedSource) return "imported";
-  return "form";
 }
 
 export function buildStoryProjectExport(
@@ -543,9 +549,6 @@ export function buildStoryProjectExport(
     storyProjectId: project.id,
     name: project.name,
     description: project.description,
-    authoringMode: project.authoringMode,
-    importedSystemPrompt: project.importedSystemPrompt,
-    importedStoryState: project.importedStoryState,
     generatedSystemPrompt: project.generatedSystemPrompt,
     generatedStoryState: project.generatedStoryState,
     mainEntityId: project.mainEntityId,
@@ -561,16 +564,18 @@ export function buildStoryProjectExport(
       background: character.background,
       appearance: character.appearance,
       behavioralProfile: character.behavioralProfile,
+      sensoryProfile: character.sensoryProfile,
       dialogueExamples: character.dialogueExamples,
       startingDemeanor: character.startingDemeanor,
-      importedMarkdown: character.importedMarkdown,
-      provenance: character.provenance,
     })),
     relationships: project.relationships,
   };
 }
 
-export function buildConversationSnapshot(project: StoryProjectDetail) {
+export function buildConversationSnapshot(
+  project: StoryProjectDetail,
+  defaultSettings?: Settings,
+) {
   return {
     title: project.name.trim() || "Story Chat",
     storyProjectId: project.id,
@@ -579,7 +584,7 @@ export function buildConversationSnapshot(project: StoryProjectDetail) {
     storyState: project.generatedStoryState,
     previousStoryState: null,
     storyStateLastUpdated: null,
-    settings: { ...DEFAULT_SETTINGS },
+    settings: { ...(defaultSettings ?? DEFAULT_SETTINGS) },
     systemPromptBaseline: project.generatedSystemPrompt,
     storyStateBaseline: project.generatedStoryState,
     lastIncludedAt: {},

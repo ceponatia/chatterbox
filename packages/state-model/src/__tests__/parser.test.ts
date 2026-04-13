@@ -349,4 +349,563 @@ describe("parseMarkdownToStructured", () => {
       expect(result.custom[0]!.heading).toBe("Special Rules");
     });
   });
+
+  describe("template placeholders", () => {
+    it("skips {{ user }} and {{ char }} as entity names in cast", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **{{ user }}** -- The player",
+        "- **{{ char }}** -- The main NPC",
+        "- **Amanda** -- Barista",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      // Template placeholders should be filtered out
+      expect(
+        result.entities.find((e) => e.name.includes("{{")),
+      ).toBeUndefined();
+      expect(result.entities.find((e) => e.name === "Amanda")).toBeDefined();
+    });
+
+    it("skips {{ USER }} case-insensitively", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **{{  USER  }}** -- The player",
+        "- **Amanda** -- Barista",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(
+        result.entities.find((e) => e.name.includes("USER")),
+      ).toBeUndefined();
+      expect(result.entities).toHaveLength(1);
+      expect(result.entities[0]!.name).toBe("Amanda");
+    });
+  });
+
+  describe("sections in different orders", () => {
+    it("parses when scene comes before cast", () => {
+      const md = [
+        "## Scene",
+        "",
+        "- **Where/When**: The park, noon",
+        "- **Who is present**: Amanda",
+        "- **Atmosphere**: Sunny",
+        "",
+        "## Cast",
+        "",
+        "- **Amanda** -- Jogger",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(1);
+      expect(result.entities[0]!.name).toBe("Amanda");
+      expect(result.scene.location).toBe("The park, noon");
+      expect(result.scene.atmosphere).toBe("Sunny");
+      expect(result.scene.presentEntityIds).toHaveLength(1);
+    });
+
+    it("parses when facts come before threads", () => {
+      const md = [
+        "## Hard Facts",
+        "",
+        "- The house is old (added: 2026-02-01)",
+        "",
+        "## Open Threads",
+        "",
+        "- Find the key (added: 2026-02-02)",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.hardFacts).toHaveLength(1);
+      expect(result.hardFacts[0]!.fact).toBe("The house is old");
+      expect(result.openThreads).toHaveLength(1);
+      expect(result.openThreads[0]!.description).toBe("Find the key");
+    });
+  });
+
+  describe("partial markdown (missing sections)", () => {
+    it("handles markdown with only cast section", () => {
+      const md = ["## Cast", "", "- **Amanda** -- Barista"].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(1);
+      expect(result.relationships).toHaveLength(0);
+      expect(result.appearance).toHaveLength(0);
+      expect(result.openThreads).toHaveLength(0);
+      expect(result.hardFacts).toHaveLength(0);
+      expect(result.style).toHaveLength(0);
+      expect(result.scene.location).toBe("");
+    });
+
+    it("handles markdown with only scene section", () => {
+      const md = [
+        "## Scene",
+        "",
+        "- **Where/When**: A dark alley at midnight",
+        "- **Atmosphere**: Tense",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.scene.location).toBe("A dark alley at midnight");
+      expect(result.scene.atmosphere).toBe("Tense");
+      expect(result.entities).toHaveLength(0);
+    });
+
+    it("handles markdown with only style section", () => {
+      const md = ["## Style", "", "- Dark and moody", "- Terse dialogue"].join(
+        "\n",
+      );
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.style).toHaveLength(2);
+      expect(result.style).toContain("Dark and moody");
+    });
+  });
+
+  describe("empty cast section", () => {
+    it("parses empty cast section without error", () => {
+      const md = [
+        "## Cast",
+        "",
+        "",
+        "## Scene",
+        "",
+        "- **Where/When**: A room",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(0);
+      expect(result.scene.location).toBe("A room");
+    });
+  });
+
+  describe("multiple entities with relationships", () => {
+    it("parses three entities with cross-references", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **Amanda** -- Barista",
+        "- **Jake** -- Customer",
+        "- **Leo** -- Cook",
+        "",
+        "## Relationships",
+        "",
+        "- **Amanda > Jake**: Friendly regular",
+        "- **Amanda > Leo**: Coworkers",
+        "- **Jake > Leo**: Acquaintances",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(3);
+      expect(result.relationships).toHaveLength(3);
+
+      const amanda = result.entities.find((e) => e.name === "Amanda")!;
+      const jake = result.entities.find((e) => e.name === "Jake")!;
+      const leo = result.entities.find((e) => e.name === "Leo")!;
+
+      const amandaJake = result.relationships.find(
+        (r) => r.fromEntityId === amanda.id && r.toEntityId === jake.id,
+      );
+      expect(amandaJake).toBeDefined();
+      expect(amandaJake!.description).toBe("Friendly regular");
+
+      const jakeLeo = result.relationships.find(
+        (r) => r.fromEntityId === jake.id && r.toEntityId === leo.id,
+      );
+      expect(jakeLeo).toBeDefined();
+    });
+  });
+
+  describe("scene with location resolution", () => {
+    it("resolves scene locationId from matching locations section", () => {
+      const md = [
+        "## Locations",
+        "",
+        "### Coffee Shop",
+        "- **Description**: A cozy downtown cafe",
+        "- **Tags**: indoor, warm",
+        "",
+        "### City Park",
+        "- **Description**: A sprawling green space",
+        "",
+        "## Scene",
+        "",
+        "- **Where/When**: The coffee shop, morning",
+        "- **Current Location**: Coffee Shop",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.locations).toHaveLength(2);
+      expect(result.scene.locationId).toBeDefined();
+      const coffeeShop = result.locations.find((l) => l.name === "Coffee Shop");
+      expect(result.scene.locationId).toBe(coffeeShop!.id);
+    });
+
+    it("does not set locationId when no locations match", () => {
+      const md = [
+        "## Locations",
+        "",
+        "### Coffee Shop",
+        "- **Description**: A cozy downtown cafe",
+        "",
+        "## Scene",
+        "",
+        "- **Where/When**: The park",
+        "- **Current Location**: Nonexistent Place",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.scene.locationId).toBeUndefined();
+    });
+
+    it("falls back to scene.location for locationId resolution", () => {
+      const md = [
+        "## Locations",
+        "",
+        "### City Park",
+        "- **Description**: Green space",
+        "",
+        "## Scene",
+        "",
+        "- **Where/When**: City Park",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      const park = result.locations.find((l) => l.name === "City Park");
+      expect(result.scene.locationId).toBe(park!.id);
+    });
+  });
+
+  describe("demeanor parsing", () => {
+    it("parses demeanor with energy values", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **Amanda** -- Barista",
+        "",
+        "## Current Demeanor",
+        "",
+        "- **Amanda's mood**: Cheerful but tired",
+        "- **Energy between them**: Warm and comfortable",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.demeanor).toHaveLength(1);
+      expect(result.demeanor[0]!.mood).toBe("Cheerful but tired");
+      expect(result.demeanor[0]!.energy).toBe("Warm and comfortable");
+    });
+
+    it("handles demeanor section with only energy", () => {
+      const md = [
+        "## Demeanor",
+        "",
+        "- **Energy between them**: Tense and awkward",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.demeanor).toHaveLength(1);
+      expect(result.demeanor[0]!.energy).toBe("Tense and awkward");
+      expect(result.demeanor[0]!.mood).toBe("");
+    });
+  });
+
+  describe("multiple custom sections", () => {
+    it("preserves multiple unrecognized sections", () => {
+      const md = [
+        "## Secret Lore",
+        "",
+        "The artifact is hidden in the mountain.",
+        "",
+        "## House Rules",
+        "",
+        "Never break the fourth wall.",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.custom).toHaveLength(2);
+      expect(result.custom[0]!.heading).toBe("Secret Lore");
+      expect(result.custom[0]!.content).toBe(
+        "The artifact is hidden in the mountain.",
+      );
+      expect(result.custom[1]!.heading).toBe("House Rules");
+      expect(result.custom[1]!.content).toBe("Never break the fourth wall.");
+    });
+  });
+
+  describe("hard facts with various timestamps", () => {
+    it("parses facts without timestamps", () => {
+      const md = [
+        "## Hard Facts",
+        "",
+        "- The house is blue",
+        "- The car is red",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.hardFacts).toHaveLength(2);
+      expect(result.hardFacts[0]!.fact).toBe("The house is blue");
+      expect(result.hardFacts[1]!.fact).toBe("The car is red");
+      // They should still have inferred fields
+      expect(result.hardFacts[0]!.tags).toBeDefined();
+      expect(result.hardFacts[0]!.summary).toBeDefined();
+    });
+
+    it("parses multiple facts with timestamps", () => {
+      const md = [
+        "## Hard Facts (do not contradict these)",
+        "",
+        "- Fact one (added: 2026-01-01)",
+        "- Fact two (added: 2026-03-15)",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.hardFacts).toHaveLength(2);
+      expect(result.hardFacts[0]!.establishedAt).toBe("2026-01-01");
+      expect(result.hardFacts[1]!.establishedAt).toBe("2026-03-15");
+    });
+  });
+
+  describe("open threads with status and hooks", () => {
+    it("parses threads with resolution hints", () => {
+      const md = [
+        "## Threads",
+        "",
+        "- Find the lost key (resolves when: key is found) (added: 2026-02-01)",
+        "- Talk to the mayor (added: 2026-02-05)",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.openThreads).toHaveLength(2);
+
+      const keyThread = result.openThreads.find((t) =>
+        t.description.includes("key"),
+      )!;
+      expect(keyThread.resolutionHint).toBe("key is found");
+      expect(keyThread.createdAt).toBe("2026-02-01");
+      expect(keyThread.status).toBe("active");
+      expect(keyThread.hook).toBeTruthy();
+
+      const mayorThread = result.openThreads.find((t) =>
+        t.description.includes("mayor"),
+      )!;
+      expect(mayorThread.resolutionHint).toBe("");
+      expect(mayorThread.createdAt).toBe("2026-02-05");
+    });
+  });
+
+  describe("relationship arrow variants", () => {
+    it("handles unicode arrow in relationships", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **Amanda** -- Barista",
+        "- **Jake** -- Customer",
+        "",
+        "## Relationships",
+        "",
+        "- **Amanda → Jake**: Good friends",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+      expect(result.relationships).toHaveLength(1);
+      expect(result.relationships[0]!.description).toBe("Good friends");
+    });
+  });
+
+  describe("locations parsing through parser", () => {
+    it("parses locations with connections", () => {
+      const md = [
+        "## Locations",
+        "",
+        "### Tavern",
+        "- **Description**: A rustic tavern",
+        "- **Tags**: indoor, social",
+        "- **Atmosphere**: Lively",
+        "- **Connected to**: Market Square (through the front door; 2 min walk)",
+        "",
+        "### Market Square",
+        "- **Description**: An open-air market",
+        "- **Tags**: outdoor, busy",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.locations).toHaveLength(2);
+
+      const tavern = result.locations.find((l) => l.name === "Tavern")!;
+      expect(tavern.description).toBe("A rustic tavern");
+      expect(tavern.tags).toEqual(["indoor", "social"]);
+      expect(tavern.atmosphere).toBe("Lively");
+      expect(tavern.connectedTo).toHaveLength(1);
+      expect(tavern.connectedTo[0]!.locationName).toBe("Market Square");
+      expect(tavern.connectedTo[0]!.description).toBe("through the front door");
+      expect(tavern.connectedTo[0]!.traversalHint).toBe("2 min walk");
+
+      const market = result.locations.find((l) => l.name === "Market Square")!;
+      expect(market.tags).toEqual(["outdoor", "busy"]);
+      expect(market.connectedTo).toHaveLength(0);
+    });
+  });
+
+  describe("section heading aliases", () => {
+    it("parses 'Facts' heading as hardFacts", () => {
+      const md = ["## Facts", "", "- Water is wet (added: 2026-01-01)"].join(
+        "\n",
+      );
+
+      const result = parseMarkdownToStructured(md);
+      expect(result.hardFacts).toHaveLength(1);
+    });
+
+    it("parses 'Threads' heading as openThreads", () => {
+      const md = ["## Threads", "", "- Do the thing (added: 2026-01-01)"].join(
+        "\n",
+      );
+
+      const result = parseMarkdownToStructured(md);
+      expect(result.openThreads).toHaveLength(1);
+    });
+
+    it("parses 'Characters' heading as appearance", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **Amanda** -- Barista",
+        "",
+        "## Characters",
+        "",
+        "### Amanda",
+        "",
+        "#### Appearance",
+        "",
+        "- **Eyes**: Blue",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+      expect(result.appearance).toHaveLength(1);
+      expect(result.appearance[0]!.attribute).toBe("Eyes");
+    });
+  });
+
+  describe("heading with parenthetical suffix", () => {
+    it("strips parenthetical from heading for section resolution", () => {
+      const md = [
+        "## Hard Facts (do not contradict these)",
+        "",
+        "- The world is round (added: 2026-03-01)",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+      expect(result.hardFacts).toHaveLength(1);
+      expect(result.hardFacts[0]!.fact).toBe("The world is round");
+    });
+  });
+
+  describe("entity registration from non-cast sections", () => {
+    it("creates entities mentioned only in relationships", () => {
+      const md = [
+        "## Relationships",
+        "",
+        "- **Alice > Bob**: Best friends",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(2);
+      expect(result.entities.find((e) => e.name === "Alice")).toBeDefined();
+      expect(result.entities.find((e) => e.name === "Bob")).toBeDefined();
+      expect(result.relationships).toHaveLength(1);
+    });
+
+    it("creates entities mentioned only in appearance", () => {
+      const md = [
+        "## Appearance",
+        "",
+        "- **Charlie - Eyes**: Green and bright",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(1);
+      expect(result.entities[0]!.name).toBe("Charlie");
+    });
+
+    it("creates entities mentioned only in scene presence", () => {
+      const md = ["## Scene", "", "- **Who is present**: Diana, Eve"].join(
+        "\n",
+      );
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(2);
+      expect(result.entities.find((e) => e.name === "Diana")).toBeDefined();
+      expect(result.entities.find((e) => e.name === "Eve")).toBeDefined();
+    });
+  });
+
+  describe("demeanor character extraction", () => {
+    it("extracts character name from possessive mood key", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **Amanda** -- Barista",
+        "- **Jake** -- Customer",
+        "",
+        "## Demeanor",
+        "",
+        "- **Amanda's mood**: Happy",
+        "- **Jake's mood**: Annoyed",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.demeanor).toHaveLength(2);
+      const amanda = result.entities.find((e) => e.name === "Amanda")!;
+      const jake = result.entities.find((e) => e.name === "Jake")!;
+
+      const amandaDem = result.demeanor.find((d) => d.entityId === amanda.id)!;
+      expect(amandaDem.mood).toBe("Happy");
+
+      const jakeDem = result.demeanor.find((d) => d.entityId === jake.id)!;
+      expect(jakeDem.mood).toBe("Annoyed");
+    });
+  });
+
+  describe("cast entry with multiline description", () => {
+    it("joins continuation lines into description", () => {
+      const md = [
+        "## Cast",
+        "",
+        "- **Amanda** -- A friendly barista who",
+        "  loves making lattes and chatting with regulars.",
+      ].join("\n");
+
+      const result = parseMarkdownToStructured(md);
+
+      expect(result.entities).toHaveLength(1);
+      expect(result.entities[0]!.description).toContain("friendly barista");
+      expect(result.entities[0]!.description).toContain("lattes");
+    });
+  });
 });

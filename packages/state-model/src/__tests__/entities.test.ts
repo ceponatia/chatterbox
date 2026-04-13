@@ -142,4 +142,119 @@ describe("remapEntityIds", () => {
     const result = remapEntityIds(state, {});
     expect(result).toBe(state); // same reference
   });
+
+  it("leaves IDs unchanged when not in remap", () => {
+    const state = {
+      ...emptyStructuredState(),
+      relationships: [
+        {
+          fromEntityId: "keep-1",
+          toEntityId: "keep-2",
+          description: "",
+          details: [],
+        },
+      ],
+      appearance: [
+        { entityId: "keep-1", attribute: "eyes", description: "blue" },
+      ],
+      scene: {
+        location: "park",
+        presentEntityIds: ["keep-1"],
+        atmosphere: "",
+      },
+      demeanor: [{ entityId: "keep-2", mood: "calm", energy: "low" }],
+    };
+
+    const remap = { "other-id": "new-id" };
+    const result = remapEntityIds(state, remap);
+
+    expect(result.relationships[0]!.fromEntityId).toBe("keep-1");
+    expect(result.relationships[0]!.toEntityId).toBe("keep-2");
+    expect(result.appearance[0]!.entityId).toBe("keep-1");
+    expect(result.scene.presentEntityIds).toEqual(["keep-1"]);
+    expect(result.demeanor[0]!.entityId).toBe("keep-2");
+  });
+});
+
+describe("reconcileEntities - additional edge cases", () => {
+  it("deduplicates by normalized name (case-insensitive)", () => {
+    const existing: Entity[] = [];
+    const incoming = [
+      makeEntity("x-1", "Amanda Campbell"),
+      makeEntity("x-2", "amanda campbell"),
+    ];
+    const { entities } = reconcileEntities(existing, incoming);
+    const amandas = entities.filter(
+      (e) => e.name.toLowerCase().trim() === "amanda campbell",
+    );
+    expect(amandas).toHaveLength(1);
+  });
+
+  it("updates description from incoming when matched", () => {
+    const existing = [makeEntity("e-1", "Amanda")];
+    existing[0]!.description = "Old description";
+    const incoming = [
+      { ...makeEntity("x-1", "Amanda"), description: "New description" },
+    ];
+    const { entities } = reconcileEntities(existing, incoming);
+    expect(entities.find((e) => e.name === "Amanda")?.description).toBe(
+      "New description",
+    );
+  });
+
+  it("does not create remap when IDs already match", () => {
+    const existing = [makeEntity("e-1", "Amanda")];
+    const incoming = [makeEntity("e-1", "Amanda")];
+    const { idRemap } = reconcileEntities(existing, incoming);
+    expect(Object.keys(idRemap)).toHaveLength(0);
+  });
+
+  it("handles empty existing and incoming arrays", () => {
+    const { entities, idRemap } = reconcileEntities([], []);
+    expect(entities).toHaveLength(0);
+    expect(Object.keys(idRemap)).toHaveLength(0);
+  });
+
+  it("preserves isPlayerCharacter from incoming", () => {
+    const existing = [makeEntity("e-1", "Amanda")];
+    const incoming = [
+      { ...makeEntity("x-1", "Amanda"), isPlayerCharacter: true },
+    ];
+    const { entities } = reconcileEntities(existing, incoming);
+    expect(entities.find((e) => e.name === "Amanda")?.isPlayerCharacter).toBe(
+      true,
+    );
+  });
+});
+
+describe("findEntityByName - additional edge cases", () => {
+  it("finds entity with leading/trailing whitespace in query", () => {
+    const entities = [makeEntity("e-1", "Amanda Campbell")];
+    expect(findEntityByName(entities, "  Amanda Campbell  ")?.id).toBe("e-1");
+  });
+
+  it("matches when entity name tokens are subset of query tokens", () => {
+    const entities = [makeEntity("e-1", "Amanda")];
+    // "Amanda" tokens are subset of "Amanda Campbell" tokens
+    expect(findEntityByName(entities, "Amanda Campbell")?.id).toBe("e-1");
+  });
+
+  it("returns undefined for empty entities array", () => {
+    expect(findEntityByName([], "Amanda")).toBeUndefined();
+  });
+});
+
+describe("findOrCreateEntity - additional edge cases", () => {
+  it("sets isPlayerCharacter flag on creation", () => {
+    const entities: Entity[] = [];
+    const result = findOrCreateEntity(entities, "Hero", true);
+    expect(result.isPlayerCharacter).toBe(true);
+    expect(entities).toHaveLength(1);
+  });
+
+  it("trims name on creation", () => {
+    const entities: Entity[] = [];
+    const result = findOrCreateEntity(entities, "  Amanda  ");
+    expect(result.name).toBe("Amanda");
+  });
 });

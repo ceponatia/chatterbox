@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ExportDownloadButton,
@@ -10,20 +9,15 @@ import {
   StoryEditorHeader,
   StoryCharactersCard,
   StoryGeneratedOutputCard,
-  StoryImportCard,
   StoryLoadingState,
   StoryMetadataCard,
   StoryMissingState,
 } from "@/components/story/story-editor-client-sections";
-import {
-  ImportReviewModal,
-  type ImportReviewInput,
-} from "@/components/story/import-review-modal";
 import { PromptBlueprintEditor } from "@/components/story/prompt-blueprint-editor";
 import { RelationshipEditor } from "@/components/story/relationship-editor";
+import { LocationEditor } from "@/components/story/location-editor";
 import { RuntimeSeedEditor } from "@/components/story/runtime-seed-editor";
 import { SegmentInspector } from "@/components/story/segment-inspector";
-import { SystemPromptEditor } from "@/components/story/system-prompt-editor";
 import {
   useStoryEditorActions,
   useStoryProjectData,
@@ -34,12 +28,14 @@ const STORY_TABS = [
   { id: "system-prompt", label: "System Prompt" },
   { id: "characters", label: "Characters" },
   { id: "relationships", label: "Relationships" },
+  { id: "locations", label: "Locations" },
   { id: "runtime-seed", label: "Runtime Seed" },
   { id: "preview-export", label: "Preview / Export" },
 ] as const;
 
 export function StoryEditorClient({ storyId }: { storyId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const story = useStoryProjectData(storyId);
   const actions = useStoryEditorActions({
     storyId,
@@ -48,7 +44,6 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
     setProject: story.setProject,
     draftName: story.draftName,
     draftDescription: story.draftDescription,
-    draftOverrides: story.draftOverrides,
     draftMainEntityId: story.draftMainEntityId,
     draftBlueprint: story.draftBlueprint,
     draftRuntimeSeed: story.draftRuntimeSeed,
@@ -56,13 +51,11 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
     setError: story.setError,
   });
 
-  const [importReviewOpen, setImportReviewOpen] = useState(false);
-  const [importInput, setImportInput] = useState<ImportReviewInput>({});
-
-  const openImportReview = useCallback((input: ImportReviewInput) => {
-    setImportInput(input);
-    setImportReviewOpen(true);
-  }, []);
+  const requestedTab = searchParams.get("tab");
+  const defaultTab =
+    requestedTab && STORY_TABS.some((tab) => tab.id === requestedTab)
+      ? requestedTab
+      : "overview";
 
   if (story.loading) return <StoryLoadingState />;
   if (!story.project) return <StoryMissingState />;
@@ -85,7 +78,7 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
             {actions.status && (
               <div className="app-editor-summary text-xs">{actions.status}</div>
             )}
-            <Tabs defaultValue="overview">
+            <Tabs defaultValue={defaultTab}>
               <TabsList className="app-tabs-list">
                 {STORY_TABS.map((tab) => (
                   <TabsTrigger
@@ -114,10 +107,6 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
                       onChange={story.setDraftMainEntityId}
                     />
                   </div>
-                  <StoryImportCard
-                    busy={actions.busyAction !== null}
-                    onImport={openImportReview}
-                  />
                 </section>
               </TabsContent>
 
@@ -127,17 +116,9 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
                     blueprint={story.draftBlueprint}
                     onChange={story.setDraftBlueprint}
                   />
-                  <SystemPromptEditor
-                    overrides={story.draftOverrides}
-                    onOverridesChange={story.setDraftOverrides}
-                  />
                   <SegmentInspector
                     segments={story.project.generatedSegments}
-                    overrides={story.draftOverrides}
-                    hasBlueprint={story.draftBlueprint !== null}
-                    hasImportedPrompt={Boolean(
-                      story.project.importedSystemPrompt?.trim(),
-                    )}
+                    customizedFields={story.draftBlueprint?.customizedFields}
                   />
                 </section>
               </TabsContent>
@@ -168,6 +149,16 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
                         relationships: next,
                       })
                     }
+                    refreshProject={story.refreshProject}
+                  />
+                </section>
+              </TabsContent>
+
+              <TabsContent value="locations" className="mt-4">
+                <section className="app-story-stack">
+                  <LocationEditor
+                    storyId={storyId}
+                    locations={story.project.locations}
                     refreshProject={story.refreshProject}
                   />
                 </section>
@@ -207,19 +198,6 @@ export function StoryEditorClient({ storyId }: { storyId: string }) {
           </div>
         </main>
       </div>
-      {story.project && (
-        <ImportReviewModal
-          open={importReviewOpen}
-          onOpenChange={setImportReviewOpen}
-          input={importInput}
-          project={story.project}
-          busy={actions.busyAction !== null}
-          onConfirm={(mode) => {
-            setImportReviewOpen(false);
-            void actions.handleImport(importInput, mode);
-          }}
-        />
-      )}
     </div>
   );
 }

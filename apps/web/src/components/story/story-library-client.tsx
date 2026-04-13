@@ -96,7 +96,6 @@ function StoryLibraryCard({
         <ConfirmDeleteButton onConfirm={onDelete} />
       </div>
       <div className="app-story-meta">
-        <span>Mode: {story.authoringMode}</span>
         <span>{story.characterCount} characters</span>
         <span>{story.relationshipCount} relationships</span>
       </div>

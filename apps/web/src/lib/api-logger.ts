@@ -29,6 +29,7 @@ function timestamp(): string {
 }
 
 function truncate(str: string, max = 300): string {
+  if (!str) return "";
   return str.length > max
     ? str.slice(0, max) + `… [+${str.length - max} chars]`
     : str;

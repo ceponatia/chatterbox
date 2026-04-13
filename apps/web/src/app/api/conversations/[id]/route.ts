@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { logError } from "@/lib/api-logger";
 import { getUserId } from "@/lib/get-user-id";
 import type { Conversation } from "@/lib/storage";
 
@@ -113,12 +114,17 @@ export async function PUT(
       (body.structuredState as unknown as Prisma.InputJsonValue) ?? undefined,
     lastPipelineTurn: body.lastPipelineTurn ?? 0,
   };
-  const row = await prisma.conversation.upsert({
-    where: { id: body.id },
-    update: { ...data, userId: undefined },
-    create: data,
-  });
-  return NextResponse.json(toConversation(row));
+  try {
+    const row = await prisma.conversation.upsert({
+      where: { id: body.id },
+      update: { ...data, userId: undefined },
+      create: data,
+    });
+    return NextResponse.json(toConversation(row));
+  } catch (err) {
+    logError("/api/conversations/[id] PUT", err);
+    throw err;
+  }
 }
 
 export async function DELETE(

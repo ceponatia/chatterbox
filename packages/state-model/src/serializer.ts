@@ -3,6 +3,8 @@ import type {
   AppearanceEntry,
   DemeanorEntry,
   Entity,
+  LocationConnectionInfo,
+  LocationInfo,
   Relationship,
   SceneInfo,
   StructuredStoryState,
@@ -96,6 +98,38 @@ function serializeBulletList(items: string[]): string {
   return items.map((item) => `- ${item}`).join("\n");
 }
 
+function serializeLocations(locations: LocationInfo[]): string {
+  return locations
+    .map((loc) => {
+      const lines: string[] = [`### ${loc.name}`];
+      if (loc.description) {
+        lines.push(`- **Description**: ${loc.description}`);
+      }
+      if (loc.tags.length > 0) {
+        lines.push(`- **Tags**: ${loc.tags.join(", ")}`);
+      }
+      if (loc.atmosphere) {
+        lines.push(`- **Atmosphere**: ${loc.atmosphere}`);
+      }
+      if (loc.connectedTo.length > 0) {
+        const connections = loc.connectedTo.map(
+          (conn: LocationConnectionInfo) => {
+            if (conn.description || conn.traversalHint) {
+              const inner = [conn.description, conn.traversalHint]
+                .filter(Boolean)
+                .join("; ");
+              return `${conn.locationName} (${inner})`;
+            }
+            return conn.locationName;
+          },
+        );
+        lines.push(`- **Connected to**: ${connections.join(", ")}`);
+      }
+      return lines.join("\n");
+    })
+    .join("\n\n");
+}
+
 function toDateStr(iso?: string): string {
   if (!iso) return new Date().toISOString().slice(0, 10);
   return iso.slice(0, 10);
@@ -131,6 +165,11 @@ export function structuredToMarkdown(state: StructuredStoryState): string {
   if (state.appearance.length > 0) {
     sections.push(
       `## Characters\n\n${serializeCharacters(state.appearance, entities)}`,
+    );
+  }
+  if (state.locations.length > 0) {
+    sections.push(
+      `## Locations\n\n${serializeLocations(state.locations)}`,
     );
   }
   sections.push(`## Scene\n\n${serializeScene(state.scene, entities)}`);

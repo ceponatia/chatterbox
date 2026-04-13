@@ -39,7 +39,7 @@ const ATTRIBUTE_KEYWORDS: Record<AttributeCategory, readonly string[]> = {
   voice: ["voice", "tone", "accent", "speech", "sound", "laugh"],
   scent: ["scent", "smell", "odor", "perfume", "hygiene"],
   movement: ["movement", "moves", "walk", "gait", "gesture", "stance"],
-  presence: ["presence", "aura", "vibe", "energy", "impression"],
+  presence: ["presence", "aura", "energy", "impression"],
 };
 
 const TONE_KEYWORDS: Record<RelationshipTone, readonly string[]> = {
@@ -68,7 +68,7 @@ const FACT_TAG_KEYWORDS: Record<FactTag, readonly string[]> = {
 };
 
 export function generateStoryItemId(
-  prefix: "thread" | "fact",
+  prefix: "thread" | "fact" | "loc",
   base: string,
 ): string {
   const normalized = base

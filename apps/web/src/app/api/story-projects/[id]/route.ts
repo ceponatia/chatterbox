@@ -44,10 +44,6 @@ export async function PUT(
       data: {
         name,
         description: body.description?.trim() ?? "",
-        ...(body.segmentOverrides !== undefined && {
-          segmentOverrides:
-            body.segmentOverrides as unknown as Prisma.InputJsonValue,
-        }),
         ...(body.mainEntityId !== undefined && {
           mainEntityId: body.mainEntityId ?? null,
         }),

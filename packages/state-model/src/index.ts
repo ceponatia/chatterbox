@@ -8,6 +8,8 @@ export type {
   Entity,
   FactTag,
   HardFact,
+  LocationConnectionInfo,
+  LocationInfo,
   Relationship,
   RelationshipTone,
   SceneInfo,
@@ -44,6 +46,17 @@ export { scanPresenceFromAssistantMessage } from "./presence-scanner";
 // Effective state resolver
 export { resolveEffectiveState } from "./effective-state";
 export type { EffectiveStateInput } from "./effective-state";
+
+// Location scanner
+export { scanLocationChangesFromAssistantMessage } from "./location-scanner";
+export type {
+  LocationChangeResult,
+  LocationScanParams,
+} from "./location-scanner";
+
+// Presence derivation
+export { derivePresenceFromLocations } from "./presence-derivation";
+export type { DerivePresenceParams } from "./presence-derivation";
 
 // Structural validation
 export {

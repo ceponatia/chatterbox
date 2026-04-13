@@ -4,12 +4,27 @@ import {
   resolveEntityName,
 } from "@chatterbox/state-model";
 import type { PromptSegment } from "@chatterbox/prompt-assembly";
+import {
+  createFactsTool,
+  createLocationDetailsTool,
+  createLookupEntityTool,
+  createNearbyLocationsTool,
+  createRelationshipsTool,
+  createSceneContextTool,
+  createSearchHistoryTool,
+  createThreadsTool,
+} from "./chat-tools-extended";
 
 const CHARACTER_DETAIL_SEGMENT_IDS = [
   "appearance_visual",
   "outfit_hairstyle",
   "voice_sound",
   "mannerisms",
+  "character_identity",
+  "backstory",
+  "speech_patterns",
+  "interaction_guide",
+  "demeanor",
 ] as const;
 
 const STORY_CONTEXT_SEGMENT_IDS = ["relationship_status"] as const;
@@ -22,19 +37,33 @@ const ASPECT_SEGMENT_MAP = {
   outfit: "outfit_hairstyle",
   voice: "voice_sound",
   mannerisms: "mannerisms",
+  identity: "character_identity",
+  backstory: "backstory",
+  speech_patterns: "speech_patterns",
+  interaction_guide: "interaction_guide",
+  demeanor: "demeanor",
 } as const;
 
 const DEFAULT_MAX_FACTS = 8;
 const DEFAULT_MAX_RELATIONSHIPS = 8;
 const DEFAULT_MAX_THREADS = 6;
 
+const TRUNCATION_SUFFIX = " [truncated]";
+
 export function compactText(text: string, maxChars = 240): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxChars) return normalized;
-  return normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd() + "\u2026";
+  return (
+    normalized
+      .slice(0, Math.max(0, maxChars - TRUNCATION_SUFFIX.length))
+      .trimEnd() + TRUNCATION_SUFFIX
+  );
 }
 
-function clampPositiveInt(value: number | undefined, fallback: number): number {
+export function clampPositiveInt(
+  value: number | undefined,
+  fallback: number,
+): number {
   if (!Number.isFinite(value)) return fallback;
   if (!value || value < 1) return fallback;
   return Math.floor(value);
@@ -64,7 +93,18 @@ function getSegmentText(
 
 type CharacterDetailsInput = {
   characterName?: string;
-  aspects: Array<"appearance" | "outfit" | "voice" | "mannerisms">;
+  aspects: Array<
+    | "appearance"
+    | "outfit"
+    | "voice"
+    | "mannerisms"
+    | "identity"
+    | "backstory"
+    | "speech_patterns"
+    | "interaction_guide"
+    | "demeanor"
+  >;
+  fullDetail?: boolean;
 };
 
 type StoryContextInput = {
@@ -101,7 +141,7 @@ function getCharacterDetailSegmentIds(
 function createCharacterDetailsTool(allSegments: readonly PromptSegment[]) {
   return tool({
     description:
-      "Retrieve detailed character behavior and presentation context (appearance, outfit, voice, mannerisms).",
+      "Retrieve detailed character context by aspect (appearance, outfit, voice, mannerisms, identity, backstory, speech_patterns, interaction_guide, demeanor).",
     inputSchema: jsonSchema<CharacterDetailsInput>({
       type: "object",
       properties: {
@@ -110,14 +150,29 @@ function createCharacterDetailsTool(allSegments: readonly PromptSegment[]) {
           type: "array",
           items: {
             type: "string",
-            enum: ["appearance", "outfit", "voice", "mannerisms"],
+            enum: [
+              "appearance",
+              "outfit",
+              "voice",
+              "mannerisms",
+              "identity",
+              "backstory",
+              "speech_patterns",
+              "interaction_guide",
+              "demeanor",
+            ],
           },
         },
+        fullDetail: { type: "boolean" },
       },
       required: ["aspects"],
       additionalProperties: false,
     }),
-    execute: async ({ characterName, aspects }: CharacterDetailsInput) => ({
+    execute: async ({
+      characterName,
+      aspects,
+      fullDetail = false,
+    }: CharacterDetailsInput) => ({
       characterName: characterName ?? null,
       details: filterSegmentsByIds(
         allSegments,
@@ -127,13 +182,15 @@ function createCharacterDetailsTool(allSegments: readonly PromptSegment[]) {
         .map((segment) => ({
           id: segment.id,
           label: segment.label,
-          content: compactText(segment.content, 320),
+          content: fullDetail
+            ? segment.content
+            : compactText(segment.content, 320),
         })),
     }),
   });
 }
 
-function buildStoryContextFacts(
+export function buildStoryContextFacts(
   activeFacts: ReturnType<typeof parseMarkdownToStructured>["hardFacts"],
   includeFacts: boolean,
   includeDetails: boolean,
@@ -152,11 +209,11 @@ function buildStoryContextFacts(
     .map((fact) => ({
       summary: fact.summary ?? fact.fact,
       tags: fact.tags ?? [],
-      detail: includeDetails ? fact.fact : compactText(fact.fact, 160),
+      detail: includeDetails ? fact.fact : compactText(fact.fact, 280),
     }));
 }
 
-function buildStoryContextRelationships(
+export function buildStoryContextRelationships(
   structured: ReturnType<typeof parseMarkdownToStructured>,
   includeRelationships: boolean,
   includeDetails: boolean,
@@ -171,7 +228,7 @@ function buildStoryContextRelationships(
       tone: relationship.tone ?? "neutral",
       description: includeDetails
         ? relationship.description
-        : compactText(relationship.description, 140),
+        : compactText(relationship.description, 280),
       details: includeDetails
         ? relationship.details
         : relationship.details
@@ -180,7 +237,7 @@ function buildStoryContextRelationships(
     }));
 }
 
-function buildStoryContextThreads(
+export function buildStoryContextThreads(
   structured: ReturnType<typeof parseMarkdownToStructured>,
   includeThreads: boolean,
   includeDetails: boolean,
@@ -196,7 +253,7 @@ function buildStoryContextThreads(
       hook: compactText(thread.hook ?? thread.description, 90),
       description: includeDetails
         ? thread.description
-        : compactText(thread.description, 160),
+        : compactText(thread.description, 280),
       status: thread.status,
       resolutionHint: includeDetails
         ? thread.resolutionHint
@@ -283,20 +340,26 @@ function createStoryContextTool(
   });
 }
 
+type BackstoryInput = {
+  fullDetail?: boolean;
+};
+
 function createBackstoryTool(allSegments: readonly PromptSegment[]) {
   return tool({
     description: "Retrieve backstory context details.",
-    inputSchema: jsonSchema<Record<string, never>>({
+    inputSchema: jsonSchema<BackstoryInput>({
       type: "object",
-      properties: {},
+      properties: {
+        fullDetail: { type: "boolean" },
+      },
       additionalProperties: false,
     }),
-    execute: async () => ({
-      content: compactText(
-        getSegmentText(allSegments, [BACKSTORY_SEGMENT_ID]),
-        420,
-      ),
-    }),
+    execute: async ({ fullDetail = false }: BackstoryInput) => {
+      const text = getSegmentText(allSegments, [BACKSTORY_SEGMENT_ID]);
+      return {
+        content: fullDetail ? text : compactText(text, 420),
+      };
+    },
   });
 }
 
@@ -353,36 +416,59 @@ function createCheckRelationshipTool(
   });
 }
 
+type InteractionGuidelinesInput = {
+  fullDetail?: boolean;
+};
+
 function createInteractionGuidelinesTool(
   allSegments: readonly PromptSegment[],
 ) {
   return tool({
     description: "Retrieve interaction guidelines context.",
-    inputSchema: jsonSchema<Record<string, never>>({
+    inputSchema: jsonSchema<InteractionGuidelinesInput>({
       type: "object",
-      properties: {},
+      properties: {
+        fullDetail: { type: "boolean" },
+      },
       additionalProperties: false,
     }),
-    execute: async () => ({
-      content: compactText(
-        getSegmentText(allSegments, [INTERACTION_GUIDE_SEGMENT_ID]),
-        420,
-      ),
-    }),
+    execute: async ({ fullDetail = false }: InteractionGuidelinesInput) => {
+      const text = getSegmentText(allSegments, [INTERACTION_GUIDE_SEGMENT_ID]);
+      return {
+        content: fullDetail ? text : compactText(text, 420),
+      };
+    },
   });
 }
 
 export function createChatTools(
   allSegments: readonly PromptSegment[],
   storyState: string,
+  conversationId?: string | null,
 ) {
   const structured = parseMarkdownToStructured(storyState);
 
-  return {
+  const base = {
     get_character_details: createCharacterDetailsTool(allSegments),
     get_story_context: createStoryContextTool(allSegments, structured),
+    get_facts: createFactsTool(structured),
+    get_relationships: createRelationshipsTool(structured),
+    get_threads: createThreadsTool(structured),
     get_backstory: createBackstoryTool(allSegments),
     check_relationship: createCheckRelationshipTool(structured),
     get_interaction_guidelines: createInteractionGuidelinesTool(allSegments),
+    get_scene_context: createSceneContextTool(structured),
+    lookup_entity: createLookupEntityTool(structured),
+    search_history: createSearchHistoryTool(conversationId),
   };
+
+  if (structured.locations.length > 0) {
+    return {
+      ...base,
+      get_location_details: createLocationDetailsTool(structured),
+      get_nearby_locations: createNearbyLocationsTool(structured),
+    };
+  }
+
+  return base;
 }

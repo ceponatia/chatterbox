@@ -32,6 +32,8 @@ import {
   parseMarkdownToStructured,
   structuredToMarkdown,
   reconcileLifecycleState,
+  scanLocationChangesFromAssistantMessage,
+  derivePresenceFromLocations,
   type StructuredStoryState,
 } from "@chatterbox/state-model";
 import {
@@ -55,7 +57,7 @@ const FACT_CHANGE_TYPES = new Set([
   "new_hard_fact",
 ]);
 
-function splitCandidateFacts(
+export function splitCandidateFacts(
   changes: StatePipelineChange[],
   messages: readonly SocketMessage[],
 ): { confirmed: StatePipelineChange[]; candidates: CandidateFact[] } {
@@ -140,7 +142,7 @@ function includesSnippet(haystack: string, detail: string): boolean {
   return snippet.length > 0 && haystack.includes(snippet);
 }
 
-function processFactLifecycle(
+export function processFactLifecycle(
   state: StructuredStoryState,
   supersededChanges: StatePipelineChange[],
   recentText: string,
@@ -168,7 +170,7 @@ function processFactLifecycle(
   });
 }
 
-function isThreadStale(
+export function isThreadStale(
   thread: StructuredStoryState["openThreads"][number],
   referenced: boolean,
   resolvedChange: StatePipelineChange | undefined,
@@ -179,7 +181,7 @@ function isThreadStale(
   return Date.now() - lastRef > THREAD_STALE_DAYS * 24 * 60 * 60 * 1000;
 }
 
-function resolveThreadUpdate(
+export function resolveThreadUpdate(
   thread: StructuredStoryState["openThreads"][number],
   changes: StatePipelineChange[],
   recentText: string,
@@ -251,7 +253,7 @@ function stampLifecycleRejections(
   }
 }
 
-function applyLifecycleStage(
+export function applyLifecycleStage(
   previousState: string,
   candidateState: string,
   changes: StatePipelineChange[],
@@ -288,6 +290,64 @@ function applyLifecycleStage(
   }
 
   return structuredToMarkdown(state);
+}
+
+// ---------------------------------------------------------------------------
+// Location change detection
+// ---------------------------------------------------------------------------
+
+export function extractLastAssistantText(
+  messages: readonly SocketMessage[],
+): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "assistant") return messages[i]!.content;
+  }
+  return "";
+}
+
+function applyLocationChanges(
+  currentState: string,
+  windowed: readonly SocketMessage[],
+  changes: StatePipelineChange[],
+  turnNumber: number,
+): string {
+  const parsed = parseMarkdownToStructured(currentState);
+  if (parsed.locations.length === 0) return currentState;
+
+  const assistantText = extractLastAssistantText(windowed);
+  if (!assistantText) return currentState;
+
+  const locationChanges = scanLocationChangesFromAssistantMessage({
+    assistantText,
+    entities: parsed.entities,
+    locations: parsed.locations,
+    currentSceneLocationId: parsed.scene.locationId,
+  });
+
+  if (locationChanges.entityMoves.length === 0) return currentState;
+
+  for (const move of locationChanges.entityMoves) {
+    const entity = parsed.entities.find((e) => e.id === move.entityId);
+    if (entity) {
+      entity.locationId = move.toLocationId;
+      changes.push({
+        type: "entity_location",
+        detail: `${entity.name} moved to ${move.toLocationName}`,
+        confidence: 0.7,
+        sourceTurn: turnNumber,
+      });
+    }
+  }
+
+  // Recompute presence from location co-location
+  if (parsed.scene.locationId) {
+    parsed.scene.presentEntityIds = derivePresenceFromLocations({
+      entities: parsed.entities,
+      sceneLocationId: parsed.scene.locationId,
+    });
+  }
+
+  return structuredToMarkdown(parsed);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,14 +433,16 @@ async function runLLMUpdate(
   }
 }
 
-function buildFreshnessReviewHint(staleSections?: readonly string[]): string {
+export function buildFreshnessReviewHint(
+  staleSections?: readonly string[],
+): string {
   if (!staleSections || staleSections.length === 0) return "";
   return `\n\n## Section freshness review (required this pass)\nThese sections are stale and must be explicitly re-reviewed against recent turns:\n${staleSections
     .map((section) => `- ${section}`)
     .join("\n")}\nIf any listed section is outdated, update it now.`;
 }
 
-function buildRetryFeedback(validation: {
+export function buildRetryFeedback(validation: {
   schemaValid: boolean;
   outputComplete: boolean;
   noUnknownFacts: boolean;
@@ -543,6 +605,14 @@ export const statePipelineAdapter: StatePipelineSocket = {
       changes,
       windowed,
       lifecycleRejections,
+    );
+
+    // Location change detection from assistant narrative
+    updatedState = applyLocationChanges(
+      updatedState,
+      windowed,
+      changes,
+      request.turnNumber,
     );
 
     let validation = validateState(

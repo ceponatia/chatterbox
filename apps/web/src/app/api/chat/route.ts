@@ -2,6 +2,7 @@ import {
   streamText,
   UIMessage,
   type ModelMessage,
+  type ToolSet,
   convertToModelMessages,
   stepCountIs,
 } from "ai";
@@ -39,6 +40,7 @@ import { resolveEffectiveStateWithTiers } from "@/lib/effective-state-enhanced";
 import { openrouter, openrouterPlainText } from "@/lib/openrouter";
 import { DEFAULT_MODEL_ID, getModelEntry } from "@/lib/model-registry";
 import { createChatTools } from "./chat-tools";
+import { createMoveToLocationTool } from "./chat-tools-location";
 import {
   getMessageText,
   windowMessages,
@@ -243,10 +245,19 @@ async function buildConversationContext(
   };
 }
 
+function detectForcedTool(message: string): string | null {
+  if (/\b(relationship|relationships)\b/i.test(message))
+    return "get_relationships";
+  if (/\b(thread|threads)\b/i.test(message)) return "get_threads";
+  if (/\b(hard fact|hard facts|recall|remember)\b/i.test(message))
+    return "get_facts";
+  return null;
+}
+
 function buildToolConfig(
   toolUseEnabled: boolean,
-  tools: ReturnType<typeof createChatTools>,
-  mustUseStoryContext: boolean,
+  tools: ToolSet,
+  forcedToolName: string | null,
 ) {
   if (!toolUseEnabled) return {};
   const maxToolSteps = 3;
@@ -255,10 +266,10 @@ function buildToolConfig(
     stopWhen: stepCountIs(maxToolSteps),
     prepareStep: ({ stepNumber }: { stepNumber: number }) => {
       const opts: Record<string, unknown> = {};
-      if (mustUseStoryContext && stepNumber === 0) {
+      if (forcedToolName && stepNumber === 0) {
         opts.toolChoice = {
           type: "tool" as const,
-          toolName: "get_story_context" as const,
+          toolName: forcedToolName,
         };
       }
       if (stepNumber >= maxToolSteps - 1) {
@@ -289,6 +300,7 @@ async function preparePrompt(
   entityIds: string[],
   lastIncludedAt: Record<string, number> | undefined,
   customSegments: SerializedSegment[] | null | undefined,
+  conversationId?: string | null,
 ): Promise<PromptContext> {
   const ctx = await buildAssemblyContext(
     messages,
@@ -309,7 +321,7 @@ async function preparePrompt(
       : defaultAssembler;
   const assembly = assembler.assemble(ctx);
   const allSegments = assembler.listSegments();
-  const tools = createChatTools(allSegments, storyState);
+  const tools = createChatTools(allSegments, storyState, conversationId);
 
   const primaryUserAlias =
     extractPlayerFromSegments(customSegments) ??
@@ -422,7 +434,19 @@ export async function POST(req: Request) {
     entityIds,
     lastIncludedAt,
     customSegments,
+    conversationId,
   );
+  // Pre-parse structured state for mutable location tool
+  const preStreamStructured = parseMarkdownToStructured(effectiveStoryState);
+  const originalLocationId = preStreamStructured.scene.locationId;
+  const streamTools =
+    preStreamStructured.locations.length > 0
+      ? {
+          ...prompt.tools,
+          move_to_location: createMoveToLocationTool(preStreamStructured),
+        }
+      : prompt.tools;
+
   logRequest("/api/chat", {
     conversationId,
     messages: windowed,
@@ -449,10 +473,7 @@ export async function POST(req: Request) {
       convCtx.compressed.stats.verbatim,
     );
 
-    const mustUseStoryContext =
-      /\b(relationship|relationships|thread|threads|hard fact|hard facts|recall|remember)\b/i.test(
-        prompt.ctx.currentUserMessage,
-      );
+    const forcedToolName = detectForcedTool(prompt.ctx.currentUserMessage);
 
     const compressionMeta = {
       windowedMessages: windowed.length,
@@ -477,9 +498,9 @@ export async function POST(req: Request) {
       const draft = await generateGlmDraft(
         prompt.systemMessages,
         convCtx.modelMessages,
-        prompt.tools,
+        streamTools,
         resolveSettings(settings),
-        mustUseStoryContext,
+        forcedToolName,
       );
 
       log(
@@ -534,11 +555,7 @@ export async function POST(req: Request) {
     const result = streamText({
       model: openrouter(prompt.modelId),
       messages: requestMessages,
-      ...buildToolConfig(
-        prompt.toolUseEnabled,
-        prompt.tools,
-        mustUseStoryContext,
-      ),
+      ...buildToolConfig(prompt.toolUseEnabled, streamTools, forcedToolName),
       ...resolveSettings(settings),
       providerOptions: {
         openrouter: {

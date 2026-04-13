@@ -332,4 +332,486 @@ describe("structuredToMarkdown", () => {
       expect(second.style).toHaveLength(first.style.length);
     });
   });
+
+  describe("appearance grouping", () => {
+    it("serializes entity with zero appearance entries without Characters section", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "Barista",
+          isPlayerCharacter: false,
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).not.toContain("## Characters");
+    });
+
+    it("serializes entity with one appearance entry", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "Barista",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.appearance = [
+        {
+          entityId: "ent-a",
+          attribute: "Eyes",
+          description: "Brown",
+          category: "face",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("### Amanda");
+      expect(md).toContain("**Eyes**: Brown");
+    });
+
+    it("serializes entity with three appearance entries", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "Barista",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.appearance = [
+        {
+          entityId: "ent-a",
+          attribute: "Eyes",
+          description: "Brown",
+          category: "face",
+        },
+        {
+          entityId: "ent-a",
+          attribute: "Hair",
+          description: "Black",
+          category: "hair",
+        },
+        {
+          entityId: "ent-a",
+          attribute: "Build",
+          description: "Tall",
+          category: "build",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("**Eyes**: Brown");
+      expect(md).toContain("**Hair**: Black");
+      expect(md).toContain("**Build**: Tall");
+    });
+  });
+
+  describe("relationships with details", () => {
+    it("serializes relationship with zero details", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "",
+          isPlayerCharacter: false,
+        },
+        {
+          id: "ent-b",
+          name: "Jake",
+          description: "",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.relationships = [
+        {
+          fromEntityId: "ent-a",
+          toEntityId: "ent-b",
+          description: "Friends",
+          details: [],
+          tone: "warm",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("**Amanda \u2192 Jake**: Friends");
+      // No detail sub-bullets (indented bullets under the relationship)
+      expect(md).not.toContain("  - ");
+    });
+
+    it("serializes relationship with three detail lines", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "",
+          isPlayerCharacter: false,
+        },
+        {
+          id: "ent-b",
+          name: "Jake",
+          description: "",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.relationships = [
+        {
+          fromEntityId: "ent-a",
+          toEntityId: "ent-b",
+          description: "Friends",
+          details: ["Detail one", "Detail two", "Detail three"],
+          tone: "warm",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("  - Detail one");
+      expect(md).toContain("  - Detail two");
+      expect(md).toContain("  - Detail three");
+    });
+  });
+
+  describe("locations serialization", () => {
+    it("serializes locations with all optional fields present", () => {
+      const state = emptyStructuredState();
+      state.locations = [
+        {
+          id: "loc-1",
+          name: "Tavern",
+          description: "A rustic tavern",
+          tags: ["indoor", "social"],
+          atmosphere: "Lively",
+          connectedTo: [
+            {
+              locationId: "loc-2",
+              locationName: "Market",
+              description: "through the door",
+              traversalHint: "2 min walk",
+            },
+          ],
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("### Tavern");
+      expect(md).toContain("**Description**: A rustic tavern");
+      expect(md).toContain("**Tags**: indoor, social");
+      expect(md).toContain("**Atmosphere**: Lively");
+      expect(md).toContain(
+        "**Connected to**: Market (through the door; 2 min walk)",
+      );
+    });
+
+    it("serializes location with no optional fields", () => {
+      const state = emptyStructuredState();
+      state.locations = [
+        {
+          id: "loc-1",
+          name: "Void",
+          description: "",
+          tags: [],
+          atmosphere: "",
+          connectedTo: [],
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("### Void");
+      expect(md).not.toContain("**Description**");
+      expect(md).not.toContain("**Tags**");
+      expect(md).not.toContain("**Atmosphere**");
+      expect(md).not.toContain("**Connected to**");
+    });
+
+    it("serializes connection with only description, no traversal hint", () => {
+      const state = emptyStructuredState();
+      state.locations = [
+        {
+          id: "loc-1",
+          name: "Room",
+          description: "A room",
+          tags: [],
+          atmosphere: "",
+          connectedTo: [
+            {
+              locationId: "loc-2",
+              locationName: "Hall",
+              description: "through the archway",
+            },
+          ],
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("Hall (through the archway)");
+    });
+
+    it("serializes connection with no description or hint", () => {
+      const state = emptyStructuredState();
+      state.locations = [
+        {
+          id: "loc-1",
+          name: "Room",
+          description: "A room",
+          tags: [],
+          atmosphere: "",
+          connectedTo: [
+            {
+              locationId: "loc-2",
+              locationName: "Hall",
+            },
+          ],
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("**Connected to**: Hall");
+      expect(md).not.toContain("Hall (");
+    });
+  });
+
+  describe("demeanor serialization", () => {
+    it("serializes demeanor with mood and energy", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.demeanor = [{ entityId: "ent-a", mood: "Happy", energy: "High" }];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("## Current Demeanor");
+      expect(md).toContain("Amanda's mood");
+      expect(md).toContain("Happy");
+      expect(md).toContain("**Energy between them**: High");
+    });
+
+    it("serializes demeanor with mood but no energy", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.demeanor = [{ entityId: "ent-a", mood: "Happy", energy: "" }];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("Happy");
+      expect(md).not.toContain("Energy between them");
+    });
+
+    it("omits demeanor section when empty", () => {
+      const state = emptyStructuredState();
+      const md = structuredToMarkdown(state);
+      expect(md).not.toContain("## Current Demeanor");
+    });
+  });
+
+  describe("scene serialization details", () => {
+    it("serializes scene with empty location as placeholder", () => {
+      const state = emptyStructuredState();
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("[to be filled during play]");
+    });
+
+    it("serializes scene with no entities as placeholder", () => {
+      const state = emptyStructuredState();
+      state.scene.location = "Some place";
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("**Who is present**: [to be filled during play]");
+    });
+
+    it("serializes scene with atmosphere", () => {
+      const state = emptyStructuredState();
+      state.entities = [
+        {
+          id: "ent-a",
+          name: "Amanda",
+          description: "",
+          isPlayerCharacter: false,
+        },
+      ];
+      state.scene = {
+        location: "The park",
+        presentEntityIds: ["ent-a"],
+        atmosphere: "Peaceful",
+      };
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("**Atmosphere**: Peaceful");
+    });
+
+    it("omits atmosphere line when empty", () => {
+      const state = emptyStructuredState();
+      state.scene = {
+        location: "The park",
+        presentEntityIds: [],
+        atmosphere: "",
+      };
+      const md = structuredToMarkdown(state);
+      expect(md).not.toContain("Atmosphere");
+    });
+  });
+
+  describe("hard facts serialization", () => {
+    it("uses establishedAt for date when available", () => {
+      const state = emptyStructuredState();
+      state.hardFacts = [
+        {
+          fact: "Test fact",
+          summary: "Test",
+          tags: ["biographical"],
+          establishedAt: "2026-03-01",
+          createdAt: "2026-02-01",
+          superseded: false,
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("(added: 2026-03-01)");
+    });
+
+    it("falls back to createdAt when establishedAt is missing", () => {
+      const state = emptyStructuredState();
+      state.hardFacts = [
+        {
+          fact: "Test fact",
+          summary: "Test",
+          tags: ["biographical"],
+          createdAt: "2026-02-01",
+          superseded: false,
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("(added: 2026-02-01)");
+    });
+
+    it("omits Hard Facts section when all facts are superseded", () => {
+      const state = emptyStructuredState();
+      state.hardFacts = [
+        {
+          fact: "Old fact",
+          superseded: true,
+          supersededBy: "Newer fact",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).not.toContain("## Hard Facts");
+    });
+  });
+
+  describe("open threads serialization", () => {
+    it("includes evolved threads in output", () => {
+      const state = emptyStructuredState();
+      state.openThreads = [
+        {
+          id: "t-1",
+          description: "An evolved thread",
+          resolutionHint: "",
+          status: "evolved",
+          createdAt: "2026-01-01",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("An evolved thread");
+    });
+
+    it("omits threads section when all threads are resolved", () => {
+      const state = emptyStructuredState();
+      state.openThreads = [
+        {
+          id: "t-1",
+          description: "Done thread",
+          resolutionHint: "",
+          status: "resolved",
+          createdAt: "2026-01-01",
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).not.toContain("## Open Threads");
+    });
+  });
+
+  describe("style serialization", () => {
+    it("serializes style items as bullet list", () => {
+      const state = emptyStructuredState();
+      state.style = ["Dark tone", "Short sentences"];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("## Style");
+      expect(md).toContain("- Dark tone");
+      expect(md).toContain("- Short sentences");
+    });
+
+    it("omits style section when empty", () => {
+      const state = emptyStructuredState();
+      const md = structuredToMarkdown(state);
+      expect(md).not.toContain("## Style");
+    });
+  });
+
+  describe("custom sections serialization", () => {
+    it("serializes multiple custom sections", () => {
+      const state = emptyStructuredState();
+      state.custom = [
+        { heading: "Lore", content: "Ancient world." },
+        { heading: "Rules", content: "No meta." },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("## Lore");
+      expect(md).toContain("Ancient world.");
+      expect(md).toContain("## Rules");
+      expect(md).toContain("No meta.");
+    });
+
+    it("omits custom sections when empty", () => {
+      const state = emptyStructuredState();
+      state.custom = [];
+      const md = structuredToMarkdown(state);
+      // Should just have Scene section
+      const headings = md.match(/^## /gm) ?? [];
+      expect(headings.length).toBe(1); // Scene only
+    });
+  });
+
+  describe("timestamp sorting", () => {
+    it("sorts facts by createdAt date", () => {
+      const state = emptyStructuredState();
+      state.hardFacts = [
+        {
+          fact: "Later fact",
+          establishedAt: "2026-03-01",
+          createdAt: "2026-03-01",
+          superseded: false,
+        },
+        {
+          fact: "Earlier fact",
+          establishedAt: "2026-01-01",
+          createdAt: "2026-01-01",
+          superseded: false,
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      const laterIdx = md.indexOf("Later fact");
+      const earlierIdx = md.indexOf("Earlier fact");
+      // Earlier fact should come first in output
+      expect(earlierIdx).toBeLessThan(laterIdx);
+    });
+  });
+
+  describe("entity ID fallback", () => {
+    it("uses raw ID as name when entity not found", () => {
+      const state = emptyStructuredState();
+      state.relationships = [
+        {
+          fromEntityId: "unknown-1",
+          toEntityId: "unknown-2",
+          description: "Mysterious bond",
+          details: [],
+        },
+      ];
+      const md = structuredToMarkdown(state);
+      expect(md).toContain("unknown-1");
+      expect(md).toContain("unknown-2");
+    });
+  });
 });

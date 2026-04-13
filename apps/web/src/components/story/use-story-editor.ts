@@ -3,25 +3,21 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { persistActiveConversationId } from "@/lib/active-conversation";
+import { getDefaultBlueprintContent } from "@/lib/blueprint-defaults";
 import {
   createStoryCharacter,
   deleteStoryCharacter,
   exportStoryProject,
-  importStoryProject,
   launchStoryProject,
   loadStoryProject,
   regenerateStoryProject,
   updateStoryProject,
 } from "@/lib/story-project-client";
 import type {
-  ImportMode,
   PromptBlueprint,
   RuntimeSeed,
-  SegmentOverrides,
   StoryProjectDetail,
-  StoryProjectImportInput,
 } from "@/lib/story-project-types";
-import { getDefaultSegmentOverrides } from "@/lib/system-prompt-schema";
 
 async function runStoryEditorAction(
   action: string,
@@ -42,13 +38,22 @@ async function runStoryEditorAction(
   }
 }
 
+function getInitialDraftBlueprint(
+  project: StoryProjectDetail,
+): PromptBlueprint {
+  if (project.promptBlueprint) return project.promptBlueprint;
+
+  const defaults = getDefaultBlueprintContent();
+  return {
+    ...defaults,
+    setting: project.description,
+  };
+}
+
 export function useStoryProjectData(storyId: string) {
   const [project, setProject] = useState<StoryProjectDetail | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
-  const [draftOverrides, setDraftOverrides] = useState<SegmentOverrides>(
-    getDefaultSegmentOverrides(),
-  );
   const [draftMainEntityId, setDraftMainEntityId] = useState<string | null>(
     null,
   );
@@ -70,15 +75,12 @@ export function useStoryProjectData(storyId: string) {
         setProject(nextProject);
         setDraftName(nextProject.name);
         setDraftDescription(nextProject.description);
-        setDraftOverrides(
-          nextProject.segmentOverrides ?? getDefaultSegmentOverrides(),
-        );
         setDraftMainEntityId(
           nextProject.mainEntityId ??
             nextProject.characters.find((c) => c.isPlayer)?.entityId ??
             null,
         );
-        setDraftBlueprint(nextProject.promptBlueprint ?? null);
+        setDraftBlueprint(getInitialDraftBlueprint(nextProject));
         setDraftRuntimeSeed(nextProject.runtimeSeed ?? null);
         setError(null);
       } catch (nextError) {
@@ -95,20 +97,31 @@ export function useStoryProjectData(storyId: string) {
     };
   }, [storyId]);
 
+  useEffect(() => {
+    if (draftBlueprint?.customizedFields?.setting) return;
+    if (!draftBlueprint) return;
+
+    setDraftBlueprint((current) => {
+      if (!current || current.customizedFields?.setting) return current;
+      if (current.setting === draftDescription) return current;
+      return {
+        ...current,
+        setting: draftDescription,
+      };
+    });
+  }, [draftDescription, draftBlueprint?.customizedFields?.setting]);
+
   async function refreshProject() {
     const nextProject = await loadStoryProject(storyId);
     setProject(nextProject);
     setDraftName(nextProject.name);
     setDraftDescription(nextProject.description);
-    setDraftOverrides(
-      nextProject.segmentOverrides ?? getDefaultSegmentOverrides(),
-    );
     setDraftMainEntityId(
       nextProject.mainEntityId ??
         nextProject.characters.find((c) => c.isPlayer)?.entityId ??
         null,
     );
-    setDraftBlueprint(nextProject.promptBlueprint ?? null);
+    setDraftBlueprint(getInitialDraftBlueprint(nextProject));
     setDraftRuntimeSeed(nextProject.runtimeSeed ?? null);
     return nextProject;
   }
@@ -120,8 +133,6 @@ export function useStoryProjectData(storyId: string) {
     setDraftName,
     draftDescription,
     setDraftDescription,
-    draftOverrides,
-    setDraftOverrides,
     draftMainEntityId,
     setDraftMainEntityId,
     draftBlueprint,
@@ -142,7 +153,6 @@ export function useStoryEditorActions({
   setProject,
   draftName,
   draftDescription,
-  draftOverrides,
   draftMainEntityId,
   draftBlueprint,
   draftRuntimeSeed,
@@ -155,7 +165,6 @@ export function useStoryEditorActions({
   setProject: (value: StoryProjectDetail) => void;
   draftName: string;
   draftDescription: string;
-  draftOverrides: SegmentOverrides;
   draftMainEntityId: string | null;
   draftBlueprint: PromptBlueprint | null;
   draftRuntimeSeed: RuntimeSeed | null;
@@ -173,7 +182,6 @@ export function useStoryEditorActions({
       const nextProject = await updateStoryProject(storyId, {
         name: draftName,
         description: draftDescription,
-        segmentOverrides: draftOverrides,
         mainEntityId: draftMainEntityId,
         promptBlueprint: draftBlueprint,
         runtimeSeed: draftRuntimeSeed,
@@ -202,12 +210,14 @@ export function useStoryEditorActions({
   async function handleCreateCharacter() {
     await runAction("new-character", async () => {
       const nextIndex = (project?.characters.length ?? 0) + 1;
-      await createStoryCharacter(storyId, {
+      const newCharacter = await createStoryCharacter(storyId, {
         name: `Character ${nextIndex}`,
         role: "supporting",
-        importedMarkdown: null,
       });
       await refreshProject();
+      router.push(
+        `/stories/${storyId}/characters/${newCharacter.id}?tab=characters`,
+      );
       setStatus("Character created.");
     });
   }
@@ -238,20 +248,6 @@ export function useStoryEditorActions({
     });
   }
 
-  async function handleImport(
-    input: StoryProjectImportInput,
-    mode: ImportMode,
-  ) {
-    await runAction("import", async () => {
-      const nextProject = await importStoryProject(storyId, {
-        ...input,
-        mode,
-      });
-      setProject(nextProject);
-      setStatus(`Import complete (${mode}).`);
-    });
-  }
-
   function downloadMarkdownFile(filename: string, content: string) {
     const blob = new Blob([content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
@@ -271,7 +267,6 @@ export function useStoryEditorActions({
     handleCreateCharacter,
     handleDeleteCharacter,
     handleExportDownload,
-    handleImport,
     downloadMarkdownFile,
   };
 }

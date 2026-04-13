@@ -2,6 +2,7 @@ import {
   estimateTokens,
   type SerializedSegment,
 } from "@chatterbox/prompt-assembly";
+import type { SensoryProfile } from "@/lib/sensory-schema";
 import type {
   CharacterAppearanceEntry,
   CharacterBehavioralProfile,
@@ -35,7 +36,6 @@ const ATTRIBUTE_TO_CATEGORY: Record<string, AttributeCategory> = {
   build: "build",
   outfit: "outfit",
   voice: "voice",
-  vibe: "presence",
   mannerisms: "movement",
 };
 
@@ -111,6 +111,44 @@ function buildDialogueExamplesSection(
   }
 
   return lines.join("\n");
+}
+
+function buildSensorySection(
+  sensoryProfile: SensoryProfile | null | undefined,
+): string | null {
+  if (!sensoryProfile) return null;
+
+  const lines: string[] = ["### Sensory Details"];
+  const overall = sensoryProfile.overall;
+
+  const overallParts: string[] = [];
+  if (overall.scent) overallParts.push(`- **Scent:** ${overall.scent}`);
+  if (overall.texture) overallParts.push(`- **Texture:** ${overall.texture}`);
+  if (overall.taste) overallParts.push(`- **Taste:** ${overall.taste}`);
+
+  if (overallParts.length > 0) {
+    lines.push("**Overall:**", ...overallParts);
+  }
+
+  const attrNotes = sensoryProfile.attributes.filter(
+    (note) => note.scent || note.texture || note.taste,
+  );
+  if (attrNotes.length > 0) {
+    lines.push("");
+    for (const note of attrNotes) {
+      const parts: string[] = [];
+      if (note.scent) parts.push(`scent: ${note.scent}`);
+      if (note.texture) parts.push(`texture: ${note.texture}`);
+      if (note.taste) parts.push(`taste: ${note.taste}`);
+      if (parts.length > 0) {
+        lines.push(`- **${note.attribute}:** ${parts.join("; ")}`);
+      }
+    }
+  }
+
+  return overallParts.length > 0 || attrNotes.length > 0
+    ? lines.join("\n")
+    : null;
 }
 
 export function deriveEntity(character: StoryCharacterRecord): Entity {
@@ -192,13 +230,15 @@ export function deriveBehaviorSegment(
     .join("\n")
     .trim();
 
+  const sensorySection = buildSensorySection(character.sensoryProfile);
   const dialogueSection = buildDialogueExamplesSection(
     name,
     character.dialogueExamples,
   );
-  const content = dialogueSection
-    ? `${contentParts}\n\n${dialogueSection}`
-    : contentParts;
+
+  let content = contentParts;
+  if (sensorySection) content = `${content}\n\n${sensorySection}`;
+  if (dialogueSection) content = `${content}\n\n${dialogueSection}`;
 
   return {
     id: `character_behavior_${character.entityId}`,

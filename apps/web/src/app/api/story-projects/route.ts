@@ -51,15 +51,11 @@ export async function POST(request: Request) {
           userId,
           name: body.name?.trim() || `${source.name} Copy`,
           description: source.description,
-          authoringMode: source.authoringMode,
-          importedSystemPrompt: source.importedSystemPrompt,
-          importedStoryState: source.importedStoryState,
           generatedSystemPrompt: source.generatedSystemPrompt,
           generatedStoryState: source.generatedStoryState,
           generatedSegments: source.generatedSegments ?? undefined,
           generatedStructuredState:
             source.generatedStructuredState ?? undefined,
-          segmentOverrides: source.segmentOverrides ?? undefined,
           mainEntityId: source.mainEntityId,
           promptBlueprint: source.promptBlueprint ?? undefined,
           runtimeSeed: source.runtimeSeed ?? undefined,
@@ -78,10 +74,9 @@ export async function POST(request: Request) {
             background: character.background,
             appearance: optionalJson(character.appearance),
             behavioralProfile: optionalJson(character.behavioralProfile),
+            sensoryProfile: optionalJson(character.sensoryProfile),
             dialogueExamples: optionalJson(character.dialogueExamples),
             startingDemeanor: character.startingDemeanor,
-            importedMarkdown: character.importedMarkdown,
-            provenance: optionalJson(character.provenance),
           })),
         });
       }
@@ -115,10 +110,9 @@ export async function POST(request: Request) {
         userId,
         name,
         description: body.description?.trim() ?? "",
-        authoringMode: "form",
       },
     });
-    return regenerateStoryProject(tx, userId, project.id, "form");
+    return regenerateStoryProject(tx, userId, project.id);
   });
 
   if (!created) {

@@ -1,0 +1,289 @@
+
+> web@0.1.0 test /home/brian/projects/chatterbox/apps/web
+> vitest run -- --run src/lib/state-pipeline/__tests__/pipeline-socket-helpers.test.ts src/lib/state-pipeline/__tests__/slow-lane-helpers.test.ts
+
+
+ RUN  v3.2.4 /home/brian/projects/chatterbox/apps/web
+
+ ✓ src/lib/state-pipeline/__tests__/validation.test.ts (30 tests) 7ms
+ ✓ src/lib/state-pipeline/__tests__/cascade-triggers.test.ts (27 tests) 12ms
+stdout | src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts > applyLifecycleVerdicts > removes unjustified thread_resolved changes
+  [33mlifecycle-check: reverted 1 unjustified removal(s)[0m
+
+stdout | src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts > applyLifecycleVerdicts > removes unjustified hard_fact_superseded changes
+  [33mlifecycle-check: reverted 1 unjustified removal(s)[0m
+
+stdout | src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts > applyLifecycleVerdicts > matches verdicts by substring (first 28 chars)
+  [33mlifecycle-check: reverted 1 unjustified removal(s)[0m
+
+stdout | src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts > applyLifecycleVerdicts > populates rejection detail, kind, and reason correctly
+  [33mlifecycle-check: reverted 1 unjustified removal(s)[0m
+
+stdout | src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts > applyLifecycleVerdicts > handles multiple unjustified rejections
+  [33mlifecycle-check: reverted 2 unjustified removal(s)[0m
+
+stdout | src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts > applyLifecycleVerdicts > handles mixed justified and unjustified verdicts
+  [33mlifecycle-check: reverted 1 unjustified removal(s)[0m
+
+ ✓ src/lib/state-pipeline/__tests__/lifecycle-validation.test.ts (17 tests) 12ms
+ ✓ src/lib/state-pipeline/__tests__/pipeline.test.ts (42 tests) 12ms
+stderr | src/lib/state-pipeline/__tests__/slow-lane-helpers.test.ts > parseSlowLaneResponse > returns null for invalid JSON
+[33m⚠ slow-lane: failed to parse LLM response as JSON[0m
+
+stderr | src/lib/state-pipeline/__tests__/slow-lane-helpers.test.ts > parseSlowLaneResponse > returns null for empty string
+[33m⚠ slow-lane: failed to parse LLM response as JSON[0m
+
+ ✓ src/lib/state-pipeline/__tests__/pipeline-socket-helpers.test.ts (43 tests) 29ms
+ ✓ src/lib/state-pipeline/__tests__/slow-lane-helpers.test.ts (37 tests) 24ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 12 ⎯⎯⎯⎯⎯⎯
+
+ FAIL  e2e/features/chat-interactions.spec.ts [ e2e/features/chat-interactions.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/chat-interactions.spec.ts:20:6
+     18| }
+     19| 
+     20| test.describe("chat interactions", () => {
+       |      ^
+     21|   test.beforeEach(async ({ page }) => {
+     22|     await page.goto("/");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯
+
+ FAIL  e2e/features/conversation-management.spec.ts [ e2e/features/conversation-management.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/conversation-management.spec.ts:21:6
+     19| }
+     20| 
+     21| test.describe("conversation management", () => {
+       |      ^
+     22|   test.afterEach(async ({ page }) => {
+     23|     await unmockChatStream(page);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/12]⎯
+
+ FAIL  e2e/features/message-actions.spec.ts [ e2e/features/message-actions.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/message-actions.spec.ts:21:6
+     19| }
+     20| 
+     21| test.describe("message actions", () => {
+       |      ^
+     22|   let chat: ChatPage;
+     23| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/12]⎯
+
+ FAIL  e2e/features/prompt-editor.spec.ts [ e2e/features/prompt-editor.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/prompt-editor.spec.ts:8:6
+      6| } from "../fixtures/data";
+      7| 
+      8| test.describe("prompt editor", () => {
+       |      ^
+      9|   let projectId = "";
+     10| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/12]⎯
+
+ FAIL  e2e/features/settings.spec.ts [ e2e/features/settings.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/settings.spec.ts:3:6
+      1| import { expect, test } from "../fixtures/auth";
+      2| 
+      3| test.describe("settings", () => {
+       |      ^
+      4|   test("can access settings from the sidebar", async ({ page }) => {
+      5|     await page.goto("/");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/12]⎯
+
+ FAIL  e2e/features/sidebar-state.spec.ts [ e2e/features/sidebar-state.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/sidebar-state.spec.ts:11:6
+      9| }
+     10| 
+     11| test.describe("sidebar state", () => {
+       |      ^
+     12|   test("config sidebar can be toggled", async ({ page }) => {
+     13|     await page.goto("/");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/12]⎯
+
+ FAIL  e2e/features/state-history.spec.ts [ e2e/features/state-history.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/state-history.spec.ts:3:6
+      1| import { expect, test } from "../fixtures/auth";
+      2| 
+      3| test.describe("state history API", () => {
+       |      ^
+      4|   test("state-rollback endpoint responds on a no-op payload", async ({
+      5|     request,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/12]⎯
+
+ FAIL  e2e/features/story-projects.spec.ts [ e2e/features/story-projects.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/features/story-projects.spec.ts:8:6
+      6| } from "../fixtures/data";
+      7| 
+      8| test.describe("story projects", () => {
+       |      ^
+      9|   let projectId = "";
+     10|   let projectName = "";
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/12]⎯
+
+ FAIL  e2e/smoke/auth.spec.ts [ e2e/smoke/auth.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/smoke/auth.spec.ts:4:6
+      2| import { LoginPage } from "../pages/login-page";
+      3| 
+      4| test.describe("authentication", () => {
+       |      ^
+      5|   test("login page renders", async ({ page }) => {
+      6|     await page.context().clearCookies();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/12]⎯
+
+ FAIL  e2e/smoke/chat.spec.ts [ e2e/smoke/chat.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/smoke/chat.spec.ts:15:6
+     13| }
+     14| 
+     15| test.describe("chat smoke", () => {
+       |      ^
+     16|   test.afterEach(async ({ page }) => {
+     17|     await unmockChatStream(page);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/12]⎯
+
+ FAIL  e2e/smoke/navigation.spec.ts [ e2e/smoke/navigation.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/smoke/navigation.spec.ts:3:6
+      1| import { expect, test } from "../fixtures/auth";
+      2| 
+      3| test.describe("navigation smoke", () => {
+       |      ^
+      4|   test("root page loads the chat interface", async ({ page }) => {
+      5|     await page.goto("/");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/12]⎯
+
+ FAIL  e2e/smoke/stories.spec.ts [ e2e/smoke/stories.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite ../../node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe ../../node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe ../../node_modules/playwright/lib/transform/transform.js:275:12
+ ❯ e2e/smoke/stories.spec.ts:4:6
+      2| import { deleteStoryProject } from "../fixtures/data";
+      3| 
+      4| test.describe("stories smoke", () => {
+       |      ^
+      5|   test("stories page loads and shows content", async ({ page }) => {
+      6|     await page.goto("/stories");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/12]⎯
+
+
+ Test Files  12 failed | 6 passed (18)
+      Tests  196 passed (196)
+   Start at  21:23:23
+   Duration  770ms (transform 930ms, setup 0ms, collect 1.45s, tests 95ms, environment 3ms, prepare 1.26s)
+
+/home/brian/projects/chatterbox/apps/web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  web@0.1.0 test: `vitest run -- --run src/lib/state-pipeline/__tests__/pipeline-socket-helpers.test.ts src/lib/state-pipeline/__tests__/slow-lane-helpers.test.ts`
+Exit status 1

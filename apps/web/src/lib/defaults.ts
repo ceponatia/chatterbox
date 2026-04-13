@@ -77,5 +77,5 @@ export const DEFAULT_SETTINGS: Settings = {
   frequencyPenalty: 0,
   presencePenalty: 0,
   autoSummarizeInterval: 15,
-  tokenBudget: 4500,
+  tokenBudget: 5000,
 };

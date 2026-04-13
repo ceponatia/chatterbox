@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,13 +9,15 @@ import {
   CHARACTER_TABS,
   type CharacterBuilderTabId,
 } from "@/lib/character-schema";
+import { getStoryLocations } from "@/lib/story-project-client";
+import type { StoryLocationRecord } from "@/lib/story-project-types";
 import {
   AppearanceTab,
   BehaviorTab,
   DemeanorTab,
   IdentityTab,
 } from "@/components/story/character-builder-tabs";
-import { CharacterSourceTab } from "@/components/story/character-source-tab";
+import { SensoryTab } from "@/components/story/sensory-editor";
 import { useCharacterBuilder } from "@/components/story/use-character-builder";
 
 function CharacterBuilderLoadingState() {
@@ -44,7 +46,7 @@ function CharacterBuilderMissingState({ storyId }: { storyId: string }) {
             className="app-button-square"
           >
             <Link
-              href={`/stories/${storyId}`}
+              href={`/stories/${storyId}?tab=characters`}
               aria-label="Back to story editor"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -83,7 +85,10 @@ function CharacterBuilderHeader({
           size="sm"
           className="app-button-square"
         >
-          <Link href={`/stories/${storyId}`} aria-label="Back to story editor">
+          <Link
+            href={`/stories/${storyId}?tab=characters`}
+            aria-label="Back to story editor"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -107,6 +112,9 @@ function CharacterBuilderHeader({
 function renderTabContent(
   tabId: CharacterBuilderTabId,
   builder: ReturnType<typeof useCharacterBuilder>,
+  storyId: string,
+  characterId: string,
+  locations: StoryLocationRecord[],
 ) {
   if (!builder.draft || !builder.character) return null;
 
@@ -115,11 +123,12 @@ function renderTabContent(
       return (
         <IdentityTab
           draft={builder.draft}
+          locations={locations}
           onNameChange={builder.setName}
           onRoleChange={builder.setRole}
-          onPlayerChange={builder.setIsPlayer}
           onBackgroundChange={builder.setBackground}
           onIdentityFieldChange={builder.updateIdentityField}
+          onDefaultLocationChange={builder.setDefaultLocationId}
         />
       );
     case "appearance":
@@ -149,17 +158,18 @@ function renderTabContent(
           onChange={builder.setStartingDemeanor}
         />
       );
-    case "source":
+    case "sensory":
       return (
-        <CharacterSourceTab
-          importedMarkdown={builder.character.importedMarkdown}
-          provenance={builder.character.provenance}
-          existingDraft={builder.draft}
-          onPreviewParse={() => builder.previewParse()}
-          onApplyParse={(parsed, sections) =>
-            builder.applySelectiveParse(parsed, sections)
-          }
-          busy={builder.saving}
+        <SensoryTab
+          draft={builder.draft}
+          storyId={storyId}
+          characterId={characterId}
+          onOverallChange={builder.updateSensoryOverall}
+          onOverallLockToggle={builder.toggleSensoryOverallLock}
+          onAttributeChange={builder.updateSensoryAttribute}
+          onAttributeLockToggle={builder.toggleSensoryAttributeLock}
+          onProfileUpdate={builder.setSensoryProfile}
+          onSyncAttributes={builder.syncSensoryAttributesWithAppearance}
         />
       );
   }
@@ -171,10 +181,16 @@ function MobileTabAccordion({
   activeTab,
   onTabChange,
   builder,
+  storyId,
+  characterId,
+  locations,
 }: {
   activeTab: CharacterBuilderTabId;
   onTabChange: (value: CharacterBuilderTabId) => void;
   builder: ReturnType<typeof useCharacterBuilder>;
+  storyId: string;
+  characterId: string;
+  locations: StoryLocationRecord[];
 }) {
   return (
     <div className="flex flex-col gap-3 md:hidden">
@@ -191,7 +207,9 @@ function MobileTabAccordion({
             </span>
           </button>
           {activeTab === tab.id && (
-            <div className="mt-4">{renderTabContent(tab.id, builder)}</div>
+            <div className="mt-4">
+              {renderTabContent(tab.id, builder, storyId, characterId, locations)}
+            </div>
           )}
         </div>
       ))}
@@ -203,10 +221,16 @@ function DesktopTabs({
   activeTab,
   onTabChange,
   builder,
+  storyId,
+  characterId,
+  locations,
 }: {
   activeTab: CharacterBuilderTabId;
   onTabChange: (value: CharacterBuilderTabId) => void;
   builder: ReturnType<typeof useCharacterBuilder>;
+  storyId: string;
+  characterId: string;
+  locations: StoryLocationRecord[];
 }) {
   return (
     <div className="hidden md:block">
@@ -227,7 +251,7 @@ function DesktopTabs({
         </TabsList>
         {CHARACTER_TABS.map((tab) => (
           <TabsContent key={tab.id} value={tab.id} className="mt-4">
-            {renderTabContent(tab.id, builder)}
+            {renderTabContent(tab.id, builder, storyId, characterId, locations)}
           </TabsContent>
         ))}
       </Tabs>
@@ -244,6 +268,17 @@ export function CharacterBuilderClient({
 }) {
   const builder = useCharacterBuilder({ storyId, characterId });
   const [activeTab, setActiveTab] = useState<CharacterBuilderTabId>("identity");
+  const [locations, setLocations] = useState<StoryLocationRecord[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void getStoryLocations(storyId).then((result) => {
+      if (active) setLocations(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [storyId]);
 
   if (builder.loading) return <CharacterBuilderLoadingState />;
   if (!builder.character || !builder.draft) {
@@ -272,11 +307,17 @@ export function CharacterBuilderClient({
               activeTab={activeTab}
               onTabChange={setActiveTab}
               builder={builder}
+              storyId={storyId}
+              characterId={characterId}
+              locations={locations}
             />
             <DesktopTabs
               activeTab={activeTab}
               onTabChange={setActiveTab}
               builder={builder}
+              storyId={storyId}
+              characterId={characterId}
+              locations={locations}
             />
           </div>
         </main>

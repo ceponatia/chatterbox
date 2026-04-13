@@ -29,7 +29,7 @@ import { SLOW_LANE_INSTRUCTION } from "./slow-lane-prompt";
 // Response parsing
 // ---------------------------------------------------------------------------
 
-interface RawSlowLaneResponse {
+export interface RawSlowLaneResponse {
   candidateDecisions?: Array<{
     candidateId?: string;
     verdict?: string;
@@ -58,7 +58,9 @@ const VALID_THREAD_ACTIONS = new Set<ThreadReconciliationAction>([
   "retain",
 ]);
 
-function parseSlowLaneResponse(text: string): RawSlowLaneResponse | null {
+export function parseSlowLaneResponse(
+  text: string,
+): RawSlowLaneResponse | null {
   // Strip markdown fencing if present
   let cleaned = text.trim();
   if (cleaned.startsWith("```")) {
@@ -77,7 +79,7 @@ function parseSlowLaneResponse(text: string): RawSlowLaneResponse | null {
   }
 }
 
-function normalizeDecisions(
+export function normalizeDecisions(
   raw: RawSlowLaneResponse,
   candidateIds: ReadonlySet<string>,
 ): CandidateFactDecision[] {
@@ -113,7 +115,7 @@ function normalizeDecisions(
   return decisions;
 }
 
-function normalizeSupersessions(
+export function normalizeSupersessions(
   raw: RawSlowLaneResponse,
 ): SupersessionUpdate[] {
   if (!Array.isArray(raw.supersessions)) return [];
@@ -129,7 +131,7 @@ function normalizeSupersessions(
   return out;
 }
 
-function normalizeThreadReconciliations(
+export function normalizeThreadReconciliations(
   raw: RawSlowLaneResponse,
 ): ThreadReconciliation[] {
   if (!Array.isArray(raw.threadReconciliations)) return [];
@@ -151,7 +153,7 @@ function normalizeThreadReconciliations(
 // State application
 // ---------------------------------------------------------------------------
 
-function applyPromotedFacts(
+export function applyPromotedFacts(
   stateMarkdown: string,
   decisions: readonly CandidateFactDecision[],
 ): string {

@@ -5,7 +5,12 @@ import type {
   MutabilityTier,
 } from "@/lib/story-project-types";
 
-export type FieldType = "text" | "textarea" | "select" | "attribute-list" | "dialogue-examples";
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "select"
+  | "attribute-list"
+  | "dialogue-examples";
 
 export const DIALOGUE_EXAMPLE_TAGS = [
   "general",
@@ -49,7 +54,6 @@ export const DEFAULT_APPEARANCE_ATTRIBUTES = [
   "build",
   "skin",
   "outfit",
-  "vibe",
   "voice",
 ];
 
@@ -63,7 +67,6 @@ export const KNOWN_APPEARANCE_KEYS: Record<
   build: { mutabilityTier: "semi-stable" },
   skin: { mutabilityTier: "stable" },
   outfit: { mutabilityTier: "mutable" },
-  vibe: { mutabilityTier: "mutable" },
   voice: { mutabilityTier: "semi-stable" },
   mannerisms: { mutabilityTier: "mutable" },
 };
@@ -76,7 +79,7 @@ export const PRONOUNS_OPTIONS = [
   "custom",
 ];
 
-export const ROLE_OPTIONS = ["primary", "supporting", "minor"];
+export const ROLE_OPTIONS = ["player", "primary", "supporting", "minor"];
 
 export const CHARACTER_TABS: TabDefinition[] = [
   {
@@ -387,8 +390,8 @@ export const CHARACTER_TABS: TabDefinition[] = [
     ],
   },
   {
-    id: "source",
-    label: "Source",
+    id: "sensory",
+    label: "Sensory",
     sections: [],
   },
 ];

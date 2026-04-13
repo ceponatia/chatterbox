@@ -7,7 +7,6 @@ import {
   getStoryProjectRow,
   regenerateStoryProject,
 } from "@/lib/story-project-db";
-import { resolveProjectAuthoringModeFromSource } from "@/lib/story-project-core";
 import type {
   StoryProjectRelationshipInput,
   StoryRelationshipRecord,
@@ -91,13 +90,7 @@ export async function PUT(
 
     const refreshed = await getStoryProjectRow(tx, userId, id);
     if (!refreshed) return null;
-    const authoringMode = resolveProjectAuthoringModeFromSource({
-      importedSystemPrompt: refreshed.importedSystemPrompt,
-      importedStoryState: refreshed.importedStoryState,
-      characters: refreshed.characters,
-      hasStructuredEdits: relationships.length > 0,
-    });
-    await regenerateStoryProject(tx, userId, id, authoringMode);
+    await regenerateStoryProject(tx, userId, id);
     const nextProject = await getStoryProjectRow(tx, userId, id);
     return nextProject?.relationships.map(toRecord) ?? null;
   });

@@ -1,18 +1,22 @@
 "use client";
 
 import type {
+  LocationConnectionInput,
+  LocationConnectionRecord,
   StoryCharacterRecord,
+  StoryLocationInput,
+  StoryLocationRecord,
   StoryProjectCharacterInput,
   StoryProjectDetail,
   StoryProjectDuplicateInput,
   StoryProjectExportPayload,
-  StoryProjectImportInput,
   StoryProjectInput,
   StoryProjectLaunchResult,
   StoryProjectRelationshipInput,
   StoryProjectSummary,
   StoryRelationshipRecord,
 } from "@/lib/story-project-types";
+import { generateId } from "@/lib/storage";
 
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -73,7 +77,7 @@ export function createStoryCharacter(
 ) {
   const payload: StoryProjectCharacterInput = {
     ...input,
-    entityId: input.entityId ?? crypto.randomUUID(),
+    entityId: input.entityId ?? generateId(),
   };
   return requestJson<StoryCharacterRecord>(
     `/api/story-projects/${id}/characters`,
@@ -130,13 +134,6 @@ export function updateStoryRelationships(
   );
 }
 
-export function importStoryProject(id: string, input: StoryProjectImportInput) {
-  return requestJson<StoryProjectDetail>(`/api/story-projects/${id}/import`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
 export function regenerateStoryProject(id: string) {
   return requestJson<StoryProjectDetail>(`/api/story-projects/${id}/generate`, {
     method: "POST",
@@ -158,12 +155,56 @@ export function launchStoryProject(id: string) {
   );
 }
 
-export function parseCharacterIntoStructured(
+export function getStoryLocations(projectId: string) {
+  return requestJson<StoryLocationRecord[]>(
+    `/api/story-projects/${projectId}/locations`,
+  );
+}
+
+export function createStoryLocation(
   projectId: string,
-  characterId: string,
+  input: StoryLocationInput,
 ) {
-  return requestJson<StoryCharacterRecord>(
-    `/api/story-projects/${projectId}/characters/${characterId}/parse`,
-    { method: "POST" },
+  return requestJson<StoryLocationRecord>(
+    `/api/story-projects/${projectId}/locations`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function updateStoryLocation(
+  projectId: string,
+  locationId: string,
+  input: StoryLocationInput,
+) {
+  return requestJson<StoryLocationRecord>(
+    `/api/story-projects/${projectId}/locations/${locationId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function deleteStoryLocation(projectId: string, locationId: string) {
+  return requestJson<{ ok: true }>(
+    `/api/story-projects/${projectId}/locations/${locationId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function updateLocationConnections(
+  projectId: string,
+  locationId: string,
+  connections: LocationConnectionInput[],
+) {
+  return requestJson<LocationConnectionRecord[]>(
+    `/api/story-projects/${projectId}/locations/${locationId}/connections`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ connections }),
+    },
   );
 }

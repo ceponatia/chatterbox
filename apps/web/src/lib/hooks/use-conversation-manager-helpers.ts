@@ -7,6 +7,7 @@ import {
   loadConversation,
   saveConversation,
   createConversationDraft,
+  createConversationDraftAsync,
   deleteConversation,
   type Conversation,
   type ConversationMeta,
@@ -492,9 +493,16 @@ export function useConversationActions(
 
   const handleNewConversation = useCallback(() => {
     onConversationSwitch?.();
-    const conv = createConversationDraft();
-    hydrateConversation(conv, false);
-    setConvDrawerOpen(false);
+    void (async () => {
+      try {
+        const conv = await createConversationDraftAsync();
+        hydrateConversation(conv, false);
+      } catch {
+        const conv = createConversationDraft();
+        hydrateConversation(conv, false);
+      }
+      setConvDrawerOpen(false);
+    })();
   }, [hydrateConversation, onConversationSwitch, setConvDrawerOpen]);
 
   const handleDeleteConversation = useCallback(

@@ -3,8 +3,7 @@ import type {
   RelationshipTone,
   StructuredStoryState,
 } from "@chatterbox/state-model";
-
-export type StoryAuthoringMode = "form" | "imported" | "hybrid";
+import type { SensoryProfile } from "@/lib/sensory-schema";
 
 export interface PromptBlueprintSection {
   id: string;
@@ -14,12 +13,15 @@ export interface PromptBlueprintSection {
 }
 
 export interface PromptBlueprint {
-  coreRulesAdditions: string;
+  setting: string;
+  themes: string;
+  coreRules: string;
   outputFormat: string;
-  settingScenario: string;
   npcFraming: string;
+  narrationGuidelines: string;
   interactionGuidelines: string;
   customSections: PromptBlueprintSection[];
+  customizedFields?: Partial<Record<string, boolean>>;
 }
 
 export interface RuntimeSeed {
@@ -60,16 +62,6 @@ export interface CharacterBehavioralProfile {
   mannerisms: string;
 }
 
-export type FieldProvenance = "imported" | "form";
-
-export interface CharacterProvenance {
-  identity?: FieldProvenance;
-  background?: FieldProvenance;
-  appearance?: FieldProvenance;
-  behavioralProfile?: FieldProvenance;
-  startingDemeanor?: FieldProvenance;
-}
-
 export interface StoryCharacterRecord {
   id: string;
   storyProjectId: string;
@@ -83,8 +75,8 @@ export interface StoryCharacterRecord {
   behavioralProfile: CharacterBehavioralProfile | null;
   dialogueExamples: DialogueExample[] | null;
   startingDemeanor: string | null;
-  importedMarkdown: string | null;
-  provenance: CharacterProvenance | null;
+  sensoryProfile: SensoryProfile | null;
+  defaultLocationId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -101,39 +93,71 @@ export interface StoryRelationshipRecord {
   updatedAt: string;
 }
 
+export interface LocationConnectionRecord {
+  id: string;
+  fromLocationId: string;
+  toLocationId: string;
+  toLocationName: string;
+  description: string | null;
+  bidirectional: boolean;
+  traversalHint: string | null;
+}
+
+export interface StoryLocationRecord {
+  id: string;
+  storyProjectId: string;
+  name: string;
+  description: string;
+  tags: string[];
+  atmosphere: string;
+  sortOrder: number;
+  connections: LocationConnectionRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoryLocationInput {
+  name: string;
+  description?: string;
+  tags?: string[];
+  atmosphere?: string;
+  sortOrder?: number;
+}
+
+export interface LocationConnectionInput {
+  toLocationId: string;
+  description?: string | null;
+  bidirectional?: boolean;
+  traversalHint?: string | null;
+}
+
 export interface StoryProjectSummary {
   id: string;
   name: string;
   description: string;
-  authoringMode: StoryAuthoringMode;
   createdAt: string;
   updatedAt: string;
   characterCount: number;
   relationshipCount: number;
+  locationCount: number;
 }
 
-/** Segment ID to content override map for form-based system prompt editing. */
-export type SegmentOverrides = Record<string, string>;
-
 export interface StoryProjectDetail extends StoryProjectSummary {
-  importedSystemPrompt: string | null;
-  importedStoryState: string | null;
   generatedSystemPrompt: string;
   generatedStoryState: string;
   generatedSegments: SerializedSegment[] | null;
   generatedStructuredState: StructuredStoryState | null;
-  segmentOverrides: SegmentOverrides | null;
   mainEntityId: string | null;
   promptBlueprint: PromptBlueprint | null;
   runtimeSeed: RuntimeSeed | null;
   characters: StoryCharacterRecord[];
   relationships: StoryRelationshipRecord[];
+  locations: StoryLocationRecord[];
 }
 
 export interface StoryProjectInput {
   name: string;
   description: string;
-  segmentOverrides?: SegmentOverrides | null;
   mainEntityId?: string | null;
   promptBlueprint?: PromptBlueprint | null;
   runtimeSeed?: RuntimeSeed | null;
@@ -144,33 +168,19 @@ export interface StoryProjectDuplicateInput {
   name?: string;
 }
 
-export interface StoryProjectImportCharacterInput {
-  name?: string;
-  role?: string;
-  markdown: string;
-}
-
-export type ImportMode = "replace" | "merge";
-
-export interface StoryProjectImportInput {
-  systemPromptMarkdown?: string;
-  storyStateMarkdown?: string;
-  characters?: StoryProjectImportCharacterInput[];
-  mode?: ImportMode;
-}
-
 export interface StoryProjectCharacterInput {
   name: string;
   role: string;
   isPlayer?: boolean;
   entityId?: string;
-  importedMarkdown?: string | null;
   identity?: CharacterIdentity | null;
   background?: string | null;
   appearance?: CharacterAppearanceEntry[] | null;
   behavioralProfile?: CharacterBehavioralProfile | null;
   dialogueExamples?: DialogueExample[] | null;
   startingDemeanor?: string | null;
+  sensoryProfile?: SensoryProfile | null;
+  defaultLocationId?: string | null;
 }
 
 export interface StoryProjectRelationshipInput {
@@ -185,9 +195,6 @@ export interface StoryProjectExportPayload {
   storyProjectId: string;
   name: string;
   description: string;
-  authoringMode: StoryAuthoringMode;
-  importedSystemPrompt: string | null;
-  importedStoryState: string | null;
   generatedSystemPrompt: string;
   generatedStoryState: string;
   mainEntityId: string | null;
@@ -205,8 +212,7 @@ export interface StoryProjectExportPayload {
     behavioralProfile: CharacterBehavioralProfile | null;
     dialogueExamples: DialogueExample[] | null;
     startingDemeanor: string | null;
-    importedMarkdown: string | null;
-    provenance: CharacterProvenance | null;
+    sensoryProfile: SensoryProfile | null;
   }>;
   relationships: StoryRelationshipRecord[];
 }

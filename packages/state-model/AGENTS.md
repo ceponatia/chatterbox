@@ -65,6 +65,8 @@ import {
   type Entity,
   type FactTag,
   type HardFact,
+   type LocationConnectionInfo,
+   type LocationInfo,
   type Relationship,
   type RelationshipTone,
   type SceneInfo,
@@ -105,6 +107,7 @@ This package is a strict leaf package with zero cross-package dependencies and z
 | `serializer.ts`       | `StructuredStoryState` -> markdown (`structuredToMarkdown`)                                                                    |
 | `presence-scanner.ts` | Assistant-message presence scanning (`scanPresenceFromAssistantMessage`)                                                       |
 | `effective-state.ts`  | Baseline plus runtime merge resolver (`resolveEffectiveState`)                                                                 |
+| `parser-locations.ts` | Location-specific parsing: `parseLocationsRaw`, connection list parsing, location key classification                           |
 | `index.ts`            | Public barrel - all external imports must go through here                                                                      |
 
 ## Key concepts
@@ -128,6 +131,8 @@ This keeps downstream sections normalized around stable IDs instead of display n
 
 `ensureLifecycleDefaults` fills missing inference-derived fields such as relationship tones, appearance categories, fact tags, summaries, and thread hooks.
 
+PL12 cleanup note: `"vibe"` was removed from the `presence` keyword list in `inference.ts` (vibe is no longer a default appearance attribute).
+
 Both functions accept an optional `today` parameter so date-sensitive behavior remains deterministic in validation and local tooling.
 
 ### Entity UUID stability
@@ -141,6 +146,17 @@ Both functions accept an optional `today` parameter so date-sensitive behavior r
 ### Section meta tracking
 
 `applySectionMetaTransition` compares previous and incoming structured state snapshots and bumps section `lastUpdatedAt` and `updateCount` only for sections whose content actually changed.
+
+### Location system (PL14)
+
+`LocationInfo` represents a named location with description, tags, atmosphere, and a `connectedTo` array of `LocationConnectionInfo` entries describing traversable paths to other locations.
+
+- Location IDs are deterministic, generated via `generateStoryItemId("loc", name)`.
+- `SceneInfo.locationId` optionally references a `LocationInfo.id` when structured locations exist.
+- `Entity.locationId` (optional) tracks per-entity position; not parsed from markdown in PH01.
+- `StructuredStoryState.locations` carries the full location registry.
+- Markdown format: `## Locations` section with `### LocationName` sub-headings, `- **Description/Tags/Atmosphere/Connected to**: ...` key-value pairs.
+- Connection parsing handles comma-separated entries with parenthetical descriptions and semicolon-separated traversal hints.
 
 ## Internal-only implementation details
 
@@ -212,5 +228,6 @@ Before merging state-model changes, verify:
 - `pnpm --filter @chatterbox/state-model typecheck`
 - `pnpm --filter @chatterbox/state-model lint`
 - `pnpm --filter @chatterbox/state-model test`
+- `pnpm --filter @chatterbox/state-model test:mutate` runs Stryker via `stryker.config.mjs`; package-local Vitest settings live in `vitest.config.ts`
 - app still compiles when consuming from `@chatterbox/state-model` root exports only
 - Package tooling relies on the `typescript-eslint` meta package; do not add a direct `@typescript-eslint/parser` dependency unless a config explicitly needs it.

@@ -1,4 +1,8 @@
 import type { StructuredStoryState } from "./types";
+import {
+  parseLocationsRaw,
+  type RawLocationEntry,
+} from "./parser-locations";
 
 const SECTION_MAP: Record<string, keyof Omit<StructuredStoryState, "custom">> =
   {
@@ -14,6 +18,7 @@ const SECTION_MAP: Record<string, keyof Omit<StructuredStoryState, "custom">> =
     "hard facts": "hardFacts",
     facts: "hardFacts",
     style: "style",
+    locations: "locations",
   };
 
 export function resolveSection(
@@ -279,8 +284,11 @@ function parseCharactersRaw(content: string): RawAppEntry[] {
 
 function classifySceneKey(
   key: string,
-): "location" | "present" | "atmosphere" | null {
+): "location" | "locationRef" | "present" | "atmosphere" | null {
   const lower = key.toLowerCase();
+  if (lower.includes("current") && lower.includes("location")) {
+    return "locationRef";
+  }
   if (
     lower.includes("where") ||
     lower.includes("when") ||
@@ -303,8 +311,14 @@ function parseSceneRaw(content: string): {
   location: string;
   presentNames: string[];
   atmosphere: string;
+  locationName?: string;
 } {
-  const scene = { location: "", presentNames: [] as string[], atmosphere: "" };
+  const scene: {
+    location: string;
+    presentNames: string[];
+    atmosphere: string;
+    locationName?: string;
+  } = { location: "", presentNames: [], atmosphere: "" };
 
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
@@ -313,7 +327,9 @@ function parseSceneRaw(content: string): {
 
     const value = kvMatch[2]!.trim();
     const kind = classifySceneKey(kvMatch[1]!);
-    if (kind === "location") {
+    if (kind === "locationRef") {
+      scene.locationName = value;
+    } else if (kind === "location") {
       scene.location = value;
     } else if (kind === "present") {
       scene.presentNames = value
@@ -406,11 +422,17 @@ export interface RawSections {
   cast: RawCastEntry[];
   relationships: RawRelEntry[];
   appearance: RawAppEntry[];
-  scene: { location: string; presentNames: string[]; atmosphere: string };
+  scene: {
+    location: string;
+    presentNames: string[];
+    atmosphere: string;
+    locationName?: string;
+  };
   demeanor: RawDemEntry[];
   openThreads: { text: string; createdAt?: string; resolutionHint?: string }[];
   hardFacts: { text: string; createdAt?: string }[];
   style: string[];
+  locations: RawLocationEntry[];
 }
 
 export function emptyRawSections(): RawSections {
@@ -423,6 +445,7 @@ export function emptyRawSections(): RawSections {
     openThreads: [],
     hardFacts: [],
     style: [],
+    locations: [],
   };
 }
 
@@ -457,6 +480,9 @@ export function parseRawSection(
       break;
     case "style":
       raw.style = parseBulletList(content);
+      break;
+    case "locations":
+      raw.locations = parseLocationsRaw(content);
       break;
   }
 }

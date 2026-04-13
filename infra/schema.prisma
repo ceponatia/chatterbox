@@ -9,10 +9,25 @@ datasource db {
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   username      String   @unique
+  email         String?  @unique
   passwordHash  String
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   conversations Conversation[]
   storyProjects StoryProject[]
+  presets       SettingsPreset[]
+}
+
+model SettingsPreset {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  settings  Json
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Conversation {
@@ -68,6 +83,7 @@ model StoryProject {
   characters             StoryCharacter[]
   conversations          Conversation[]
   relationships          StoryRelationship[]
+  locations              StoryLocation[]
   user                   User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
@@ -88,6 +104,8 @@ model StoryCharacter {
   startingDemeanor String?
   provenance       Json?
   importedMarkdown String?
+  sensoryProfile   Json?
+  defaultLocationId String?  @db.Uuid
   createdAt        DateTime @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime @updatedAt @db.Timestamptz(6)
   storyProject     StoryProject @relation(fields: [storyProjectId], references: [id], onDelete: Cascade)
@@ -129,6 +147,39 @@ model StateHistoryEntry {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, timestamp])
+}
+
+model StoryLocation {
+  id              String   @id @default(uuid()) @db.Uuid
+  storyProjectId  String   @db.Uuid
+  name            String
+  description     String   @default("")
+  tags            String[] @default([])
+  atmosphere      String   @default("")
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  storyProject    StoryProject @relation(fields: [storyProjectId], references: [id], onDelete: Cascade)
+  connectionsFrom LocationConnection[] @relation("FromLocation")
+  connectionsTo   LocationConnection[] @relation("ToLocation")
+
+  @@index([storyProjectId])
+}
+
+model LocationConnection {
+  id              String   @id @default(uuid()) @db.Uuid
+  fromLocationId  String   @db.Uuid
+  toLocationId    String   @db.Uuid
+  description     String?
+  bidirectional   Boolean  @default(true)
+  traversalHint   String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  fromLocation    StoryLocation @relation("FromLocation", fields: [fromLocationId], references: [id], onDelete: Cascade)
+  toLocation      StoryLocation @relation("ToLocation", fields: [toLocationId], references: [id], onDelete: Cascade)
+
+  @@index([fromLocationId])
+  @@index([toLocationId])
 }
 
 // MessageEmbedding table is managed via raw SQL migration (pgvector).

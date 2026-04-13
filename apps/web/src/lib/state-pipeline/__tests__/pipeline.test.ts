@@ -240,4 +240,227 @@ describe("windowSocketMessages", () => {
     const windowed = windowSocketMessages(messages, 5);
     expect(windowed.length).toBeGreaterThan(0);
   });
+
+  it("falls back to last 40 when lastPipelineTurn exceeds user message count", () => {
+    const messages = Array.from({ length: 10 }, (_, i) =>
+      msg(i % 2 === 0 ? "user" : "assistant", i),
+    );
+    // 5 user messages, lastPipelineTurn=20 -> windowStartIdx stays -1 -> fallback
+    const windowed = windowSocketMessages(messages, 20);
+    expect(windowed.length).toBe(10);
+  });
+
+  it("returns all messages when total count <= 40 and lastPipelineTurn=0", () => {
+    const messages = Array.from({ length: 5 }, (_, i) =>
+      msg(i % 2 === 0 ? "user" : "assistant", i),
+    );
+    const windowed = windowSocketMessages(messages, 0);
+    expect(windowed.length).toBe(5);
+  });
+
+  it("caps at 40 when lastPipelineTurn is negative", () => {
+    const messages = Array.from({ length: 60 }, (_, i) =>
+      msg(i % 2 === 0 ? "user" : "assistant", i),
+    );
+    const windowed = windowSocketMessages(messages, -1);
+    expect(windowed.length).toBe(40);
+  });
+
+  it("includes overlap messages before the window start", () => {
+    // Create 60 messages (30 user, 30 assistant alternating)
+    // lastPipelineTurn=20 -> window starts at user #21 (idx 40), overlap backs to idx 30
+    const messages = Array.from({ length: 60 }, (_, i) =>
+      msg(i % 2 === 0 ? "user" : "assistant", i),
+    );
+    const windowed = windowSocketMessages(messages, 20);
+    // Should start from max(0, 40 - 10) = 30
+    expect(windowed.length).toBe(30);
+    expect(windowed[0]!.id).toBe("30");
+  });
+
+  it("handles empty messages array", () => {
+    const windowed = windowSocketMessages([], 0);
+    expect(windowed.length).toBe(0);
+  });
+
+  it("handles empty messages with positive lastPipelineTurn", () => {
+    const windowed = windowSocketMessages([], 5);
+    expect(windowed.length).toBe(0);
+  });
+
+  it("handles single message", () => {
+    const messages = [msg("user", 1)];
+    const windowed = windowSocketMessages(messages, 0);
+    expect(windowed.length).toBe(1);
+  });
+
+  it("starts from index 0 when overlap would go negative", () => {
+    // 4 messages, lastPipelineTurn=1 -> after 1st user (idx 0) -> window at idx 2
+    // overlap = max(0, 2 - 10) = 0 -> starts from 0
+    const messages = [
+      msg("user", 1),
+      msg("assistant", 2),
+      msg("user", 3),
+      msg("assistant", 4),
+    ];
+    const windowed = windowSocketMessages(messages, 1);
+    expect(windowed.length).toBe(4);
+    expect(windowed[0]!.id).toBe("1");
+  });
+
+  it("returns last 40 when lastPipelineTurn equals total user count", () => {
+    // Exactly at boundary: if lastPipelineTurn matches # of user messages,
+    // the loop never finds userCount > lastPipelineTurn -> falls back
+    const messages = Array.from({ length: 20 }, (_, i) =>
+      msg(i % 2 === 0 ? "user" : "assistant", i),
+    );
+    // 10 user messages, lastPipelineTurn=10 -> loop can't exceed -> fallback
+    const windowed = windowSocketMessages(messages, 10);
+    expect(windowed.length).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateState — hard facts novelty
+// ---------------------------------------------------------------------------
+
+describe("validateState — hard facts novelty", () => {
+  it("accepts when new fact appears in extractedFacts", () => {
+    const stateWithNewFact = VALID_STATE.replace(
+      "## Hard Facts\n\n- Alice is 28. (added: 2026-01-01)",
+      "## Hard Facts\n\n- Alice is 28. (added: 2026-01-01)\n- Bob moved to town. (added: 2026-02-01)",
+    );
+    const report = validateState(stateWithNewFact, VALID_STATE, [
+      {
+        type: "hard_fact_added",
+        detail: "Bob moved to town.",
+        sourceTurn: 1,
+        confidence: 0.9,
+      },
+    ]);
+    expect(report.noUnknownFacts).toBe(true);
+  });
+
+  it("flags when new fact has no matching extracted fact", () => {
+    const stateWithNewFact = VALID_STATE.replace(
+      "## Hard Facts\n\n- Alice is 28. (added: 2026-01-01)",
+      "## Hard Facts\n\n- Alice is 28. (added: 2026-01-01)\n- Mystery fact. (added: 2026-02-01)",
+    );
+    const report = validateState(stateWithNewFact, VALID_STATE, []);
+    expect(report.noUnknownFacts).toBe(false);
+  });
+
+  it("accepts when there are no new facts", () => {
+    const report = validateState(VALID_STATE, VALID_STATE, []);
+    expect(report.noUnknownFacts).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateState — diff percentage
+// ---------------------------------------------------------------------------
+
+describe("validateState — diff percentage", () => {
+  it("reports intermediate diff percentage", () => {
+    const modified = VALID_STATE.replace(
+      "The café at noon.",
+      "The park at sunset.",
+    );
+    const report = validateState(modified, VALID_STATE, []);
+    expect(report.diffPercentage).toBeGreaterThan(0);
+    expect(report.diffPercentage).toBeLessThan(100);
+  });
+
+  it("reports 0% diff for identical states", () => {
+    const report = validateState(VALID_STATE, VALID_STATE, []);
+    expect(report.diffPercentage).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeCascadeResets — character enters/leaves
+// ---------------------------------------------------------------------------
+
+describe("computeCascadeResets — character enters/leaves", () => {
+  const CHAR_SEGMENTS: Record<string, string> = {
+    "e-alice-001": "char_alice",
+    "e-bob-002": "char_bob",
+  };
+
+  it("resets specific character segment when entity ID found in detail", () => {
+    const resets = computeCascadeResets(
+      [
+        {
+          type: "character_enters",
+          detail: "Alice arrives (e-alice-001)",
+          sourceTurn: 1,
+          confidence: 0.9,
+        },
+      ],
+      CHAR_SEGMENTS,
+    );
+    expect(resets).toContain("char_alice");
+    expect(resets).not.toContain("char_bob");
+  });
+
+  it("resets all character segments when no entity ID in detail", () => {
+    const resets = computeCascadeResets(
+      [
+        {
+          type: "character_enters",
+          detail: "Someone arrives",
+          sourceTurn: 1,
+          confidence: 0.9,
+        },
+      ],
+      CHAR_SEGMENTS,
+    );
+    expect(resets).toContain("char_alice");
+    expect(resets).toContain("char_bob");
+  });
+
+  it("does not add character segments when no lookup provided", () => {
+    const resets = computeCascadeResets([
+      {
+        type: "character_enters",
+        detail: "Alice arrives (e-alice-001)",
+        sourceTurn: 1,
+        confidence: 0.9,
+      },
+    ]);
+    // character_enters maps to [] in TRIGGER_MAP
+    expect(resets).toHaveLength(0);
+  });
+
+  it("handles character_leaves with entity ID", () => {
+    const resets = computeCascadeResets(
+      [
+        {
+          type: "character_leaves",
+          detail: "Bob departs e-bob-002",
+          sourceTurn: 2,
+          confidence: 0.8,
+        },
+      ],
+      CHAR_SEGMENTS,
+    );
+    expect(resets).toContain("char_bob");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateState — completeness edge cases
+// ---------------------------------------------------------------------------
+
+describe("validateState — completeness edge cases", () => {
+  it("marks outputComplete false when candidate is too short", () => {
+    const report = validateState("## Cast\nA", "", []);
+    expect(report.outputComplete).toBe(false);
+  });
+
+  it("marks outputComplete false when schema is invalid even if long enough", () => {
+    const longButInvalid = "A".repeat(200);
+    const report = validateState(longButInvalid, "", []);
+    expect(report.outputComplete).toBe(false);
+  });
 });

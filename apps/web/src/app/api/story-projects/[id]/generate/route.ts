@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
 import { logError, logRequest } from "@/lib/api-logger";
-import {
-  getStoryProjectRow,
-  regenerateStoryProject,
-} from "@/lib/story-project-db";
-import { resolveProjectAuthoringModeFromSource } from "@/lib/story-project-core";
+import { regenerateStoryProject } from "@/lib/story-project-db";
 
 export async function POST(
   request: Request,
@@ -18,14 +14,7 @@ export async function POST(
 
   try {
     const generated = await prisma.$transaction(async (tx) => {
-      const project = await getStoryProjectRow(tx, userId, id);
-      if (!project) return null;
-      const authoringMode = resolveProjectAuthoringModeFromSource({
-        importedSystemPrompt: project.importedSystemPrompt,
-        importedStoryState: project.importedStoryState,
-        characters: project.characters,
-      });
-      return regenerateStoryProject(tx, userId, id, authoringMode);
+      return regenerateStoryProject(tx, userId, id);
     });
 
     if (!generated) {
