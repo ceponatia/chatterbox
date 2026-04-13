@@ -183,6 +183,8 @@ Before merging changes, verify:
 
 - `pnpm --filter @chatterbox/prompt-assembly typecheck`
 - `pnpm --filter @chatterbox/prompt-assembly lint`
+- `pnpm --filter @chatterbox/prompt-assembly test`
+- `pnpm --filter @chatterbox/prompt-assembly test:mutate` runs Stryker via `stryker.config.mjs`; package-local Vitest settings live in `vitest.config.ts`
 - app still compiles when consuming from `@chatterbox/prompt-assembly` root exports only
 - all segments in `DEFAULT_SEGMENTS` produce the same content as the original `DEFAULT_SYSTEM_PROMPT` when assembled with `always` policies
 - Package tooling relies on the `typescript-eslint` meta package; do not add a direct `@typescript-eslint/parser` dependency unless a config explicitly needs it.

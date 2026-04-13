@@ -17,6 +17,11 @@ const eslintConfig = defineConfig([
 
   // App-specific overrides
   {
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     rules: {
       // Allow underscore-prefixed unused vars (common in React/hook patterns)
       "@typescript-eslint/no-unused-vars": [

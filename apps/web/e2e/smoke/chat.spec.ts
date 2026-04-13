@@ -1,6 +1,7 @@
 import { expect, test } from "../fixtures/auth";
 import type { Page } from "@playwright/test";
 import { mockChatStream, unmockChatStream } from "../helpers/mock-chat-stream";
+import { isMobileViewport } from "../helpers/viewport";
 
 async function sendChatMessage(page: Page, text: string) {
   const input = page.getByPlaceholder(/describe your action/i);
@@ -9,7 +10,13 @@ async function sendChatMessage(page: Page, text: string) {
   await input.click();
   await input.fill(text);
   await expect(input).toHaveValue(text);
-  await input.press("Enter");
+  if (isMobileViewport(page)) {
+    await page
+      .locator('button[type="submit"], [data-testid="send-button"]')
+      .click();
+  } else {
+    await input.press("Enter");
+  }
 }
 
 test.describe("chat smoke", () => {

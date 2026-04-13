@@ -3,17 +3,25 @@ import type { Page } from "@playwright/test";
 import { ChatPage } from "../pages/chat-page";
 import { mockChatStream, unmockChatStream } from "../helpers/mock-chat-stream";
 import { e2eName } from "../fixtures/data";
+import { isMobileViewport } from "../helpers/viewport";
 
 async function composer(page: Page) {
   const input = page.getByPlaceholder(/describe your action/i);
   await expect(input).toBeVisible({ timeout: 10_000 });
   // Click to trigger React hydration before interacting.
   await input.click();
+  const mobile = isMobileViewport(page);
   return {
     input,
     async submit() {
       await expect(input).not.toHaveValue("");
-      await input.press("Enter");
+      if (mobile) {
+        await page
+          .locator('button[type="submit"], [data-testid="send-button"]')
+          .click();
+      } else {
+        await input.press("Enter");
+      }
     },
   };
 }
@@ -53,12 +61,17 @@ test.describe("message actions", () => {
         has: page.locator(".app-message-surface", { hasText: original }),
       })
       .first();
-    await messageBubble.hover();
 
-    // Click Edit button (desktop toolbar only)
-    await messageBubble
-      .locator('.app-message-toolbar button[title="Edit"]')
-      .click();
+    if (isMobileViewport(page)) {
+      // Mobile: buttons are visible below the message (lg:hidden div)
+      await messageBubble.getByRole("button", { name: "Edit" }).click();
+    } else {
+      await messageBubble.hover();
+      // Click Edit button (desktop toolbar only)
+      await messageBubble
+        .locator('.app-message-toolbar button[title="Edit"]')
+        .click();
+    }
 
     // Fill new text in the edit textarea
     const editTextarea = messageBubble.locator("textarea");
@@ -99,15 +112,24 @@ test.describe("message actions", () => {
       .locator(".group.relative")
       .filter({ has: page.locator(".app-message-surface", { hasText: msg2 }) })
       .first();
-    await targetBubble.hover();
 
-    // First click shows confirm state, second click executes
-    await targetBubble
-      .locator('.app-message-toolbar button[title="Delete"]')
-      .click();
-    await targetBubble
-      .locator('.app-message-toolbar button[title="Click again to delete"]')
-      .click();
+    if (isMobileViewport(page)) {
+      // Mobile: ConfirmDeleteButton is in the lg:hidden div, still uses title attrs.
+      // Use :visible to avoid matching the CSS-hidden desktop toolbar copy.
+      await targetBubble.locator('button[title="Delete"]:visible').click();
+      await targetBubble
+        .locator('button[title="Click again to delete"]:visible')
+        .click();
+    } else {
+      await targetBubble.hover();
+      // First click shows confirm state, second click executes
+      await targetBubble
+        .locator('.app-message-toolbar button[title="Delete"]')
+        .click();
+      await targetBubble
+        .locator('.app-message-toolbar button[title="Click again to delete"]')
+        .click();
+    }
 
     // Verify deleted message is gone but first message remains
     await expect(page.getByText(msg2)).not.toBeVisible({ timeout: 5_000 });
@@ -150,16 +172,25 @@ test.describe("message actions", () => {
       .locator(".group.relative")
       .filter({ has: page.locator(".app-message-surface", { hasText: msg1 }) })
       .first();
-    await firstBubble.hover();
 
-    await firstBubble
-      .locator('.app-message-toolbar button[title="Delete all after"]')
-      .click();
-    await firstBubble
-      .locator(
-        '.app-message-toolbar button[title="Click again to delete all after"]',
-      )
-      .click();
+    if (isMobileViewport(page)) {
+      await firstBubble
+        .locator('button[title="Delete all after"]:visible')
+        .click();
+      await firstBubble
+        .locator('button[title="Click again to delete all after"]:visible')
+        .click();
+    } else {
+      await firstBubble.hover();
+      await firstBubble
+        .locator('.app-message-toolbar button[title="Delete all after"]')
+        .click();
+      await firstBubble
+        .locator(
+          '.app-message-toolbar button[title="Click again to delete all after"]',
+        )
+        .click();
+    }
 
     // Second and third messages should be gone
     await expect(page.getByText(msg2)).not.toBeVisible({ timeout: 5_000 });
@@ -187,8 +218,13 @@ test.describe("message actions", () => {
       .locator(".group.relative")
       .filter({ hasText: "Original assistant response" })
       .first();
-    await assistantBubble.hover();
-    await assistantBubble.locator('button[title="Retry"]').click();
+
+    if (isMobileViewport(page)) {
+      await assistantBubble.getByRole("button", { name: "Regenerate" }).click();
+    } else {
+      await assistantBubble.hover();
+      await assistantBubble.locator('button[title="Retry"]').click();
+    }
 
     // Verify new response appears
     await expect(

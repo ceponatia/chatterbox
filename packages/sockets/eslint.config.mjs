@@ -6,6 +6,13 @@ const eslintConfig = defineConfig([
   ...rootConfig,
   ...tseslint.configs.recommended,
   {
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     rules: {
       "@typescript-eslint/no-unused-vars": [

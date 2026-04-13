@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { isMobileViewport } from "../helpers/viewport";
 
 export class ChatPage {
   readonly page: Page;
@@ -116,11 +117,20 @@ export class ChatPage {
     return bubble.locator(`.app-message-toolbar button[title="${title}"]`);
   }
 
+  /** Whether the current viewport is narrower than the lg breakpoint. */
+  private get mobile(): boolean {
+    return isMobileViewport(this.page);
+  }
+
   /** Edit a user message: hover, click Edit, fill new text, click Save. */
   async editMessage(messageText: string, newText: string) {
     const bubble = this.messageBubble(messageText);
-    await bubble.hover();
-    await this.toolbarButton(bubble, "Edit").click();
+    if (this.mobile) {
+      await bubble.getByRole("button", { name: "Edit" }).click();
+    } else {
+      await bubble.hover();
+      await this.toolbarButton(bubble, "Edit").click();
+    }
     // After clicking Edit, a textarea appears inside the bubble
     const textarea = bubble.locator("textarea");
     await textarea.fill(newText);
@@ -132,17 +142,37 @@ export class ChatPage {
   /** Delete a single message (two-click confirm). */
   async deleteMessage(messageText: string) {
     const bubble = this.messageBubble(messageText);
-    await bubble.hover();
-    await this.toolbarButton(bubble, "Delete").click();
-    await this.toolbarButton(bubble, "Click again to delete").click();
+    if (this.mobile) {
+      // Both desktop toolbar and mobile buttons render ConfirmDeleteButton with
+      // the same title attr. The toolbar is CSS-hidden but still in the DOM, so
+      // we must target only the visible instance.
+      await bubble.locator('button[title="Delete"]:visible').click();
+      await bubble
+        .locator('button[title="Click again to delete"]:visible')
+        .click();
+    } else {
+      await bubble.hover();
+      await this.toolbarButton(bubble, "Delete").click();
+      await this.toolbarButton(bubble, "Click again to delete").click();
+    }
   }
 
   /** Delete all messages after the given message (two-click confirm). */
   async deleteAfter(messageText: string) {
     const bubble = this.messageBubble(messageText);
-    await bubble.hover();
-    await this.toolbarButton(bubble, "Delete all after").click();
-    await this.toolbarButton(bubble, "Click again to delete all after").click();
+    if (this.mobile) {
+      await bubble.locator('button[title="Delete all after"]:visible').click();
+      await bubble
+        .locator('button[title="Click again to delete all after"]:visible')
+        .click();
+    } else {
+      await bubble.hover();
+      await this.toolbarButton(bubble, "Delete all after").click();
+      await this.toolbarButton(
+        bubble,
+        "Click again to delete all after",
+      ).click();
+    }
   }
 
   /** Retry the last assistant message. */
@@ -151,8 +181,12 @@ export class ChatPage {
       ".group.relative:has(.app-message-avatar-assistant)",
     );
     const last = assistantBubbles.last();
-    await last.hover();
-    await last.locator('.app-message-toolbar button[title="Retry"]').click();
+    if (this.mobile) {
+      await last.getByRole("button", { name: "Regenerate" }).click();
+    } else {
+      await last.hover();
+      await last.locator('.app-message-toolbar button[title="Retry"]').click();
+    }
   }
 
   /** Click the stop button (visible while streaming). */

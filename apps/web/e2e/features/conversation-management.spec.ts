@@ -3,17 +3,25 @@ import type { Page } from "@playwright/test";
 import { ChatPage } from "../pages/chat-page";
 import { mockChatStream, unmockChatStream } from "../helpers/mock-chat-stream";
 import { e2eName } from "../fixtures/data";
+import { isMobileViewport } from "../helpers/viewport";
 
 async function composer(page: Page) {
   const input = page.getByPlaceholder(/describe your action/i);
   await expect(input).toBeVisible({ timeout: 10_000 });
   // Click to trigger React hydration before interacting.
   await input.click();
+  const mobile = isMobileViewport(page);
   return {
     input,
     async submit() {
       await expect(input).not.toHaveValue("");
-      await input.press("Enter");
+      if (mobile) {
+        await page
+          .locator('button[type="submit"], [data-testid="send-button"]')
+          .click();
+      } else {
+        await input.press("Enter");
+      }
     },
   };
 }

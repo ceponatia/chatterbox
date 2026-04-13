@@ -1,5 +1,16 @@
 import { defineConfig, devices } from "@playwright/test";
 
+/** iPhone 16 Pro Max — not yet in Playwright's built-in device list. */
+const iPhone16ProMax = {
+  userAgent:
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  viewport: { width: 440, height: 956 },
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+  defaultBrowserType: "webkit" as const,
+};
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -45,6 +56,14 @@ export default defineConfig({
       name: "webkit",
       use: {
         ...devices["Desktop Safari"],
+        storageState: "e2e/.auth/user.json",
+      },
+      dependencies: ["setup"],
+    },
+    {
+      name: "iphone-safari",
+      use: {
+        ...iPhone16ProMax,
         storageState: "e2e/.auth/user.json",
       },
       dependencies: ["setup"],
