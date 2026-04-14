@@ -249,7 +249,7 @@ function detectForcedTool(message: string): string | null {
   if (/\b(relationship|relationships)\b/i.test(message))
     return "get_relationships";
   if (/\b(thread|threads)\b/i.test(message)) return "get_threads";
-  if (/\b(hard fact|hard facts|recall|remember)\b/i.test(message))
+  if (/\b(facts|hard fact|hard facts|recall|remember)\b/i.test(message))
     return "get_facts";
   return null;
 }

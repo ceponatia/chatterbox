@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "pnpm -w -s lint -- --fix --no-warn-ignored 2>/dev/null || true",
+        "timeout": 15
+      }
+    ]
+  }
+}

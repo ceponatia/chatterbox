@@ -50,8 +50,7 @@ yarn-error.log*
 next-env.d.ts
 
 # workspace
-chatterbox.code-workspace
 .codacy/
-.github/
 .vscode/
 .windsurf/
+chatterbox.code-workspace
